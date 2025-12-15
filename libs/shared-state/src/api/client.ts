@@ -30,7 +30,7 @@ interface RequestConfig extends RequestInit {
 export class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = '') {
+  constructor(baseUrl = '') {
     this.baseUrl = baseUrl;
   }
 

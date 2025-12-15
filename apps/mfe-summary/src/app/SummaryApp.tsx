@@ -2,7 +2,7 @@ import { useSummary } from '@mono-repo/shared-state';
 import type { MfeProps } from '@mono-repo/shared-state';
 import styles from './app.module.css';
 
-export interface SummaryAppProps extends MfeProps {}
+export type SummaryAppProps = MfeProps;
 
 export function SummaryApp({ memberId, persona, operatorId, operatorName }: SummaryAppProps) {
   const { data: summary, isLoading, error } = useSummary(memberId);

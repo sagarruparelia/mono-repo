@@ -15,6 +15,7 @@ vi.mock('@mono-repo/shared-state', () => ({
   })),
 }));
 
+// eslint-disable-next-line import/first
 import { useProfile, useUpdateProfile } from '@mono-repo/shared-state';
 
 const mockUseProfile = vi.mocked(useProfile);

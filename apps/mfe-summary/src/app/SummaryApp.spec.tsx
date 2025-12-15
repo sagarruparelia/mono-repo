@@ -14,6 +14,7 @@ vi.mock('@mono-repo/shared-state', () => ({
   })),
 }));
 
+// eslint-disable-next-line import/first
 import { useSummary } from '@mono-repo/shared-state';
 
 const mockUseSummary = vi.mocked(useSummary);

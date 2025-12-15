@@ -43,7 +43,7 @@ vi.mock('@mono-repo/shared-state', () => ({
   }),
 }));
 
-// Import after mocking
+// eslint-disable-next-line import/first -- Import after mocking
 import './web-component';
 
 describe('MfeProfileElement Web Component', () => {
