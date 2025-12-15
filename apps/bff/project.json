@@ -1,6 +1,27 @@
 {
-  "name": "demo",
+  "name": "bff",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/bff/src",
-  "tags": []
+  "projectType": "application",
+  "tags": ["type:app", "scope:backend"],
+  "targets": {
+    "build": {
+      "executor": "@nxrocks/nx-spring-boot:build",
+      "options": {
+        "root": "apps/bff"
+      }
+    },
+    "serve": {
+      "executor": "@nxrocks/nx-spring-boot:run",
+      "options": {
+        "root": "apps/bff"
+      }
+    },
+    "test": {
+      "executor": "@nxrocks/nx-spring-boot:test",
+      "options": {
+        "root": "apps/bff"
+      }
+    }
+  }
 }

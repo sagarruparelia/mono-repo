@@ -1,0 +1,40 @@
+# Security Path Configuration
+# Externalized security rules for config-over-code approach
+
+security:
+  paths:
+    # Public endpoints (no authentication required)
+    public:
+      - pattern: "/"
+        description: "Landing page"
+      - pattern: "/api/auth/**"
+        description: "Auth endpoints (login, callback, logout)"
+      - pattern: "/actuator/health"
+        description: "Health check"
+      - pattern: "/actuator/info"
+        description: "App info"
+
+    # MFE proxy endpoints (OAuth2 Client Credentials)
+    proxy-auth:
+      - pattern: "/api/mfe/**"
+        description: "MFE proxy endpoints"
+        required-scopes:
+          - mfe:read
+
+    # HSID session-authenticated endpoints
+    session-auth:
+      - pattern: "/api/user/**"
+        description: "User endpoints"
+      - pattern: "/api/dashboard/**"
+        description: "Dashboard endpoints"
+      - pattern: "/api/summary/**"
+        description: "Summary endpoints"
+      - pattern: "/api/profile/**"
+        description: "Profile endpoints"
+
+    # Admin endpoints (future use)
+    admin:
+      - pattern: "/api/admin/**"
+        description: "Admin endpoints"
+        required-roles:
+          - ADMIN

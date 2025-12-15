@@ -1,0 +1,74 @@
+# Zero Trust Security Configuration
+# Feature flags for gradual rollout
+
+zero-trust:
+  # Continuous verification
+  continuous-verification:
+    enabled: ${FEATURE_CONTINUOUS_VERIFY:false}
+    checks:
+      interval-requests: 10
+      interval-seconds: 300
+    signals:
+      ip-change: block
+      ua-change: re-authenticate
+      geo-velocity: alert
+      time-anomaly: challenge
+
+  # Device validation
+  device:
+    enabled: ${FEATURE_DEVICE_VALIDATION:false}
+    validation:
+      fingerprint-headers:
+        - Sec-CH-UA
+        - Sec-CH-UA-Platform
+        - Sec-CH-UA-Mobile
+      bind-to-session: true
+      min-trust-score: 0.7
+
+  # Step-up authentication
+  step-up-auth:
+    enabled: ${FEATURE_STEP_UP_AUTH:false}
+    triggers:
+      - pattern: "/api/user/profile"
+        methods:
+          - PUT
+          - DELETE
+        max-age-seconds: 300
+      - pattern: "/api/mfe/profile/**"
+        methods:
+          - PUT
+          - DELETE
+        max-age-seconds: 300
+
+  # Anomaly detection
+  anomaly-detection:
+    enabled: ${FEATURE_ANOMALY_DETECTION:false}
+    rules:
+      - name: data-exfiltration
+        condition: "request_count > 100 per minute"
+        action: block
+      - name: off-hours-access
+        condition: "hour < 6 or hour > 22"
+        action: challenge
+        personas:
+          - individual
+          - parent
+
+  # Audit logging
+  audit:
+    enabled: ${AUDIT_LOGGING_ENABLED:true}
+    log-all-requests: true
+    sensitive-fields-mask:
+      - ssn
+      - dob
+      - account_number
+    retention-days: 90
+
+# Feature flags
+features:
+  continuous-verification: ${FEATURE_CONTINUOUS_VERIFY:false}
+  device-validation: ${FEATURE_DEVICE_VALIDATION:false}
+  step-up-auth: ${FEATURE_STEP_UP_AUTH:false}
+  anomaly-detection: ${FEATURE_ANOMALY_DETECTION:false}
+  mfe-summary-v2: ${FEATURE_MFE_SUMMARY_V2:false}
+  mfe-profile-enabled: ${FEATURE_MFE_PROFILE:true}

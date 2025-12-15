@@ -1,0 +1,39 @@
+# Test Configuration
+spring:
+  # Disable session store (no Redis needed)
+  session:
+    store-type: none
+
+  # Disable data sources for tests
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration
+
+  # Disable config imports for tests
+  config:
+    import: optional:classpath:config/security-paths.yml
+
+# Minimal security config for tests
+security:
+  paths:
+    public:
+      - pattern: "/**"
+        description: "All paths public for tests"
+
+rate-limiting:
+  enabled: false
+
+zero-trust:
+  audit:
+    enabled: false
+
+app:
+  session:
+    timeout: 30m
+    binding:
+      enabled: false
+      ip-address: false
+      user-agent: false

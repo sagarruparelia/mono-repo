@@ -1,0 +1,48 @@
+# Rate Limiting Configuration
+# Config-driven rate limiting rules
+
+rate-limiting:
+  enabled: ${RATE_LIMITING_ENABLED:true}
+
+  # Default limits
+  default:
+    requests-per-second: 10
+    burst-capacity: 20
+
+  # Path-specific rules
+  rules:
+    # Auth endpoints - strict rate limiting
+    - pattern: "/api/auth/login"
+      requests-per-minute: 5
+      by: ip
+      description: "Prevent brute force login"
+
+    - pattern: "/api/auth/callback"
+      requests-per-minute: 10
+      by: ip
+      description: "Prevent callback abuse"
+
+    # MFE proxy - higher limits for partners
+    - pattern: "/api/mfe/**"
+      requests-per-second: 50
+      by: partner
+      description: "Partner MFE requests"
+
+  # Persona-based rules
+  persona-rules:
+    - personas:
+        - individual
+        - parent
+      requests-per-second: 5
+      description: "Regular users"
+
+    - personas:
+        - agent
+        - case_worker
+      requests-per-second: 50
+      description: "Agent users - higher throughput"
+
+    - personas:
+        - config
+      requests-per-second: 10
+      description: "Config users"
