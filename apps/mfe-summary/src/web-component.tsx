@@ -13,15 +13,18 @@ import { SummaryApp } from './app/SummaryApp';
  *   persona="agent"
  *   operator-id="456"
  *   operator-name="Jane Smith"
- *   api-base="https://api.example.com"
+ *   service-base-url="/api/proxy"
  * />
+ *
+ * Note: API calls default to same-origin. Use service-base-url when the
+ * consumer app needs to route MFE traffic through a specific proxy endpoint.
  */
 class MfeSummaryElement extends HTMLElement {
   private root: Root | null = null;
   private queryClient = createQueryClient();
 
   static get observedAttributes() {
-    return ['member-id', 'persona', 'operator-id', 'operator-name', 'api-base'];
+    return ['member-id', 'persona', 'operator-id', 'operator-name', 'service-base-url'];
   }
 
   connectedCallback() {
@@ -37,10 +40,10 @@ class MfeSummaryElement extends HTMLElement {
     styleSheet.textContent = this.getStyles();
     shadow.appendChild(styleSheet);
 
-    // Set API base if provided
-    const apiBase = this.getAttribute('api-base');
-    if (apiBase) {
-      api.setBaseUrl(apiBase);
+    // Set service base URL if provided (defaults to same-origin)
+    const serviceBaseUrl = this.getAttribute('service-base-url');
+    if (serviceBaseUrl) {
+      api.setBaseUrl(serviceBaseUrl);
     }
 
     this.root = createRoot(container);
@@ -65,7 +68,6 @@ class MfeSummaryElement extends HTMLElement {
       persona: (this.getAttribute('persona') || 'individual') as Persona,
       operatorId: this.getAttribute('operator-id') || undefined,
       operatorName: this.getAttribute('operator-name') || undefined,
-      apiBase: this.getAttribute('api-base') || undefined,
     };
 
     this.root.render(

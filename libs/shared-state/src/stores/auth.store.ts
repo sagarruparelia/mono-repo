@@ -109,3 +109,20 @@ export const useIsHsidUser = () =>
 
 export const useIsProxyUser = () =>
   useAuthStore((state) => state.memberId !== undefined);
+
+/**
+ * Get the effective memberId from session
+ * - HSID users: memberId comes from user.sub
+ * - Proxy users: memberId is explicit in context
+ */
+export const useMemberId = () =>
+  useAuthStore((state) => state.memberId ?? state.user?.sub);
+
+/**
+ * Get operator info for proxy users
+ */
+export const useOperatorInfo = () =>
+  useAuthStore((state) => ({
+    operatorId: state.operatorId,
+    operatorName: state.operatorName,
+  }));

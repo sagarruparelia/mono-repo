@@ -70,7 +70,7 @@ describe('MfeProfileElement Web Component', () => {
       'persona',
       'operator-id',
       'operator-name',
-      'api-base',
+      'service-base-url',
     ]);
   });
 
@@ -128,15 +128,15 @@ describe('MfeProfileElement Web Component', () => {
     expect(element.getAttribute('member-id')).toBe('updated-456');
   });
 
-  it('should accept api-base attribute', () => {
+  it('should accept service-base-url attribute', () => {
     const element = document.createElement('mfe-profile');
     element.setAttribute('member-id', 'test-123');
     element.setAttribute('persona', 'agent');
-    element.setAttribute('api-base', 'https://api.example.com');
+    element.setAttribute('service-base-url', '/api/mfe-proxy');
     document.body.appendChild(element);
 
-    // Verify attribute was set
-    expect(element.getAttribute('api-base')).toBe('https://api.example.com');
+    // Verify attribute was set (defaults to same-origin if not specified)
+    expect(element.getAttribute('service-base-url')).toBe('/api/mfe-proxy');
     expect(element.shadowRoot).toBeTruthy();
   });
 });

@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useUser, useDependents, usePersona } from '@mono-repo/shared-state';
+import { useMemberId, useDependents, usePersona, useOperatorInfo, useUser } from '@mono-repo/shared-state';
 import { SummaryApp } from '@mono-repo/mfe-summary';
 import styles from './routes.module.css';
 
 /**
  * Summary page - uses SummaryApp React component directly
- * (No web component overhead for internal usage)
+ * Session context (memberId, persona, operatorInfo) comes from auth store
  */
 export function Summary() {
   const user = useUser();
+  const sessionMemberId = useMemberId();
   const persona = usePersona();
   const dependents = useDependents();
+  const { operatorId, operatorName } = useOperatorInfo();
 
-  // For HSID users, member-id is their own sub
-  // For parent persona, they can select a dependent
+  // For parent persona, allow selecting a dependent
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const memberId = selectedMemberId || user?.sub || '';
+  const memberId = selectedMemberId || sessionMemberId || '';
 
   return (
     <div className={styles.page}>
@@ -49,6 +50,8 @@ export function Summary() {
         <SummaryApp
           memberId={memberId}
           persona={persona || 'individual'}
+          operatorId={operatorId}
+          operatorName={operatorName}
         />
       </div>
     </div>

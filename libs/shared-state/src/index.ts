@@ -17,6 +17,8 @@ export {
   useDependents,
   useIsHsidUser,
   useIsProxyUser,
+  useMemberId,
+  useOperatorInfo,
 } from './stores/auth.store';
 
 // API Client

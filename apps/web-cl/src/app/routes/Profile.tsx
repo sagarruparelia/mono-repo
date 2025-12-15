@@ -1,17 +1,16 @@
 import { Link } from 'react-router-dom';
-import { useUser, usePersona } from '@mono-repo/shared-state';
+import { useMemberId, usePersona, useOperatorInfo } from '@mono-repo/shared-state';
 import { ProfileApp } from '@mono-repo/mfe-profile';
 import styles from './routes.module.css';
 
 /**
  * Profile page - uses ProfileApp React component directly
- * (No web component overhead for internal usage)
+ * Session context (memberId, persona, operatorInfo) comes from auth store
  */
 export function Profile() {
-  const user = useUser();
+  const memberId = useMemberId() || '';
   const persona = usePersona();
-
-  const memberId = user?.sub || '';
+  const { operatorId, operatorName } = useOperatorInfo();
 
   return (
     <div className={styles.page}>
@@ -26,6 +25,8 @@ export function Profile() {
         <ProfileApp
           memberId={memberId}
           persona={persona || 'individual'}
+          operatorId={operatorId}
+          operatorName={operatorName}
         />
       </div>
     </div>

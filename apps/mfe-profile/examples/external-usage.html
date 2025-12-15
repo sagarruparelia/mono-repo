@@ -53,6 +53,14 @@
       margin-bottom: 1rem;
       color: #92400e;
     }
+    .info {
+      background: #dbeafe;
+      border: 1px solid #3b82f6;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      color: #1e40af;
+    }
   </style>
 </head>
 <body>
@@ -62,6 +70,13 @@
       This example demonstrates how external partner portals can embed the Profile MFE
       using web components. The Profile MFE supports viewing and editing member profiles.
     </p>
+
+    <!-- API Routing Note -->
+    <div class="info">
+      <strong>API Routing:</strong> By default, the MFE makes same-origin API calls.
+      Use <code>service-base-url</code> to route API traffic through your proxy endpoint
+      (e.g., <code>/api/mfe-proxy</code>) which forwards requests to the BFF.
+    </div>
 
     <!-- Security Warning -->
     <div class="warning">
@@ -77,13 +92,12 @@
 &lt;!-- Include the MFE bundle --&gt;
 &lt;script src="https://cdn.example.com/mfe-profile.umd.js"&gt;&lt;/script&gt;
 
-&lt;!-- Use the web component --&gt;
+&lt;!-- Use the web component (API calls go to same origin) --&gt;
 &lt;mfe-profile
   member-id="member-123"
   persona="agent"
   operator-id="agent-456"
   operator-name="Jane Smith"
-  api-base="https://bff.example.com"
 &gt;&lt;/mfe-profile&gt;
       </div>
 
@@ -95,17 +109,20 @@
       ></mfe-profile>
     </div>
 
-    <!-- Example 2: Config Persona (Read-Only) -->
+    <!-- Example 2: With Proxy Endpoint -->
     <div class="example">
-      <h2>Example 2: Config Persona (Admin View)</h2>
+      <h2>Example 2: With Proxy Endpoint (Config Persona)</h2>
       <div class="code-block">
+&lt;!-- Route MFE API calls through partner's proxy --&gt;
 &lt;mfe-profile
   member-id="member-456"
   persona="config"
   operator-id="admin-001"
   operator-name="Admin User"
-  api-base="https://bff.example.com"
+  service-base-url="/api/mfe-proxy"
 &gt;&lt;/mfe-profile&gt;
+
+&lt;!-- Partner proxy forwards: /api/mfe-proxy/* -&gt; BFF --&gt;
       </div>
 
       <mfe-profile
@@ -114,6 +131,28 @@
         operator-id="admin-001"
         operator-name="Admin User"
       ></mfe-profile>
+    </div>
+
+    <!-- Integration Architecture -->
+    <div class="example">
+      <h2>Integration Architecture</h2>
+      <div class="code-block">
+Partner Portal                    Partner Backend                    BFF
++-------------+                  +----------------+               +---------+
+| &lt;mfe-profile|  same-origin     |                |   OAuth2 CC   |         |
+|   ...       | ---------------&gt; | /api/mfe-proxy | ------------&gt; | /api/*  |
+| /&gt;          |    API calls     |                |   + headers   |         |
++-------------+                  +----------------+               +---------+
+
+Required proxy headers:
+  Authorization: Bearer &lt;oauth2-cc-token&gt;
+  X-Auth-Type: oauth2-proxy
+  X-Partner-Id: partner-001
+  X-Member-Id: member-123
+  X-Persona: agent
+  X-Operator-Id: operator-456
+  X-Operator-Name: Jane Smith
+      </div>
     </div>
 
     <!-- API Contract -->
@@ -148,20 +187,16 @@
       </div>
     </div>
 
-    <!-- Required Headers -->
+    <!-- Integration Notes -->
     <div class="example">
-      <h2>Required Proxy Headers</h2>
-      <div class="code-block">
-// Headers that partner backend must send to BFF
-Authorization: Bearer &lt;oauth2-cc-token&gt;
-X-Auth-Type: oauth2-proxy
-X-Partner-Id: partner-001
-X-Member-Id: member-123
-X-Persona: agent
-X-Operator-Id: operator-456
-X-Operator-Name: Jane Smith
-X-Correlation-Id: &lt;uuid&gt;
-      </div>
+      <h2>Integration Requirements</h2>
+      <ul style="color: #374151; line-height: 1.8;">
+        <li><strong>Authentication:</strong> Partner backend must obtain OAuth2 CC token and proxy requests to BFF</li>
+        <li><strong>Proxy Endpoint:</strong> Set up a proxy route (e.g., <code>/api/mfe-proxy</code>) that forwards to BFF</li>
+        <li><strong>Headers:</strong> Partner proxy must inject required headers (X-Auth-Type, X-Partner-Id, X-Member-Id, etc.)</li>
+        <li><strong>CORS:</strong> Not needed - MFE makes same-origin calls to partner's proxy</li>
+        <li><strong>Personas:</strong> Valid proxy personas: <code>agent</code>, <code>config</code>, <code>case_worker</code></li>
+      </ul>
     </div>
   </div>
 
