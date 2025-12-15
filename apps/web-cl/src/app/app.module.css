@@ -1,1 +1,13 @@
-/* Your styles goes here. */
+.app {
+  min-height: 100vh;
+  background: #f9fafb;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-size: 1.125rem;
+  color: #6b7280;
+}
