@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MFE Summary - External Usage Example</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f3f4f6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #111827;
+      margin-bottom: 0.5rem;
+    }
+    .description {
+      color: #6b7280;
+      margin-bottom: 2rem;
+    }
+    .example {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .example h2 {
+      margin-top: 0;
+      font-size: 1rem;
+      color: #374151;
+    }
+    .code-block {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MFE Summary - External Usage</h1>
+    <p class="description">
+      This example demonstrates how external partner portals can embed the Summary MFE
+      using web components with OAuth2 Client Credentials authentication.
+    </p>
+
+    <!-- Example 1: Basic Usage -->
+    <div class="example">
+      <h2>Example 1: Basic Usage (Agent Persona)</h2>
+      <div class="code-block">
+&lt;!-- Include the MFE bundle --&gt;
+&lt;script src="https://cdn.example.com/mfe-summary.umd.js"&gt;&lt;/script&gt;
+
+&lt;!-- Use the web component --&gt;
+&lt;mfe-summary
+  member-id="member-123"
+  persona="agent"
+  operator-id="operator-456"
+  operator-name="Jane Smith"
+  api-base="https://bff.example.com"
+&gt;&lt;/mfe-summary&gt;
+      </div>
+
+      <!-- Live example (will show error without real API) -->
+      <mfe-summary
+        member-id="member-123"
+        persona="agent"
+        operator-id="operator-456"
+        operator-name="Jane Smith"
+      ></mfe-summary>
+    </div>
+
+    <!-- Example 2: Case Worker Persona -->
+    <div class="example">
+      <h2>Example 2: Case Worker Persona</h2>
+      <div class="code-block">
+&lt;mfe-summary
+  member-id="member-789"
+  persona="case_worker"
+  operator-id="cw-001"
+  operator-name="John Doe"
+  api-base="https://bff.example.com"
+&gt;&lt;/mfe-summary&gt;
+      </div>
+
+      <mfe-summary
+        member-id="member-789"
+        persona="case_worker"
+        operator-id="cw-001"
+        operator-name="John Doe"
+      ></mfe-summary>
+    </div>
+
+    <!-- Example 3: Dynamic Attributes -->
+    <div class="example">
+      <h2>Example 3: Dynamic Attribute Updates</h2>
+      <div class="code-block">
+// JavaScript to dynamically update member ID
+const summaryEl = document.querySelector('mfe-summary');
+summaryEl.setAttribute('member-id', 'new-member-456');
+      </div>
+
+      <mfe-summary
+        id="dynamic-summary"
+        member-id="initial-member"
+        persona="agent"
+        operator-id="op-123"
+        operator-name="Dynamic Demo"
+      ></mfe-summary>
+
+      <button onclick="updateMember()" style="margin-top: 1rem; padding: 0.5rem 1rem;">
+        Change Member ID
+      </button>
+    </div>
+
+    <!-- Integration Notes -->
+    <div class="example">
+      <h2>Integration Requirements</h2>
+      <ul style="color: #374151; line-height: 1.8;">
+        <li><strong>Authentication:</strong> Partner backend must obtain OAuth2 CC token and proxy requests to BFF</li>
+        <li><strong>Headers:</strong> Partner must include required headers (X-Auth-Type, X-Partner-Id, X-Member-Id, etc.)</li>
+        <li><strong>CORS:</strong> Partner domain must be allowlisted in BFF configuration</li>
+        <li><strong>Personas:</strong> Valid proxy personas are: <code>agent</code>, <code>config</code>, <code>case_worker</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Load the MFE web component bundle -->
+  <!-- In production, this would be a CDN URL or bundled with partner's app -->
+  <script type="module">
+    // Import web component registration
+    // In production: <script src="https://cdn.example.com/mfe-summary.umd.js">
+    import '../src/web-component';
+  </script>
+
+  <script>
+    function updateMember() {
+      const el = document.getElementById('dynamic-summary');
+      const newId = 'member-' + Math.floor(Math.random() * 1000);
+      el.setAttribute('member-id', newId);
+      alert('Updated member-id to: ' + newId);
+    }
+  </script>
+</body>
+</html>

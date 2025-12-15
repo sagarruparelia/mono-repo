@@ -3,7 +3,7 @@ import { useProfile, useUpdateProfile } from '@mono-repo/shared-state';
 import type { MfeProps, ProfileUpdatePayload } from '@mono-repo/shared-state';
 import styles from './app.module.css';
 
-interface ProfileAppProps extends MfeProps {}
+export interface ProfileAppProps extends MfeProps {}
 
 export function ProfileApp({ memberId, persona, operatorId, operatorName }: ProfileAppProps) {
   const { data: profile, isLoading, error } = useProfile(memberId);

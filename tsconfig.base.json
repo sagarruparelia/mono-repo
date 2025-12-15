@@ -16,7 +16,9 @@
     "baseUrl": ".",
     "paths": {
       "@mono-repo/shared-ui": ["libs/shared-ui/src/index.ts"],
-      "@mono-repo/shared-state": ["libs/shared-state/src/index.ts"]
+      "@mono-repo/shared-state": ["libs/shared-state/src/index.ts"],
+      "@mono-repo/mfe-summary": ["apps/mfe-summary/src/index.ts"],
+      "@mono-repo/mfe-profile": ["apps/mfe-profile/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

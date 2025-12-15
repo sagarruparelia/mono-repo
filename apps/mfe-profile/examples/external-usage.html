@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MFE Profile - External Usage Example</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f3f4f6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #111827;
+      margin-bottom: 0.5rem;
+    }
+    .description {
+      color: #6b7280;
+      margin-bottom: 2rem;
+    }
+    .example {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .example h2 {
+      margin-top: 0;
+      font-size: 1rem;
+      color: #374151;
+    }
+    .code-block {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+    .warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      color: #92400e;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MFE Profile - External Usage</h1>
+    <p class="description">
+      This example demonstrates how external partner portals can embed the Profile MFE
+      using web components. The Profile MFE supports viewing and editing member profiles.
+    </p>
+
+    <!-- Security Warning -->
+    <div class="warning">
+      <strong>Security Note:</strong> Profile editing requires step-up authentication.
+      The BFF will require re-authentication for PUT/DELETE operations if the last auth
+      was more than 5 minutes ago (configurable via zero-trust.step-up-auth settings).
+    </div>
+
+    <!-- Example 1: Agent View -->
+    <div class="example">
+      <h2>Example 1: Agent Viewing Member Profile</h2>
+      <div class="code-block">
+&lt;!-- Include the MFE bundle --&gt;
+&lt;script src="https://cdn.example.com/mfe-profile.umd.js"&gt;&lt;/script&gt;
+
+&lt;!-- Use the web component --&gt;
+&lt;mfe-profile
+  member-id="member-123"
+  persona="agent"
+  operator-id="agent-456"
+  operator-name="Jane Smith"
+  api-base="https://bff.example.com"
+&gt;&lt;/mfe-profile&gt;
+      </div>
+
+      <mfe-profile
+        member-id="member-123"
+        persona="agent"
+        operator-id="agent-456"
+        operator-name="Jane Smith"
+      ></mfe-profile>
+    </div>
+
+    <!-- Example 2: Config Persona (Read-Only) -->
+    <div class="example">
+      <h2>Example 2: Config Persona (Admin View)</h2>
+      <div class="code-block">
+&lt;mfe-profile
+  member-id="member-456"
+  persona="config"
+  operator-id="admin-001"
+  operator-name="Admin User"
+  api-base="https://bff.example.com"
+&gt;&lt;/mfe-profile&gt;
+      </div>
+
+      <mfe-profile
+        member-id="member-456"
+        persona="config"
+        operator-id="admin-001"
+        operator-name="Admin User"
+      ></mfe-profile>
+    </div>
+
+    <!-- API Contract -->
+    <div class="example">
+      <h2>API Contract</h2>
+      <p style="color: #6b7280; margin-bottom: 1rem;">
+        The Profile MFE makes the following API calls through the BFF:
+      </p>
+      <div class="code-block">
+// GET /api/mfe/profile/{memberId}
+// Response:
+{
+  "memberId": "member-123",
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john.doe@example.com",
+  "phone": "+1-555-0123",
+  "address": {
+    "street": "123 Main St",
+    "city": "Anytown",
+    "state": "CA",
+    "zip": "90210"
+  }
+}
+
+// PUT /api/mfe/profile/{memberId}
+// Request body:
+{
+  "phone": "+1-555-9999",
+  "address": { ... }
+}
+      </div>
+    </div>
+
+    <!-- Required Headers -->
+    <div class="example">
+      <h2>Required Proxy Headers</h2>
+      <div class="code-block">
+// Headers that partner backend must send to BFF
+Authorization: Bearer &lt;oauth2-cc-token&gt;
+X-Auth-Type: oauth2-proxy
+X-Partner-Id: partner-001
+X-Member-Id: member-123
+X-Persona: agent
+X-Operator-Id: operator-456
+X-Operator-Name: Jane Smith
+X-Correlation-Id: &lt;uuid&gt;
+      </div>
+    </div>
+  </div>
+
+  <!-- Load the MFE web component bundle -->
+  <script type="module">
+    import '../src/web-component';
+  </script>
+</body>
+</html>

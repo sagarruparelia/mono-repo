@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/mfe-profile/src",
   "projectType": "application",
-  "tags": [],
+  "tags": ["type:mfe", "scope:shared"],
   "// targets": "to see all targets run: nx show project mfe-profile --web",
   "targets": {}
 }

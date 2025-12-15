@@ -19,8 +19,21 @@ export default [
         'error',
         {
           enforceBuildableLibDependency: true,
-          allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'],
+          allow: [
+            '^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$',
+            // Allow shell apps to import from MFE apps (internal usage)
+            '@mono-repo/mfe-summary',
+            '@mono-repo/mfe-profile',
+          ],
           depConstraints: [
+            {
+              sourceTag: 'type:shell',
+              onlyDependOnLibsWithTags: ['*'],
+            },
+            {
+              sourceTag: 'type:mfe',
+              onlyDependOnLibsWithTags: ['scope:shared', 'type:lib'],
+            },
             {
               sourceTag: '*',
               onlyDependOnLibsWithTags: ['*'],

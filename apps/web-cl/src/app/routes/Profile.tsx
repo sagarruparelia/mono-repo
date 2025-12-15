@@ -1,9 +1,11 @@
-import { useUser, usePersona } from '@mono-repo/shared-state';
 import { Link } from 'react-router-dom';
+import { useUser, usePersona } from '@mono-repo/shared-state';
+import { ProfileApp } from '@mono-repo/mfe-profile';
 import styles from './routes.module.css';
 
 /**
- * Profile page - embeds mfe-profile
+ * Profile page - uses ProfileApp React component directly
+ * (No web component overhead for internal usage)
  */
 export function Profile() {
   const user = useUser();
@@ -21,7 +23,10 @@ export function Profile() {
       </header>
 
       <div className={styles.mfeContainer}>
-        <mfe-profile member-id={memberId} persona={persona || 'individual'} />
+        <ProfileApp
+          memberId={memberId}
+          persona={persona || 'individual'}
+        />
       </div>
     </div>
   );
