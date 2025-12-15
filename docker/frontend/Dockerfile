@@ -74,8 +74,10 @@ RUN addgroup -g 1000 -S nginx-app && \
              /usr/share/nginx/html/mfe && \
     chown -R nginx-app:nginx-app /var/cache/nginx /var/run /var/log/nginx
 
-# Copy nginx configuration
+# Copy nginx configuration and set permissions
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+RUN chown nginx-app:nginx-app /etc/nginx/nginx.conf && \
+    chmod 644 /etc/nginx/nginx.conf
 
 # Copy built shell app assets from builder
 COPY --from=builder /app/dist/apps/${APP_NAME} /usr/share/nginx/html

@@ -1,0 +1,105 @@
+# =============================================================================
+# Docker Compose for E2E Testing
+# Simulates both ALB flows: session-based (api-ALB) and mTLS (mtls-ALB)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Redis/Valkey - Session Store
+  # ---------------------------------------------------------------------------
+  redis:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # BFF Service
+  # Handles both session-based and mTLS header-based authentication
+  # ---------------------------------------------------------------------------
+  bff:
+    build:
+      context: .
+      dockerfile: docker/bff/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=e2e
+      - VALKEY_HOST=redis
+      - VALKEY_PORT=6379
+      - VALKEY_PASSWORD=
+      - VALKEY_SSL_ENABLED=false
+      # HSID OAuth2 (mock/disabled for E2E)
+      - HSID_CLIENT_ID=e2e-client
+      - HSID_ISSUER_URI=http://mock-idp:8081
+      - HSID_AUTH_URI=http://mock-idp:8081/authorize
+      - HSID_TOKEN_URI=http://mock-idp:8081/token
+      - HSID_JWKS_URI=http://mock-idp:8081/.well-known/jwks.json
+      - HSID_USERINFO_URI=http://mock-idp:8081/userinfo
+      # MongoDB (mock/disabled for E2E)
+      - MONGODB_URI=mongodb://mongo:27017/bff-e2e
+      # AuthZ
+      - AUTHZ_ENABLED=true
+      - PERMISSIONS_API_URL=http://mock-permissions:8082
+      # External Integration (mTLS ALB simulation)
+      - EXTERNAL_INTEGRATION_ENABLED=true
+      - EXTERNAL_TRUSTED_IDP_TYPES=partner-idp,corporate-idp
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/actuator/health/liveness"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Frontend (web-cl) with MFE bundles
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        APP_NAME: web-cl
+        INCLUDE_MFE_BUNDLES: "true"
+    ports:
+      - "3000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Mock IDP (for HSID OAuth2 simulation)
+  # ---------------------------------------------------------------------------
+  mock-idp:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    command: >
+      sh -c "mkdir -p /usr/share/nginx/html/.well-known &&
+             echo '{\"keys\":[]}' > /usr/share/nginx/html/.well-known/jwks.json &&
+             nginx -g 'daemon off;'"
+
+  # ---------------------------------------------------------------------------
+  # Mock Permissions API
+  # ---------------------------------------------------------------------------
+  mock-permissions:
+    image: nginx:alpine
+    ports:
+      - "8082:80"
+    command: >
+      sh -c "mkdir -p /usr/share/nginx/html/api &&
+             echo '{\"permissions\":[\"DAA\",\"RPR\"]}' > /usr/share/nginx/html/api/permissions.json &&
+             nginx -g 'daemon off;'"
+
+networks:
+  default:
+    name: mono-repo-e2e

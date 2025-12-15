@@ -1,0 +1,128 @@
+# =============================================================================
+# E2E Test Profile Configuration
+# Used for Docker-based end-to-end testing of both ALB authentication flows
+# =============================================================================
+
+spring:
+  # Disable session store and external dependencies
+  session:
+    store-type: none
+
+  # Override OAuth2 with empty values (triggers test security config)
+  security:
+    oauth2:
+      client:
+        registration:
+          hsid:
+            client-id: ""  # Empty disables OAuth2 security filter
+        provider:
+          hsid:
+            issuer-uri: http://localhost:9999
+            authorization-uri: http://localhost:9999/authorize
+            token-uri: http://localhost:9999/token
+            jwk-set-uri: http://localhost:9999/.well-known/jwks.json
+            user-info-uri: http://localhost:9999/userinfo
+
+  # Disable data sources and OAuth2 for local E2E (no IDP available)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.client.reactive.ReactiveOAuth2ClientAutoConfiguration
+
+  # Optional config imports
+  config:
+    import:
+      - optional:classpath:config/security-paths.yml
+      - optional:classpath:config/rate-limiting.yml
+      - optional:classpath:config/zero-trust.yml
+
+# Security paths for E2E
+security:
+  paths:
+    public:
+      - pattern: "/actuator/**"
+        description: "Actuator endpoints"
+      - pattern: "/api/auth/**"
+        description: "Auth endpoints"
+
+# Disable rate limiting
+rate-limiting:
+  enabled: false
+
+# Disable audit logging
+zero-trust:
+  audit:
+    enabled: false
+
+# App configuration
+app:
+  # Disable OAuth2 security filter for E2E testing
+  security:
+    oauth2:
+      enabled: false
+
+  session:
+    timeout: 30m
+    binding:
+      enabled: false
+
+  persona:
+    hsid:
+      claim-name: persona
+      allowed:
+        - individual
+        - parent
+    proxy:
+      allowed:
+        - agent
+        - config
+        - case_worker
+
+  mfe:
+    proxy:
+      enabled: true
+      headers:
+        auth-type: X-Auth-Type
+        partner-id: X-Partner-Id
+        member-id: X-Member-Id
+        persona: X-Persona
+        operator-id: X-Operator-Id
+        operator-name: X-Operator-Name
+        correlation-id: X-Correlation-Id
+
+  # Enable authorization with mock permissions
+  authz:
+    enabled: false  # Disable ABAC for simpler E2E testing
+    permissions-api:
+      url: http://mock-permissions:8082
+      timeout: 5s
+
+  # External Integration (mTLS ALB simulation) - ENABLED for E2E testing
+  external-integration:
+    enabled: true
+    headers:
+      persona: X-Persona
+      user-id: X-User-Id
+      idp-type: X-IDP-Type
+      client-id: X-Client-Id
+    allowed-personas:
+      - agent
+      - config
+      - case_worker
+    trusted-idp-types:
+      - partner-idp
+      - corporate-idp
+
+# Actuator - expose all for E2E debugging
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

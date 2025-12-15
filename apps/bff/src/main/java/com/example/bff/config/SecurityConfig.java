@@ -21,6 +21,7 @@ import org.springframework.security.web.server.util.matcher.PathPatternParserSer
 
 @Configuration
 @EnableWebFluxSecurity
+@org.springframework.context.annotation.Profile("!e2e")
 public class SecurityConfig {
 
     private final SecurityPathsProperties pathsConfig;
@@ -30,7 +31,6 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(name = "spring.security.oauth2.client.registration.hsid.client-id")
     public SecurityWebFilterChain securityFilterChain(
             ServerHttpSecurity http,
             HsidAuthenticationSuccessHandler authSuccessHandler,
@@ -92,12 +92,4 @@ public class SecurityConfig {
         return resolver;
     }
 
-    @Bean
-    @ConditionalOnProperty(name = "spring.security.oauth2.client.registration.hsid.client-id", matchIfMissing = true, havingValue = "")
-    public SecurityWebFilterChain testSecurityFilterChain(ServerHttpSecurity http) {
-        return http
-                .authorizeExchange(auth -> auth.anyExchange().permitAll())
-                .csrf(csrf -> csrf.disable())
-                .build();
-    }
 }
