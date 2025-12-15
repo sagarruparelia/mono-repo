@@ -1,8 +1,11 @@
 package com.example.bff.session.service;
 
+import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,14 +29,18 @@ public class SessionService {
 
     private static final String USER_SESSION_KEY = "bff:user_session:";
     private static final String SESSION_KEY = "bff:session:";
+    private static final String PERMISSIONS_FIELD = "permissions";
 
     private final ReactiveRedisOperations<String, String> redisOps;
     private final SessionProperties sessionProperties;
+    private final ObjectMapper objectMapper;
 
     public SessionService(ReactiveRedisOperations<String, String> redisOps,
-                          SessionProperties sessionProperties) {
+                          SessionProperties sessionProperties,
+                          ObjectMapper objectMapper) {
         this.redisOps = redisOps;
         this.sessionProperties = sessionProperties;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -168,5 +175,63 @@ public class SessionService {
     public Mono<String> getSessionIdForUser(String userId) {
         String userSessionKey = USER_SESSION_KEY + userId;
         return redisOps.opsForValue().get(userSessionKey);
+    }
+
+    /**
+     * Stores permissions in the session
+     */
+    public Mono<Void> storePermissions(String sessionId, PermissionSet permissions) {
+        String sessionKey = SESSION_KEY + sessionId;
+
+        try {
+            String permissionsJson = objectMapper.writeValueAsString(permissions);
+            return redisOps.opsForHash()
+                    .put(sessionKey, PERMISSIONS_FIELD, permissionsJson)
+                    .then();
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize permissions for session {}: {}", sessionId, e.getMessage());
+            return Mono.error(e);
+        }
+    }
+
+    /**
+     * Retrieves permissions from the session
+     */
+    public Mono<PermissionSet> getPermissions(String sessionId) {
+        String sessionKey = SESSION_KEY + sessionId;
+
+        return redisOps.opsForHash()
+                .get(sessionKey, PERMISSIONS_FIELD)
+                .cast(String.class)
+                .flatMap(json -> {
+                    try {
+                        PermissionSet permissions = objectMapper.readValue(json, PermissionSet.class);
+                        return Mono.just(permissions);
+                    } catch (JsonProcessingException e) {
+                        log.error("Failed to deserialize permissions for session {}: {}", sessionId, e.getMessage());
+                        return Mono.empty();
+                    }
+                });
+    }
+
+    /**
+     * Updates permissions in the session (same as store, for clarity)
+     */
+    public Mono<Void> updatePermissions(String sessionId, PermissionSet permissions) {
+        log.debug("Updating permissions for session {}", sessionId);
+        return storePermissions(sessionId, permissions);
+    }
+
+    /**
+     * Creates a session with permissions
+     */
+    public Mono<String> createSessionWithPermissions(String userId, OidcUser user, String persona,
+                                                      ClientInfo clientInfo, PermissionSet permissions) {
+        return createSession(userId, user, persona,
+                permissions.getViewableDependentIds(), clientInfo)
+                .flatMap(sessionId ->
+                    storePermissions(sessionId, permissions)
+                        .thenReturn(sessionId)
+                );
     }
 }

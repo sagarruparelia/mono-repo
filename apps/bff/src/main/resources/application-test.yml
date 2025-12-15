@@ -58,3 +58,8 @@ app:
       enabled: false
       ip-address: false
       user-agent: false
+  authz:
+    enabled: false
+    permissions-api:
+      url: http://localhost:8081
+      timeout: 5s

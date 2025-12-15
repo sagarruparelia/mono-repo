@@ -103,3 +103,18 @@ app:
         operator-id: X-Operator-Id
         operator-name: X-Operator-Name
         correlation-id: X-Correlation-Id
+
+  # Authorization (AuthZ) Configuration
+  authz:
+    enabled: ${AUTHZ_ENABLED:true}
+    permissions-api:
+      url: ${PERMISSIONS_API_URL:http://localhost:8081}
+      timeout: 5s
+    cache:
+      enabled: true
+      ttl: 5m
+    rules:
+      view-dependent:
+        required: [DAA, RPR]
+      view-sensitive:
+        required: [DAA, RPR, ROI]

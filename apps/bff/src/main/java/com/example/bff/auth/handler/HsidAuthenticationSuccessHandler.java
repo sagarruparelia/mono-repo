@@ -1,5 +1,7 @@
 package com.example.bff.auth.handler;
 
+import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.authz.service.PermissionsFetchService;
 import com.example.bff.config.properties.PersonaProperties;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.service.SessionService;
@@ -8,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -28,14 +31,20 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final String REDIRECT_URI_COOKIE = "redirect_uri";
 
-    @org.springframework.lang.Nullable
+    @Nullable
     private final SessionService sessionService;
+
+    @Nullable
+    private final PermissionsFetchService permissionsFetchService;
+
     private final PersonaProperties personaConfig;
 
     public HsidAuthenticationSuccessHandler(
-            @org.springframework.lang.Nullable SessionService sessionService,
+            @Nullable SessionService sessionService,
+            @Nullable PermissionsFetchService permissionsFetchService,
             PersonaProperties personaConfig) {
         this.sessionService = sessionService;
+        this.permissionsFetchService = permissionsFetchService;
         this.personaConfig = personaConfig;
     }
 
@@ -69,9 +78,36 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
             return redirectToApp(exchange.getExchange());
         }
 
+        // Fetch permissions if service is available
+        Mono<PermissionSet> permissionsMono = fetchPermissions(userId, persona);
+
         return sessionService.invalidateExistingSessions(userId)
-                .then(sessionService.createSession(userId, oidcUser, persona, dependents, clientInfo))
+                .then(permissionsMono)
+                .flatMap(permissions -> {
+                    // Use permissions to get viewable dependents (overrides token dependents)
+                    log.info("Creating session with {} viewable dependents for user {}",
+                            permissions.getViewableDependents().size(), userId);
+                    return sessionService.createSessionWithPermissions(
+                            userId, oidcUser, persona, clientInfo, permissions);
+                })
                 .flatMap(sessionId -> setSessionCookieAndRedirect(exchange.getExchange(), sessionId));
+    }
+
+    private Mono<PermissionSet> fetchPermissions(String userId, String persona) {
+        if (permissionsFetchService == null) {
+            log.debug("PermissionsFetchService not available, using empty permissions");
+            return Mono.just(PermissionSet.empty(userId, persona));
+        }
+
+        return permissionsFetchService.fetchPermissions(userId)
+                .doOnSuccess(p -> log.info("Fetched {} dependents for user {} on login",
+                        p.dependents() != null ? p.dependents().size() : 0, userId))
+                .onErrorResume(e -> {
+                    log.error("Failed to fetch permissions on login for user {}: {}",
+                            userId, e.getMessage());
+                    // Return empty permissions on error (fail closed - no dependent access)
+                    return Mono.just(PermissionSet.empty(userId, persona));
+                });
     }
 
     private String extractPersona(OidcUser oidcUser) {
