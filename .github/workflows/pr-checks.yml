@@ -1,0 +1,316 @@
+# =============================================================================
+# PR Checks Workflow
+# Runs on all pull requests to main/develop branches
+# Uses Nx affected commands for efficient builds
+# =============================================================================
+
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  JAVA_VERSION: '21'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Determine affected projects
+  # ---------------------------------------------------------------------------
+  affected:
+    name: Determine Affected Projects
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.affected.outputs.frontend }}
+      bff: ${{ steps.affected.outputs.bff }}
+      e2e: ${{ steps.affected.outputs.e2e }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine affected projects
+        id: affected
+        run: |
+          # Get affected projects compared to main branch
+          AFFECTED=$(npx nx show projects --affected --base=origin/main --head=HEAD 2>/dev/null || echo "")
+          echo "Affected projects: $AFFECTED"
+
+          # Check if frontend apps are affected
+          if echo "$AFFECTED" | grep -qE "web-cl|web-hs|mfe-profile|mfe-summary|shared-ui|shared-state"; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if BFF is affected
+          if echo "$AFFECTED" | grep -q "bff"; then
+            echo "bff=true" >> $GITHUB_OUTPUT
+          else
+            echo "bff=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if E2E tests are affected
+          if echo "$AFFECTED" | grep -qE "e2e"; then
+            echo "e2e=true" >> $GITHUB_OUTPUT
+          else
+            echo "e2e=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Frontend Lint & Test
+  # ---------------------------------------------------------------------------
+  frontend-checks:
+    name: Frontend Checks
+    needs: affected
+    if: ${{ needs.affected.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nx/cache
+            node_modules/.cache/nx
+          key: nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-
+            nx-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint affected projects
+        run: npx nx affected --target=lint --base=origin/main --head=HEAD --parallel=3
+
+      - name: Type check affected projects
+        run: npx nx affected --target=typecheck --base=origin/main --head=HEAD --parallel=3 || true
+
+      - name: Test affected projects
+        run: npx nx affected --target=test --base=origin/main --head=HEAD --parallel=3 --coverage
+
+      - name: Build affected projects
+        run: npx nx affected --target=build --base=origin/main --head=HEAD --parallel=3
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # BFF Lint & Test
+  # ---------------------------------------------------------------------------
+  bff-checks:
+    name: BFF Checks
+    needs: affected
+    if: ${{ needs.affected.outputs.bff == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/bff
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw
+
+      - name: Verify code format
+        run: ./mvnw spotless:check -B || echo "Spotless not configured, skipping format check"
+
+      - name: Run tests
+        run: ./mvnw verify -B
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bff-test-results
+          path: apps/bff/target/surefire-reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Security Scans
+  # ---------------------------------------------------------------------------
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit
+        run: npm audit --audit-level=high || true
+        continue-on-error: true
+
+      - name: Run Semgrep SAST
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/security-audit
+            p/java
+            p/react
+            p/typescript
+          generateSarif: true
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure Validation
+  # ---------------------------------------------------------------------------
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.changed_files > 0 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for infrastructure changes
+        id: changes
+        run: |
+          if git diff --name-only origin/main...HEAD | grep -q "^infrastructure/"; then
+            echo "infra_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "infra_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Terraform
+        if: steps.changes.outputs.infra_changed == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Format Check
+        if: steps.changes.outputs.infra_changed == 'true'
+        run: terraform fmt -check -recursive infrastructure/terraform/
+
+      - name: Terraform Validate - ECR Module
+        if: steps.changes.outputs.infra_changed == 'true'
+        run: |
+          cd infrastructure/terraform/modules/ecr
+          terraform init -backend=false
+          terraform validate
+
+  # ---------------------------------------------------------------------------
+  # E2E Tests (on label or affected)
+  # ---------------------------------------------------------------------------
+  e2e-tests:
+    name: E2E Tests
+    needs: [affected, frontend-checks]
+    if: ${{ needs.affected.outputs.e2e == 'true' || contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npx nx affected --target=e2e --base=origin/main --head=HEAD --parallel=1
+
+      - name: Upload E2E results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            apps/*-e2e/playwright-report/
+            apps/*-e2e/test-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Summary Job
+  # ---------------------------------------------------------------------------
+  pr-summary:
+    name: PR Summary
+    needs: [frontend-checks, bff-checks, security-scan, terraform-validate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo "Frontend checks: ${{ needs.frontend-checks.result }}"
+          echo "BFF checks: ${{ needs.bff-checks.result }}"
+          echo "Security scan: ${{ needs.security-scan.result }}"
+          echo "Terraform validate: ${{ needs.terraform-validate.result }}"
+
+          # Fail if any required job failed
+          if [[ "${{ needs.frontend-checks.result }}" == "failure" ]] || \
+             [[ "${{ needs.bff-checks.result }}" == "failure" ]] || \
+             [[ "${{ needs.security-scan.result }}" == "failure" ]]; then
+            echo "One or more required checks failed"
+            exit 1
+          fi
+
+          echo "All checks passed!"

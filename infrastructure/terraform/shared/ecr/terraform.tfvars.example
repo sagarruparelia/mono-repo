@@ -1,0 +1,14 @@
+# =============================================================================
+# Example Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+# =============================================================================
+
+aws_region  = "us-east-1"
+project     = "mono-repo"
+github_org  = "your-github-org"
+github_repo = "mono-repo"
+
+tags = {
+  Owner      = "platform-team"
+  CostCenter = "shared-infrastructure"
+}

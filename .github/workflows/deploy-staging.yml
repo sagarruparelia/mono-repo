@@ -1,0 +1,161 @@
+# =============================================================================
+# Deploy to Staging Workflow
+# Auto-triggered after CI build or manually dispatched
+# =============================================================================
+
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: mono-repo-staging
+  NAMESPACE: mono-repo
+  HELM_CHART_PATH: infrastructure/helm/mono-repo
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Deploy to Staging
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Helm dependency update
+        run: |
+          cd ${{ env.HELM_CHART_PATH }}
+          helm dependency update
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install mono-repo ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --values ${{ env.HELM_CHART_PATH }}/values-staging.yaml \
+            --set global.image.tag=${{ inputs.image_tag }} \
+            --set bff.image.tag=${{ inputs.image_tag }} \
+            --set web-cl.image.tag=${{ inputs.image_tag }} \
+            --set web-hs.image.tag=${{ inputs.image_tag }} \
+            --set mfe-summary.image.tag=${{ inputs.image_tag }} \
+            --set mfe-profile.image.tag=${{ inputs.image_tag }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/bff -n ${{ env.NAMESPACE }} --timeout=300s
+          kubectl rollout status deployment/web-cl -n ${{ env.NAMESPACE }} --timeout=300s
+
+  # ---------------------------------------------------------------------------
+  # Smoke Tests
+  # ---------------------------------------------------------------------------
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for services
+        run: sleep 30
+
+      - name: Test BFF health endpoint
+        run: |
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging-api.${{ vars.DOMAIN }}/actuator/health)
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "BFF health check failed with status: $HTTP_STATUS"
+            exit 1
+          fi
+          echo "BFF health check passed"
+
+      - name: Test frontend
+        run: |
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging.${{ vars.DOMAIN }}/)
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Frontend check failed with status: $HTTP_STATUS"
+            exit 1
+          fi
+          echo "Frontend check passed"
+
+  # ---------------------------------------------------------------------------
+  # Notify
+  # ---------------------------------------------------------------------------
+  notify:
+    name: Notify
+    needs: [deploy, smoke-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack on success
+        if: ${{ needs.deploy.result == 'success' && needs.smoke-tests.result == 'success' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Staging Deployment Successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *Staging deployment completed*\n\nImage: `${{ inputs.image_tag }}`\nTriggered by: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack on failure
+        if: ${{ needs.deploy.result == 'failure' || needs.smoke-tests.result == 'failure' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Staging Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: *Staging deployment FAILED*\n\nImage: `${{ inputs.image_tag }}`\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }

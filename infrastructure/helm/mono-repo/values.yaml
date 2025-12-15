@@ -1,0 +1,247 @@
+# =============================================================================
+# Umbrella Chart Default Values
+# =============================================================================
+
+# Global configuration shared across all sub-charts
+global:
+  environment: dev
+  domain: app.example.com
+  imageRegistry: ""  # Set for private registries (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com)
+  imagePullSecrets: []
+
+  # External service endpoints
+  externalServices:
+    redis:
+      host: ""
+      port: 6379
+      ssl: true
+    hsid:
+      issuerUri: ""
+      authUri: ""
+      tokenUri: ""
+      jwksUri: ""
+      userinfoUri: ""
+
+  # Common labels
+  labels:
+    app.kubernetes.io/part-of: mono-repo
+    app.kubernetes.io/managed-by: helm
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Container security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+# =============================================================================
+# BFF Configuration
+# =============================================================================
+bff:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: mono-repo/bff
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ingress:
+    enabled: true
+    className: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+      alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+    hosts:
+      - host: api.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+  livenessProbe:
+    httpGet:
+      path: /actuator/health/liveness
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 10
+
+  readinessProbe:
+    httpGet:
+      path: /actuator/health/readiness
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 5
+
+  config:
+    SPRING_PROFILES_ACTIVE: "prod"
+    RATE_LIMITING_ENABLED: "true"
+    AUDIT_LOGGING_ENABLED: "true"
+    AUTHZ_ENABLED: "true"
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  serviceAccount:
+    create: true
+    annotations: {}
+
+# =============================================================================
+# Web-CL Frontend
+# =============================================================================
+web-cl:
+  enabled: true
+  nameOverride: web-cl
+  replicaCount: 2
+
+  image:
+    repository: mono-repo/web-cl
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ingress:
+    enabled: true
+    className: alb
+    hosts:
+      - host: cl.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+# =============================================================================
+# Web-HS Frontend
+# =============================================================================
+web-hs:
+  enabled: true
+  nameOverride: web-hs
+  replicaCount: 2
+
+  image:
+    repository: mono-repo/web-hs
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ingress:
+    enabled: true
+    className: alb
+    hosts:
+      - host: hs.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# =============================================================================
+# MFE Summary
+# =============================================================================
+mfe-summary:
+  enabled: true
+  nameOverride: mfe-summary
+  replicaCount: 2
+
+  image:
+    repository: mono-repo/mfe-summary
+    tag: latest
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# MFE Profile
+# =============================================================================
+mfe-profile:
+  enabled: true
+  nameOverride: mfe-profile
+  replicaCount: 2
+
+  image:
+    repository: mono-repo/mfe-profile
+    tag: latest
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# Network Policies
+# =============================================================================
+networkPolicies:
+  enabled: false

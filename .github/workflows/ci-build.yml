@@ -1,0 +1,349 @@
+# =============================================================================
+# CI Build Workflow
+# Runs on push to main branch
+# Builds Docker images and pushes to ECR
+# =============================================================================
+
+name: CI Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip-tests:
+        description: 'Skip tests'
+        required: false
+        type: boolean
+        default: false
+      force-build-all:
+        description: 'Force build all images'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  JAVA_VERSION: '21'
+  AWS_REGION: us-east-1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and Test Frontend
+  # ---------------------------------------------------------------------------
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for frontend changes
+        id: changes
+        run: |
+          if [[ "${{ inputs.force-build-all }}" == "true" ]]; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only HEAD~1 HEAD | grep -qE "^apps/(web-|mfe-)|^libs/|^package"; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.frontend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache Nx
+        if: steps.changes.outputs.frontend == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-
+
+      - name: Install dependencies
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm ci
+
+      - name: Run tests
+        if: ${{ steps.changes.outputs.frontend == 'true' && !inputs.skip-tests }}
+        run: npx nx run-many --target=test --all --parallel=3
+
+      - name: Build all frontend apps
+        if: steps.changes.outputs.frontend == 'true'
+        run: npx nx run-many --target=build --all --parallel=3 --configuration=production
+
+      - name: Upload build artifacts
+        if: steps.changes.outputs.frontend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Build and Test BFF
+  # ---------------------------------------------------------------------------
+  bff-build:
+    name: BFF Build
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.bff }}
+    defaults:
+      run:
+        working-directory: apps/bff
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for BFF changes
+        id: changes
+        run: |
+          if [[ "${{ inputs.force-build-all }}" == "true" ]]; then
+            echo "bff=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only HEAD~1 HEAD | grep -q "^apps/bff/"; then
+            echo "bff=true" >> $GITHUB_OUTPUT
+          else
+            echo "bff=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Setup JDK
+        if: steps.changes.outputs.bff == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Maven packages
+        if: steps.changes.outputs.bff == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+
+      - name: Make Maven wrapper executable
+        if: steps.changes.outputs.bff == 'true'
+        run: chmod +x ./mvnw
+
+      - name: Run tests
+        if: ${{ steps.changes.outputs.bff == 'true' && !inputs.skip-tests }}
+        run: ./mvnw verify -B
+
+      - name: Build JAR
+        if: steps.changes.outputs.bff == 'true'
+        run: ./mvnw package -DskipTests -B
+
+      - name: Upload JAR artifact
+        if: steps.changes.outputs.bff == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bff-jar
+          path: apps/bff/target/*.jar
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Build Docker Images
+  # ---------------------------------------------------------------------------
+  docker-build-bff:
+    name: Docker Build - BFF
+    needs: bff-build
+    if: ${{ needs.bff-build.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bff-jar
+          path: apps/bff/target/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ecr-login.outputs.registry }}/mono-repo/bff
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+            type=raw,value=build-${{ github.run_number }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/bff/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.ecr-login.outputs.registry }}/mono-repo/bff:sha-${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-bff.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-bff.sarif'
+
+  docker-build-frontend:
+    name: Docker Build - Frontend
+    needs: frontend-build
+    if: ${{ needs.frontend-build.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        app: [web-cl, web-hs, mfe-profile, mfe-summary]
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ecr-login.outputs.registry }}/mono-repo/${{ matrix.app }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+            type=raw,value=build-${{ github.run_number }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_NAME=${{ matrix.app }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.ecr-login.outputs.registry }}/mono-repo/${{ matrix.app }}:sha-${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-${{ matrix.app }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-${{ matrix.app }}.sarif'
+
+  # ---------------------------------------------------------------------------
+  # Trigger Staging Deployment
+  # ---------------------------------------------------------------------------
+  trigger-staging:
+    name: Trigger Staging Deploy
+    needs: [docker-build-bff, docker-build-frontend]
+    if: always() && (needs.docker-build-bff.result == 'success' || needs.docker-build-frontend.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger staging deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-staging.yml',
+              ref: 'main',
+              inputs: {
+                image_tag: 'sha-${{ github.sha }}'
+              }
+            });
+            console.log('Triggered staging deployment with tag: sha-${{ github.sha }}');
+
+  # ---------------------------------------------------------------------------
+  # Build Summary
+  # ---------------------------------------------------------------------------
+  build-summary:
+    name: Build Summary
+    needs: [frontend-build, bff-build, docker-build-bff, docker-build-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Changed | Build Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|--------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.frontend-build.outputs.changed }} | ${{ needs.docker-build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| BFF | ${{ needs.bff-build.outputs.changed }} | ${{ needs.docker-build-bff.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tag:** \`sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,259 @@
+# =============================================================================
+# Deploy to Production Workflow
+# Manual deployment with approval gates
+# =============================================================================
+
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (e.g., sha-abc1234)'
+        required: true
+        type: string
+      deployment_strategy:
+        description: 'Deployment strategy'
+        required: true
+        type: choice
+        options:
+          - rolling
+          - blue-green
+        default: 'rolling'
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: mono-repo-production
+  NAMESPACE: mono-repo
+  HELM_CHART_PATH: infrastructure/helm/mono-repo
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate Image Exists
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Validate Images
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Validate images exist
+        run: |
+          REGISTRY=${{ steps.ecr-login.outputs.registry }}
+          TAG=${{ inputs.image_tag }}
+
+          IMAGES=("bff" "web-cl" "web-hs" "mfe-profile" "mfe-summary")
+          for IMAGE in "${IMAGES[@]}"; do
+            echo "Checking $REGISTRY/mono-repo/$IMAGE:$TAG"
+            aws ecr describe-images \
+              --repository-name mono-repo/$IMAGE \
+              --image-ids imageTag=$TAG || {
+              echo "Image $IMAGE:$TAG not found!"
+              exit 1
+            }
+          done
+          echo "All images validated successfully"
+
+  # ---------------------------------------------------------------------------
+  # Manual Approval (uses GitHub environment protection)
+  # ---------------------------------------------------------------------------
+  approve:
+    name: Approval Gate
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Approval granted
+        run: |
+          echo "Production deployment approved"
+          echo "Deploying image: ${{ inputs.image_tag }}"
+          echo "Strategy: ${{ inputs.deployment_strategy }}"
+
+  # ---------------------------------------------------------------------------
+  # Deploy to Production
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Production
+    needs: approve
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Helm dependency update
+        run: |
+          cd ${{ env.HELM_CHART_PATH }}
+          helm dependency update
+
+      - name: Deploy with Helm (Rolling)
+        if: ${{ inputs.deployment_strategy == 'rolling' }}
+        run: |
+          helm upgrade --install mono-repo ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --values ${{ env.HELM_CHART_PATH }}/values-prod.yaml \
+            --set global.image.tag=${{ inputs.image_tag }} \
+            --set bff.image.tag=${{ inputs.image_tag }} \
+            --set web-cl.image.tag=${{ inputs.image_tag }} \
+            --set web-hs.image.tag=${{ inputs.image_tag }} \
+            --set mfe-summary.image.tag=${{ inputs.image_tag }} \
+            --set mfe-profile.image.tag=${{ inputs.image_tag }} \
+            --wait \
+            --timeout 15m
+
+      - name: Deploy with Helm (Blue-Green)
+        if: ${{ inputs.deployment_strategy == 'blue-green' }}
+        run: |
+          # Get current active deployment color
+          CURRENT=$(kubectl get configmap deployment-state -n ${{ env.NAMESPACE }} -o jsonpath='{.data.color}' 2>/dev/null || echo "blue")
+          NEW=$([ "$CURRENT" = "blue" ] && echo "green" || echo "blue")
+
+          echo "Current: $CURRENT, Deploying to: $NEW"
+
+          # Deploy new version
+          helm upgrade --install mono-repo-$NEW ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --values ${{ env.HELM_CHART_PATH }}/values-prod.yaml \
+            --set global.image.tag=${{ inputs.image_tag }} \
+            --set global.deploymentColor=$NEW \
+            --wait \
+            --timeout 15m
+
+          # Verify new deployment
+          kubectl rollout status deployment/bff-$NEW -n ${{ env.NAMESPACE }} --timeout=300s
+
+          # Switch traffic
+          kubectl patch configmap deployment-state -n ${{ env.NAMESPACE }} \
+            -p '{"data":{"color":"'$NEW'"}}'
+
+          # Update service selector
+          kubectl patch service bff -n ${{ env.NAMESPACE }} \
+            -p '{"spec":{"selector":{"deployment":"'$NEW'"}}}'
+
+          echo "Traffic switched to $NEW"
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/bff -n ${{ env.NAMESPACE }} --timeout=300s
+          kubectl rollout status deployment/web-cl -n ${{ env.NAMESPACE }} --timeout=300s
+
+  # ---------------------------------------------------------------------------
+  # Production Verification
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Production Verification
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for propagation
+        run: sleep 60
+
+      - name: Health checks
+        run: |
+          # BFF health check
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.${{ vars.DOMAIN }}/actuator/health)
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "BFF health check failed: $HTTP_STATUS"
+            exit 1
+          fi
+          echo "BFF health check: OK"
+
+          # Frontend health check
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://${{ vars.DOMAIN }}/)
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Frontend health check failed: $HTTP_STATUS"
+            exit 1
+          fi
+          echo "Frontend health check: OK"
+
+  # ---------------------------------------------------------------------------
+  # Notify
+  # ---------------------------------------------------------------------------
+  notify:
+    name: Notify
+    needs: [deploy, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack on success
+        if: ${{ needs.deploy.result == 'success' && needs.verify.result == 'success' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Production Deployment Successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rocket: *Production deployment completed successfully*\n\nImage: `${{ inputs.image_tag }}`\nStrategy: `${{ inputs.deployment_strategy }}`\nDeployed by: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack on failure
+        if: ${{ needs.deploy.result == 'failure' || needs.verify.result == 'failure' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Production Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":fire: *Production deployment FAILED*\n\nImage: `${{ inputs.image_tag }}`\nStrategy: `${{ inputs.deployment_strategy }}`\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n*Immediate action required!*"
+                  }
+                }
+              ]
+            }
+
+      - name: Create deployment record
+        if: ${{ needs.deploy.result == 'success' }}
+        run: |
+          echo "## Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | \`${{ inputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Strategy | ${{ inputs.deployment_strategy }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deployed By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | $(date -u +"%Y-%m-%dT%H:%M:%SZ") |" >> $GITHUB_STEP_SUMMARY

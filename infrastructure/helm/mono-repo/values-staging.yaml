@@ -1,0 +1,80 @@
+# =============================================================================
+# Staging Environment Values
+# =============================================================================
+
+global:
+  environment: staging
+  domain: staging.app.example.com
+
+  externalServices:
+    redis:
+      host: staging-redis.xxxxxx.use1.cache.amazonaws.com
+      port: 6379
+      ssl: true
+    hsid:
+      issuerUri: https://staging-hsid.example.com
+      authUri: https://staging-hsid.example.com/authorize
+      tokenUri: https://staging-hsid.example.com/oauth/token
+      jwksUri: https://staging-hsid.example.com/.well-known/jwks.json
+      userinfoUri: https://staging-hsid.example.com/userinfo
+
+bff:
+  replicaCount: 2
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 1536Mi
+
+  config:
+    SPRING_PROFILES_ACTIVE: "staging"
+
+  ingress:
+    hosts:
+      - host: api.staging.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+web-cl:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  ingress:
+    hosts:
+      - host: cl.staging.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+web-hs:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+  ingress:
+    hosts:
+      - host: hs.staging.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+mfe-summary:
+  replicaCount: 2
+
+mfe-profile:
+  replicaCount: 2
+
+networkPolicies:
+  enabled: true

@@ -1,0 +1,96 @@
+# =============================================================================
+# Production Environment Values
+# =============================================================================
+
+global:
+  environment: prod
+  domain: app.example.com
+
+  externalServices:
+    redis:
+      host: prod-redis.xxxxxx.use1.cache.amazonaws.com
+      port: 6379
+      ssl: true
+    hsid:
+      issuerUri: https://hsid.example.com
+      authUri: https://hsid.example.com/authorize
+      tokenUri: https://hsid.example.com/oauth/token
+      jwksUri: https://hsid.example.com/.well-known/jwks.json
+      userinfoUri: https://hsid.example.com/userinfo
+
+bff:
+  replicaCount: 3
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  config:
+    SPRING_PROFILES_ACTIVE: "prod"
+    FEATURE_CONTINUOUS_VERIFY: "true"
+    FEATURE_DEVICE_VALIDATION: "true"
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+  ingress:
+    hosts:
+      - host: api.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+web-cl:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+  ingress:
+    hosts:
+      - host: cl.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+web-hs:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+  ingress:
+    hosts:
+      - host: hs.app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+mfe-summary:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+
+mfe-profile:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+
+networkPolicies:
+  enabled: true
