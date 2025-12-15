@@ -4,7 +4,7 @@
 
 | Component | Type | Purpose |
 |-----------|------|---------|
-| `bff` | Spring Boot 4.0 (WebFlux) | Backend for Frontend - handles auth, session, API aggregation |
+| `bff` | Spring Boot 3.5.8 (WebFlux) | Backend for Frontend - handles auth, session, API aggregation |
 | `web-cl` | React 19 + Vite | Primary web portal (client) |
 | `mfe-summary` | React 19 MFE | Micro frontend - embeddable component |
 | `mfe-profile` | React 19 MFE | Micro frontend - user profile |
@@ -12,9 +12,10 @@
 | `shared-ui` | React Library | Shared UI components |
 
 ### Design Principles
+- **Zero Trust**: Never trust, always verify. Assume breach. Continuous verification.
 - **Config over Code**: Maximum functionality through configuration, minimum boilerplate
 - **DRY (Don't Repeat Yourself)**: Shared utilities, reusable components, centralized config
-- **Convention over Configuration**: Sensible defaults, override only when needed
+- **Least Privilege**: Minimum access required for each persona and operation
 
 ---
 
@@ -53,7 +54,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                                 BFF LAYER                                        │
 │  ┌────────────────────────────────────────────────────────────────────────────┐ │
-│  │                      Spring Boot 4.0 + WebFlux                              │ │
+│  │                      Spring Boot 3.5.8 + WebFlux                            │ │
 │  │                                                                             │ │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐ │ │
 │  │  │ SecurityConfig  │  │  SessionFilter  │  │    ProxyAuthFilter          │ │ │
@@ -461,6 +462,164 @@ export const queryConfig = {
 } as const;
 
 // Usage: useQuery(queryConfig.user)
+```
+
+---
+
+## Zero Trust Security Layer
+
+### Continuous Verification Chain
+
+```
+Request → [Rate Limit] → [Auth] → [Device] → [Anomaly] → [Audit] → Response
+              │            │          │          │          │
+              ▼            ▼          ▼          ▼          ▼
+           429/503      401/403    Challenge   Block     Log All
+```
+
+### Zero Trust Configuration
+
+```yaml
+# zero-trust.yml
+zero-trust:
+  # Continuous verification (not just at login)
+  continuous-verification:
+    enabled: true
+    checks:
+      interval-requests: 10           # Re-validate every N requests
+      interval-seconds: 300           # Or every 5 minutes
+
+    # Risk signals
+    signals:
+      ip-change: block                # Immediate block if IP changes
+      ua-change: re-authenticate      # Step-up auth if UA changes
+      geo-velocity: alert             # Alert on impossible travel
+      time-anomaly: challenge         # Challenge unusual access times
+
+  # Device validation
+  device:
+    enabled: true
+    fingerprint-headers:
+      - Sec-CH-UA
+      - Sec-CH-UA-Platform
+      - Sec-CH-UA-Mobile
+      - Accept-Language
+    bind-to-session: true
+    hash-algorithm: SHA-256
+
+  # Step-up authentication for sensitive operations
+  step-up-auth:
+    enabled: true
+    triggers:
+      - pattern: "/api/user/profile"
+        methods: [PUT, DELETE]
+        max-age-seconds: 300          # Re-auth if last auth > 5 min
+
+      - pattern: "/api/mfe/profile/**"
+        methods: [PUT, DELETE]
+        max-age-seconds: 300
+
+  # Anomaly detection
+  anomaly-detection:
+    enabled: true
+    rules:
+      - name: data-exfiltration
+        condition: "request_count > 100 per minute"
+        action: block
+
+      - name: off-hours-access
+        condition: "hour < 6 or hour > 22"
+        action: challenge
+        apply-to-personas: [individual, parent]
+
+  # Comprehensive audit
+  audit:
+    enabled: true
+    log-all-requests: true
+    include:
+      - timestamp
+      - correlation-id
+      - user-id
+      - persona
+      - ip-address
+      - user-agent
+      - path
+      - method
+      - status
+      - duration-ms
+      - risk-score
+    mask-fields: [ssn, dob, account_number, password]
+    retention-days: 90
+```
+
+### Rate Limiting Configuration
+
+```yaml
+# rate-limiting.yml
+rate-limiting:
+  enabled: true
+  storage: valkey                     # Use Valkey for distributed rate limiting
+
+  default:
+    requests-per-second: 10
+    burst-capacity: 20
+
+  rules:
+    # Auth endpoints (prevent brute force)
+    - pattern: "/api/auth/login"
+      requests-per-minute: 5
+      by: ip
+      block-duration-seconds: 300
+
+    # By persona (least privilege)
+    - personas: [individual, parent]
+      requests-per-second: 5
+      requests-per-minute: 100
+
+    - personas: [agent, case_worker]
+      requests-per-second: 50
+      requests-per-minute: 1000
+
+    - personas: [config]
+      requests-per-second: 10
+      requests-per-minute: 200
+
+    # By partner
+    - partner-ids: [partner-001]
+      requests-per-second: 100
+      requests-per-minute: 3000
+```
+
+### Security Paths Configuration (Externalized)
+
+```yaml
+# security-paths.yml
+security:
+  paths:
+    # Public (no auth)
+    public:
+      - pattern: "/"
+      - pattern: "/api/auth/**"
+      - pattern: "/actuator/health"
+      - pattern: "/actuator/info"
+
+    # OAuth2 Client Credentials (proxy)
+    proxy-auth:
+      - pattern: "/api/mfe/**"
+        required-scopes: ["mfe:read"]
+
+    # Session auth (HSID)
+    session-auth:
+      - pattern: "/api/user/**"
+      - pattern: "/api/dashboard/**"
+
+    # Require specific personas
+    persona-restricted:
+      - pattern: "/api/admin/**"
+        allowed-personas: [config]
+
+      - pattern: "/api/case/**"
+        allowed-personas: [case_worker]
 ```
 
 ---

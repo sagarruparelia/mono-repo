@@ -206,6 +206,15 @@ npm install -D @tanstack/react-query-devtools@^5.90.12
 ```
 
 ### Backend (Maven)
+
+**Spring Boot Version: 3.5.8** (Stable, released Nov 2025)
+
+Includes:
+- Spring Framework 6.2.12
+- Spring Security 6.5.6
+- Spring Session 3.5.3
+- Spring Data 2025.0.5
+
 Dependencies added to pom.xml above. Run:
 ```bash
 cd apps/bff && ./mvnw dependency:resolve
@@ -222,11 +231,12 @@ cd apps/bff && ./mvnw dependency:resolve
 | Frontend | Zustand | 5.0.9 | To Install |
 | Frontend | React Query | 5.90.12 | To Install |
 | Frontend | Module Federation | 0.21.6 | Installed (via NX) |
-| Backend | Spring Boot | 4.0.0 | Installed |
-| Backend | Spring Security | 7.0.0 | Via Boot 4.0 |
-| Backend | Spring Session | 4.0.0 | To Add |
-| Backend | Lettuce | 6.5.x | Via Boot 4.0 |
-| Infra | Valkey/ElastiCache | 8.x | Compatible |
+| Backend | Spring Boot | **3.5.8** | To Update |
+| Backend | Spring Security | 6.5.6 | Via Boot 3.5.8 |
+| Backend | Spring Session | 3.5.3 | Via Boot 3.5.8 |
+| Backend | Spring Framework | 6.2.12 | Via Boot 3.5.8 |
+| Backend | Lettuce | 6.4.x | Via Boot 3.5.8 |
+| Infra | Valkey | **8.1.5** | Required (CVE fix) |
 
 ---
 
@@ -327,6 +337,34 @@ export const useAuthStore = create<AuthState>()(
 | Risk | Mitigation |
 |------|------------|
 | Zustand peer dep warning with React 19 | Use `--legacy-peer-deps` or wait for Zustand 5.1 |
-| Spring Boot 4.0 is very new (Nov 2025) | Monitor Spring blog for patches; fallback to 3.4.x if needed |
+| Spring Boot 4.0 is very new (Nov 2025) | Monitor Spring blog for patches; fallback to 3.5.x if needed |
 | Valkey vs Redis API drift | Stick to common commands; Spring Data Redis supports both |
 | Module Federation version conflicts | NX manages this; avoid manual version overrides |
+| **CVE-2025-49844 (RediShell)** | **CRITICAL: Require Valkey 8.2.2+** |
+| @nxrocks/nx-spring-boot vulnerability | Downgrade to 8.1.0 (js-yaml prototype pollution) |
+
+---
+
+## Security Requirements
+
+### Infrastructure
+
+```yaml
+# CRITICAL: Valkey/ElastiCache minimum versions
+infrastructure:
+  valkey:
+    version: "8.1.5"              # Latest stable (Dec 2025)
+    min-version: "8.1.1"          # Fixes CVE-2025-49844 (CVSS 10.0)
+    encryption-at-rest: true
+    encryption-in-transit: true
+    auth-token-required: true
+    acl-enabled: true             # Use ACLs, disable Lua if not needed
+```
+
+### Known Vulnerabilities (Addressed)
+
+| CVE | Component | Severity | Fixed Version | Status |
+|-----|-----------|----------|---------------|--------|
+| CVE-2025-49844 | Redis/Valkey | CRITICAL (10.0) | 8.2.2+ | Requires upgrade |
+| CVE-2025-21605 | Redis/Valkey | HIGH (7.5) | 8.2.2+ | Requires upgrade |
+| GHSA-mh29-5h37-fv8m | js-yaml | MODERATE | N/A | Downgrade @nxrocks |
