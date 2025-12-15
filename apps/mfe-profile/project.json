@@ -5,5 +5,14 @@
   "projectType": "application",
   "tags": ["type:mfe", "scope:shared"],
   "// targets": "to see all targets run: nx show project mfe-profile --web",
-  "targets": {}
+  "targets": {
+    "build-wc": {
+      "executor": "@nx/vite:build",
+      "outputs": ["{workspaceRoot}/dist/mfe/profile"],
+      "options": {
+        "outputPath": "dist/mfe/profile",
+        "configFile": "apps/mfe-profile/vite.wc.config.mts"
+      }
+    }
+  }
 }

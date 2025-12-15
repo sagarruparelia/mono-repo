@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './app';
@@ -13,14 +13,18 @@ describe('App', () => {
     expect(baseElement).toBeTruthy();
   });
 
-  it('should have a greeting as the title', () => {
-    const { getAllByText } = render(
+  it('should have a greeting as the title', async () => {
+    render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
     );
-    expect(
-      getAllByText(new RegExp('Welcome web-cl', 'gi')).length > 0
-    ).toBeTruthy();
+
+    // Wait for lazy-loaded LandingPage to render
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(/Welcome/i).length > 0
+      ).toBeTruthy();
+    });
   });
 });

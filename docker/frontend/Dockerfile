@@ -1,15 +1,18 @@
 # =============================================================================
 # Frontend Dockerfile - React/Vite + Nginx
-# Multi-stage build with parameterized app name
+# Multi-stage build with shell app + embeddable MFE bundles
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Stage 1: Build
+# Stage 1: Build Shell App + MFE Web Components
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS builder
 
-# Build argument for app name (web-cl, web-hs, mfe-profile, mfe-summary)
+# Build argument for shell app name (web-cl or web-hs)
 ARG APP_NAME=web-cl
+
+# Whether to include embeddable MFE bundles (for external embedding)
+ARG INCLUDE_MFE_BUNDLES=true
 
 WORKDIR /app
 
@@ -24,20 +27,30 @@ RUN npm ci --legacy-peer-deps
 COPY apps/ apps/
 COPY libs/ libs/
 
-# Build the specific app
+# Build the shell app
 RUN npx nx build ${APP_NAME} --configuration=production
+
+# Create MFE output directory (ensures COPY works even if bundles not built)
+RUN mkdir -p dist/mfe
+
+# Build MFE web components for external embedding (if enabled)
+RUN if [ "$INCLUDE_MFE_BUNDLES" = "true" ]; then \
+      npx nx run mfe-profile:build-wc && \
+      npx nx run mfe-summary:build-wc; \
+    fi
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - Nginx
 # -----------------------------------------------------------------------------
 FROM nginx:1.27-alpine AS runtime
 
-# Build argument for app name
+# Build arguments
 ARG APP_NAME=web-cl
+ARG INCLUDE_MFE_BUNDLES=true
 
 # Labels for container metadata
 LABEL org.opencontainers.image.title="Frontend - ${APP_NAME}" \
-      org.opencontainers.image.description="React/Vite frontend served by Nginx" \
+      org.opencontainers.image.description="React/Vite frontend with embeddable MFE bundles" \
       org.opencontainers.image.vendor="mono-repo" \
       org.opencontainers.image.source="https://github.com/org/mono-repo"
 
@@ -57,14 +70,20 @@ RUN addgroup -g 1000 -S nginx-app && \
              /var/cache/nginx/fastcgi_temp \
              /var/cache/nginx/uwsgi_temp \
              /var/cache/nginx/scgi_temp \
-             /var/run && \
+             /var/run \
+             /usr/share/nginx/html/mfe && \
     chown -R nginx-app:nginx-app /var/cache/nginx /var/run /var/log/nginx
 
 # Copy nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
-# Copy built assets from builder
+# Copy built shell app assets from builder
 COPY --from=builder /app/dist/apps/${APP_NAME} /usr/share/nginx/html
+
+# Copy MFE bundles for external embedding
+# These are served at /mfe/profile/bundle.js and /mfe/summary/bundle.js
+# Using wildcard to handle case when bundles aren't built
+COPY --from=builder /app/dist/mfe/ /usr/share/nginx/html/mfe/
 
 # Set ownership of static files
 RUN chown -R nginx-app:nginx-app /usr/share/nginx/html

@@ -118,3 +118,18 @@ app:
         required: [DAA, RPR]
       view-sensitive:
         required: [DAA, RPR, ROI]
+
+  # External Integration (mTLS ALB for partner access)
+  # Partners embed MFE components and proxy through mTLS ALB
+  external-integration:
+    enabled: ${EXTERNAL_INTEGRATION_ENABLED:false}
+    headers:
+      persona: X-Persona
+      user-id: X-User-Id
+      idp-type: X-IDP-Type
+      client-id: X-Client-Id
+    allowed-personas:
+      - agent
+      - config
+      - case_worker
+    trusted-idp-types: ${EXTERNAL_TRUSTED_IDP_TYPES:}
