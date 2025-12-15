@@ -40,3 +40,6 @@ export type { SummaryData } from './queries/summary.queries';
 // Profile Queries (MFE)
 export { profileKeys, useProfile, useUpdateProfile } from './queries/profile.queries';
 export type { ProfileData, ProfileUpdatePayload } from './queries/profile.queries';
+
+// Components
+export { ErrorBoundary } from './components/ErrorBoundary';

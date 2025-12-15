@@ -18,20 +18,62 @@ export interface ApiError {
 }
 
 /**
+ * Retry configuration
+ */
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  retryOn: number[];
+}
+
+/**
+ * Default retry configuration with exponential backoff
+ */
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+  retryOn: [408, 429, 500, 502, 503, 504],
+};
+
+/**
  * Request configuration
  */
 interface RequestConfig extends RequestInit {
   params?: Record<string, string>;
+  timeout?: number;
+  retry?: boolean | Partial<RetryConfig>;
 }
 
 /**
- * Base API client with interceptors
+ * Calculate delay for exponential backoff with jitter
+ */
+function calculateBackoff(attempt: number, config: RetryConfig): number {
+  const exponentialDelay = config.baseDelay * Math.pow(2, attempt);
+  const jitter = Math.random() * 0.3 * exponentialDelay; // 30% jitter
+  return Math.min(exponentialDelay + jitter, config.maxDelay);
+}
+
+/**
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Base API client with interceptors, retry logic, and timeout support
  */
 export class ApiClient {
   private baseUrl: string;
+  private defaultTimeout: number;
+  private defaultRetryConfig: RetryConfig;
 
-  constructor(baseUrl = '') {
+  constructor(baseUrl = '', options?: { timeout?: number; retry?: Partial<RetryConfig> }) {
     this.baseUrl = baseUrl;
+    this.defaultTimeout = options?.timeout ?? 30000; // 30 seconds default
+    this.defaultRetryConfig = { ...DEFAULT_RETRY_CONFIG, ...options?.retry };
   }
 
   /**
@@ -107,7 +149,41 @@ export class ApiClient {
   }
 
   /**
-   * Generic request method
+   * Fetch with timeout using AbortController
+   */
+  private async fetchWithTimeout(
+    url: string,
+    config: RequestConfig,
+    timeout: number
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...config,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw { message: 'Request timeout', status: 408, code: 'TIMEOUT' } as ApiError;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Check if error is retryable
+   */
+  private isRetryable(error: ApiError, retryConfig: RetryConfig): boolean {
+    return retryConfig.retryOn.includes(error.status);
+  }
+
+  /**
+   * Generic request method with retry and timeout support
    */
   private async request<T>(
     method: string,
@@ -120,8 +196,47 @@ export class ApiClient {
       method,
     });
 
-    const response = await fetch(url, interceptedConfig);
-    return this.responseInterceptor<T>(response);
+    const timeout = config.timeout ?? this.defaultTimeout;
+    const retryEnabled = config.retry !== false;
+    const retryConfig: RetryConfig = {
+      ...this.defaultRetryConfig,
+      ...(typeof config.retry === 'object' ? config.retry : {}),
+    };
+
+    let lastError: ApiError | null = null;
+    const maxAttempts = retryEnabled ? retryConfig.maxRetries + 1 : 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await this.fetchWithTimeout(url, interceptedConfig, timeout);
+        return await this.responseInterceptor<T>(response);
+      } catch (error) {
+        const apiError = error as ApiError;
+        lastError = apiError;
+
+        // Don't retry on 401/403 - these are definitive auth failures
+        if (apiError.status === 401 || apiError.status === 403) {
+          throw apiError;
+        }
+
+        // Check if we should retry
+        const isLastAttempt = attempt === maxAttempts - 1;
+        if (!isLastAttempt && retryEnabled && this.isRetryable(apiError, retryConfig)) {
+          const delay = calculateBackoff(attempt, retryConfig);
+          console.warn(
+            `Request to ${path} failed (attempt ${attempt + 1}/${maxAttempts}). ` +
+            `Retrying in ${Math.round(delay)}ms...`,
+            apiError
+          );
+          await sleep(delay);
+          continue;
+        }
+
+        throw apiError;
+      }
+    }
+
+    throw lastError ?? { message: 'Unknown error', status: 500 } as ApiError;
   }
 
   /**
