@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import React from 'react';
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 
 import { QueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ vi.mock('@mono-repo/shared-state', () => ({
   api: {
     setBaseUrl: vi.fn(),
   },
+  ApiClientProvider: ({ children }: { children: React.ReactNode }) => children,
   useSummary: () => ({
     data: {
       memberId: 'test-123',

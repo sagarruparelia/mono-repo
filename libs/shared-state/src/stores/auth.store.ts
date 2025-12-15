@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AuthContext, Persona, User } from '../types/persona';
 
@@ -120,9 +121,12 @@ export const useMemberId = () =>
 
 /**
  * Get operator info for proxy users
+ * Uses shallow comparison to prevent unnecessary re-renders
  */
 export const useOperatorInfo = () =>
-  useAuthStore((state) => ({
-    operatorId: state.operatorId,
-    operatorName: state.operatorName,
-  }));
+  useAuthStore(
+    useShallow((state) => ({
+      operatorId: state.operatorId,
+      operatorName: state.operatorName,
+    }))
+  );

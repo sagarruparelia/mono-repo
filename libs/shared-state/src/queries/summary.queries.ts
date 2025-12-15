@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { useApiClient } from '../api/ApiClientContext';
 
 /**
  * Query key factory for summary-related queries
@@ -26,9 +26,11 @@ export interface SummaryData {
 
 /**
  * Hook to fetch member summary
- * Used by mfe-summary
+ * Uses API client from context (supports isolated web components)
  */
 export const useSummary = (memberId: string, enabled = true) => {
+  const api = useApiClient();
+
   return useQuery({
     queryKey: summaryKeys.detail(memberId),
     queryFn: () => api.get<SummaryData>(`/api/mfe/summary/${memberId}`),

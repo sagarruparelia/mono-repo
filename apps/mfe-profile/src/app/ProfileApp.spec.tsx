@@ -7,6 +7,12 @@ import { ProfileApp } from './ProfileApp';
 vi.mock('@mono-repo/shared-state', () => ({
   useProfile: vi.fn(),
   useUpdateProfile: vi.fn(),
+  useApiClient: vi.fn(() => ({
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  })),
 }));
 
 import { useProfile, useUpdateProfile } from '@mono-repo/shared-state';

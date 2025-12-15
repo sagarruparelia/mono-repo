@@ -27,7 +27,7 @@ interface RequestConfig extends RequestInit {
 /**
  * Base API client with interceptors
  */
-class ApiClient {
+export class ApiClient {
   private baseUrl: string;
 
   constructor(baseUrl: string = '') {

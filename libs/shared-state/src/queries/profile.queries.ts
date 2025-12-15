@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { useApiClient } from '../api/ApiClientContext';
 
 /**
  * Query key factory for profile-related queries
@@ -38,9 +38,11 @@ export interface ProfileUpdatePayload {
 
 /**
  * Hook to fetch member profile
- * Used by mfe-profile
+ * Uses API client from context (supports isolated web components)
  */
 export const useProfile = (memberId: string, enabled = true) => {
+  const api = useApiClient();
+
   return useQuery({
     queryKey: profileKeys.detail(memberId),
     queryFn: () => api.get<ProfileData>(`/api/mfe/profile/${memberId}`),
@@ -52,6 +54,7 @@ export const useProfile = (memberId: string, enabled = true) => {
  * Hook to update member profile
  */
 export const useUpdateProfile = (memberId: string) => {
+  const api = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

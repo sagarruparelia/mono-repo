@@ -22,8 +22,9 @@ export {
 } from './stores/auth.store';
 
 // API Client
-export { api, createApiClient } from './api/client';
+export { api, createApiClient, ApiClient } from './api/client';
 export type { ApiResponse, ApiError } from './api/client';
+export { ApiClientProvider, useApiClient } from './api/ApiClientContext';
 
 // Query Client
 export { queryClient, createQueryClient } from './queries/queryClient';

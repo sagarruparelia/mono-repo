@@ -19,6 +19,15 @@ export function Summary() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const memberId = selectedMemberId || sessionMemberId || '';
 
+  // Guard: Don't render MFE without valid session
+  if (!sessionMemberId) {
+    return (
+      <div className={styles.page}>
+        <div className={styles.error}>Session not available. Please log in.</div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
@@ -30,8 +39,9 @@ export function Summary() {
 
       {persona === 'parent' && dependents && dependents.length > 0 && (
         <div className={styles.dependentSelector}>
-          <label>Viewing summary for:</label>
+          <label htmlFor="summary-member-select">Viewing summary for:</label>
           <select
+            id="summary-member-select"
             className={styles.select}
             value={selectedMemberId || user?.sub || ''}
             onChange={(e) => setSelectedMemberId(e.target.value)}

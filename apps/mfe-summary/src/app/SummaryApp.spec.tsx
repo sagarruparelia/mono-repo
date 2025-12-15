@@ -6,6 +6,12 @@ import { SummaryApp } from './SummaryApp';
 // Mock the shared-state hooks
 vi.mock('@mono-repo/shared-state', () => ({
   useSummary: vi.fn(),
+  useApiClient: vi.fn(() => ({
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  })),
 }));
 
 import { useSummary } from '@mono-repo/shared-state';

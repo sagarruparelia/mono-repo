@@ -1,6 +1,6 @@
 import { createRoot, Root } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { createQueryClient, createApiClient, api } from '@mono-repo/shared-state';
+import { createQueryClient, ApiClientProvider } from '@mono-repo/shared-state';
 import type { Persona } from '@mono-repo/shared-state';
 import { ProfileApp } from './app/ProfileApp';
 
@@ -40,12 +40,6 @@ class MfeProfileElement extends HTMLElement {
     styleSheet.textContent = this.getStyles();
     shadow.appendChild(styleSheet);
 
-    // Set service base URL if provided (defaults to same-origin)
-    const serviceBaseUrl = this.getAttribute('service-base-url');
-    if (serviceBaseUrl) {
-      api.setBaseUrl(serviceBaseUrl);
-    }
-
     this.root = createRoot(container);
     this.render();
   }
@@ -70,9 +64,14 @@ class MfeProfileElement extends HTMLElement {
       operatorName: this.getAttribute('operator-name') || undefined,
     };
 
+    // service-base-url provides isolated API routing per web component instance
+    const serviceBaseUrl = this.getAttribute('service-base-url') || undefined;
+
     this.root.render(
       <QueryClientProvider client={this.queryClient}>
-        <ProfileApp {...props} />
+        <ApiClientProvider serviceBaseUrl={serviceBaseUrl}>
+          <ProfileApp {...props} />
+        </ApiClientProvider>
       </QueryClientProvider>
     );
   }
