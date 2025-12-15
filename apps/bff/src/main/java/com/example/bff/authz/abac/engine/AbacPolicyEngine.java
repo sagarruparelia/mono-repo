@@ -4,7 +4,7 @@ import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
-import com.example.bff.authz.abac.policy.*;
+import com.example.bff.authz.abac.policy.Policy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,6 +19,9 @@ import java.util.List;
  * - Policies are evaluated in priority order
  * - First ALLOW or DENY decision wins
  * - If no policy matches, default is DENY
+ *
+ * <p>Policies are auto-discovered via Spring component scanning.
+ * To add a new policy, create a class implementing {@link Policy} and annotate with @Component.
  */
 @Component
 public class AbacPolicyEngine {
@@ -27,19 +30,14 @@ public class AbacPolicyEngine {
 
     private final List<Policy> policies;
 
-    public AbacPolicyEngine() {
-        // Register all policies, sorted by priority (highest first)
-        this.policies = List.of(
-                new HsidViewSensitivePolicy(),
-                new HsidViewDependentPolicy(),
-                new ProxyViewSensitivePolicy(),
-                new ProxyViewMemberPolicy()
-        ).stream()
+    public AbacPolicyEngine(List<Policy> policies) {
+        // Sort injected policies by priority (highest first)
+        this.policies = policies.stream()
                 .sorted(Comparator.comparingInt(Policy::getPriority).reversed())
                 .toList();
 
-        log.info("ABAC Policy Engine initialized with {} policies", policies.size());
-        policies.forEach(p -> log.debug("  - {} (priority={}): {}",
+        log.info("ABAC Policy Engine initialized with {} policies", this.policies.size());
+        this.policies.forEach(p -> log.debug("  - {} (priority={}): {}",
                 p.getPolicyId(), p.getPriority(), p.getDescription()));
     }
 

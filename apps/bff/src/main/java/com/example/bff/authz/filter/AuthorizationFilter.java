@@ -37,24 +37,33 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     private static final Logger log = LoggerFactory.getLogger(AuthorizationFilter.class);
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
-    // Pattern to extract resourceId from path: /api/dependent/{id}/... or /api/member/{id}/...
-    private static final Pattern RESOURCE_PATH_PATTERN =
-            Pattern.compile("^/api/(dependent|member)/([^/]+)(?:/.*)?$");
-
-    // Pattern for sensitive data paths
-    private static final Pattern SENSITIVE_PATH_PATTERN =
-            Pattern.compile("^/api/(?:dependent|member)/[^/]+/(?:medical|sensitive|records)(?:/.*)?$");
-
     @Nullable
     private final AbacAuthorizationService authorizationService;
 
     private final AuthzProperties authzProperties;
+
+    // Compiled patterns from configuration
+    private final Pattern resourcePathPattern;
+    private final Pattern sensitivePathPattern;
 
     public AuthorizationFilter(
             @Nullable AbacAuthorizationService authorizationService,
             AuthzProperties authzProperties) {
         this.authorizationService = authorizationService;
         this.authzProperties = authzProperties;
+
+        // Compile resource path pattern from config
+        this.resourcePathPattern = Pattern.compile(authzProperties.pathPatterns().resourcePattern());
+
+        // Build sensitive path pattern from configured segments
+        String sensitiveSegments = String.join("|", authzProperties.pathPatterns().sensitiveSegments());
+        String sensitivePatternStr = String.format(
+                "^/api/(?:dependent|member)/[^/]+/(?:%s)(?:/.*)?$", sensitiveSegments);
+        this.sensitivePathPattern = Pattern.compile(sensitivePatternStr);
+
+        log.info("AuthorizationFilter initialized with resource pattern: {} and sensitive segments: {}",
+                authzProperties.pathPatterns().resourcePattern(),
+                sensitiveSegments);
     }
 
     @Override
@@ -71,14 +80,14 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         String path = exchange.getRequest().getPath().value();
 
         // Check if this is a protected resource path
-        Matcher resourceMatcher = RESOURCE_PATH_PATTERN.matcher(path);
+        Matcher resourceMatcher = resourcePathPattern.matcher(path);
         if (!resourceMatcher.matches()) {
             return chain.filter(exchange);
         }
 
         String resourceType = resourceMatcher.group(1); // "dependent" or "member"
         String resourceId = resourceMatcher.group(2);
-        boolean isSensitive = SENSITIVE_PATH_PATTERN.matcher(path).matches();
+        boolean isSensitive = sensitivePathPattern.matcher(path).matches();
 
         // Build resource attributes
         ResourceAttributes resource = buildResourceAttributes(resourceType, resourceId, isSensitive);
@@ -88,7 +97,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         AuthType authType = authorizationService.determineAuthType(exchange.getRequest());
 
         return buildSubjectAttributes(exchange, authType)
-                .flatMap(subject -> authorizationService.authorize(subject, resource, action))
+                .flatMap(subject -> authorizationService.authorize(subject, resource, action, exchange.getRequest()))
                 .flatMap(decision -> handleDecision(exchange, chain, decision, resourceId))
                 .switchIfEmpty(Mono.defer(() -> {
                     log.warn("Could not build subject attributes for authorization");

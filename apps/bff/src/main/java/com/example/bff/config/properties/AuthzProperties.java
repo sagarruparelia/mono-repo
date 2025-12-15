@@ -9,7 +9,9 @@ public record AuthzProperties(
         boolean enabled,
         PermissionsApiProperties permissionsApi,
         CacheProperties cache,
-        RulesProperties rules
+        RulesProperties rules,
+        AuditProperties audit,
+        PathPatternsProperties pathPatterns
 ) {
     public AuthzProperties {
         if (permissionsApi == null) {
@@ -22,6 +24,15 @@ public record AuthzProperties(
             rules = new RulesProperties(
                     new RuleConfig(new String[]{"DAA", "RPR"}),
                     new RuleConfig(new String[]{"DAA", "RPR", "ROI"})
+            );
+        }
+        if (audit == null) {
+            audit = new AuditProperties(true);
+        }
+        if (pathPatterns == null) {
+            pathPatterns = new PathPatternsProperties(
+                    "^/api/(dependent|member)/([^/]+)(?:/.*)?$",
+                    new String[]{"medical", "sensitive", "records"}
             );
         }
     }
@@ -56,4 +67,22 @@ public record AuthzProperties(
     public record RuleConfig(
             String[] required
     ) {}
+
+    public record AuditProperties(
+            boolean enabled
+    ) {}
+
+    public record PathPatternsProperties(
+            String resourcePattern,
+            String[] sensitiveSegments
+    ) {
+        public PathPatternsProperties {
+            if (resourcePattern == null || resourcePattern.isBlank()) {
+                resourcePattern = "^/api/(dependent|member)/([^/]+)(?:/.*)?$";
+            }
+            if (sensitiveSegments == null || sensitiveSegments.length == 0) {
+                sensitiveSegments = new String[]{"medical", "sensitive", "records"};
+            }
+        }
+    }
 }

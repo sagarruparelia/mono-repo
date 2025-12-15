@@ -4,6 +4,7 @@ import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
+import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
@@ -14,6 +15,7 @@ import java.util.Set;
  *   subject.authType = PROXY AND
  *   (subject.persona = "config" OR subject.memberId = resource.id)
  */
+@Component
 public class ProxyViewMemberPolicy implements Policy {
 
     @Override

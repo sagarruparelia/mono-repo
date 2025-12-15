@@ -5,6 +5,7 @@ import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.model.Permission;
+import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -18,6 +19,7 @@ import java.util.Set;
  *   subject.permissions[resource.id] CONTAINS RPR AND
  *   subject.permissions[resource.id] CONTAINS ROI
  */
+@Component
 public class HsidViewSensitivePolicy implements Policy {
 
     private static final Set<Permission> REQUIRED_PERMISSIONS =

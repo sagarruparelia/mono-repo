@@ -2,6 +2,7 @@ package com.example.bff.authz.abac.service;
 
 import com.example.bff.authz.abac.engine.AbacPolicyEngine;
 import com.example.bff.authz.abac.model.*;
+import com.example.bff.authz.audit.AuthzAuditService;
 import com.example.bff.authz.model.AuthType;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
@@ -34,6 +35,9 @@ public class AbacAuthorizationService {
     @Nullable
     private final PermissionsFetchService permissionsFetchService;
 
+    @Nullable
+    private final AuthzAuditService auditService;
+
     private final MfeProxyProperties proxyProperties;
     private final PersonaProperties personaProperties;
 
@@ -41,11 +45,13 @@ public class AbacAuthorizationService {
             AbacPolicyEngine policyEngine,
             @Nullable SessionService sessionService,
             @Nullable PermissionsFetchService permissionsFetchService,
+            @Nullable AuthzAuditService auditService,
             MfeProxyProperties proxyProperties,
             PersonaProperties personaProperties) {
         this.policyEngine = policyEngine;
         this.sessionService = sessionService;
         this.permissionsFetchService = permissionsFetchService;
+        this.auditService = auditService;
         this.proxyProperties = proxyProperties;
         this.personaProperties = personaProperties;
     }
@@ -60,6 +66,31 @@ public class AbacAuthorizationService {
      */
     public Mono<PolicyDecision> authorize(SubjectAttributes subject, ResourceAttributes resource, Action action) {
         PolicyDecision decision = policyEngine.evaluate(subject, resource, action);
+        return Mono.just(decision);
+    }
+
+    /**
+     * Check if access is allowed with audit logging.
+     *
+     * @param subject  Subject attributes
+     * @param resource Resource attributes
+     * @param action   Action being performed
+     * @param request  Server HTTP request for audit context
+     * @return Mono emitting the policy decision
+     */
+    public Mono<PolicyDecision> authorize(
+            SubjectAttributes subject,
+            ResourceAttributes resource,
+            Action action,
+            ServerHttpRequest request) {
+
+        PolicyDecision decision = policyEngine.evaluate(subject, resource, action);
+
+        // Log audit event
+        if (auditService != null) {
+            auditService.logDecision(subject, resource, action, decision, request);
+        }
+
         return Mono.just(decision);
     }
 
