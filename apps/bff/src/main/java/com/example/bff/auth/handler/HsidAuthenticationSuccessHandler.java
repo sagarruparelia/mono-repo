@@ -1,0 +1,179 @@
+package com.example.bff.auth.handler;
+
+import com.example.bff.config.properties.PersonaProperties;
+import com.example.bff.session.model.ClientInfo;
+import com.example.bff.session.service.SessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpCookie;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.web.server.WebFilterExchange;
+import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
+
+@Component
+public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuccessHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(HsidAuthenticationSuccessHandler.class);
+    private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
+    private static final String REDIRECT_URI_COOKIE = "redirect_uri";
+
+    @org.springframework.lang.Nullable
+    private final SessionService sessionService;
+    private final PersonaProperties personaConfig;
+
+    public HsidAuthenticationSuccessHandler(
+            @org.springframework.lang.Nullable SessionService sessionService,
+            PersonaProperties personaConfig) {
+        this.sessionService = sessionService;
+        this.personaConfig = personaConfig;
+    }
+
+    @Override
+    public Mono<Void> onAuthenticationSuccess(WebFilterExchange exchange,
+                                               Authentication authentication) {
+        if (!(authentication instanceof OAuth2AuthenticationToken token)) {
+            log.warn("Unexpected authentication type: {}", authentication.getClass());
+            return Mono.empty();
+        }
+
+        if (!(token.getPrincipal() instanceof OidcUser oidcUser)) {
+            log.warn("Principal is not OidcUser");
+            return Mono.empty();
+        }
+
+        String userId = oidcUser.getSubject();
+        log.info("Authentication success for user: {}", userId);
+
+        // Extract persona from HSID claims
+        String persona = extractPersona(oidcUser);
+        List<String> dependents = extractDependents(oidcUser, persona);
+
+        // Extract client info for session binding
+        ClientInfo clientInfo = extractClientInfo(exchange.getExchange());
+
+        // Invalidate existing sessions (single session enforcement) and create new
+        if (sessionService == null) {
+            // No session service - just redirect without setting session cookie
+            log.warn("SessionService not available, skipping session creation");
+            return redirectToApp(exchange.getExchange());
+        }
+
+        return sessionService.invalidateExistingSessions(userId)
+                .then(sessionService.createSession(userId, oidcUser, persona, dependents, clientInfo))
+                .flatMap(sessionId -> setSessionCookieAndRedirect(exchange.getExchange(), sessionId));
+    }
+
+    private String extractPersona(OidcUser oidcUser) {
+        String claimName = personaConfig.hsid().claimName();
+        String persona = oidcUser.getClaimAsString(claimName);
+
+        if (persona == null || persona.isBlank()) {
+            log.debug("No persona claim found, defaulting to 'individual'");
+            return "individual";
+        }
+
+        // Validate persona is allowed
+        if (!personaConfig.hsid().allowed().contains(persona)) {
+            log.warn("Invalid persona '{}', defaulting to 'individual'", persona);
+            return "individual";
+        }
+
+        return persona;
+    }
+
+    private List<String> extractDependents(OidcUser oidcUser, String persona) {
+        if (!"parent".equals(persona)) {
+            return null;
+        }
+
+        String dependentsClaim = personaConfig.hsid().parent().dependentsClaim();
+        List<String> dependents = oidcUser.getClaimAsStringList(dependentsClaim);
+
+        if (dependents == null || dependents.isEmpty()) {
+            log.debug("Parent persona but no dependents found");
+            return List.of();
+        }
+
+        log.debug("Found {} dependents for parent user", dependents.size());
+        return dependents;
+    }
+
+    private ClientInfo extractClientInfo(ServerWebExchange exchange) {
+        ServerHttpRequest request = exchange.getRequest();
+
+        // Get IP address (considering X-Forwarded-For)
+        String ipAddress = request.getHeaders().getFirst("X-Forwarded-For");
+        if (ipAddress == null || ipAddress.isBlank()) {
+            ipAddress = request.getRemoteAddress() != null
+                    ? request.getRemoteAddress().getAddress().getHostAddress()
+                    : "unknown";
+        } else {
+            // Take first IP if multiple (client IP)
+            ipAddress = ipAddress.split(",")[0].trim();
+        }
+
+        String userAgent = request.getHeaders().getFirst("User-Agent");
+
+        return ClientInfo.of(ipAddress, userAgent != null ? userAgent : "unknown");
+    }
+
+    private Mono<Void> setSessionCookieAndRedirect(ServerWebExchange exchange, String sessionId) {
+        // Set session cookie
+        ResponseCookie sessionCookie = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(Duration.ofMinutes(30))
+                .sameSite("Lax")
+                .build();
+
+        exchange.getResponse().addCookie(sessionCookie);
+
+        // Get redirect URI from cookie or default to /
+        String redirectUri = getRedirectUri(exchange);
+
+        // Clear the redirect URI cookie
+        ResponseCookie clearRedirectCookie = ResponseCookie.from(REDIRECT_URI_COOKIE, "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0)
+                .build();
+
+        exchange.getResponse().addCookie(clearRedirectCookie);
+
+        // Redirect to the original page
+        exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.FOUND);
+        exchange.getResponse().getHeaders().setLocation(URI.create(redirectUri));
+
+        log.info("Session created, redirecting to: {}", redirectUri);
+
+        return exchange.getResponse().setComplete();
+    }
+
+    private String getRedirectUri(ServerWebExchange exchange) {
+        HttpCookie redirectCookie = exchange.getRequest().getCookies().getFirst(REDIRECT_URI_COOKIE);
+        if (redirectCookie != null && !redirectCookie.getValue().isBlank()) {
+            return redirectCookie.getValue();
+        }
+        return "/";
+    }
+
+    private Mono<Void> redirectToApp(ServerWebExchange exchange) {
+        String redirectUri = getRedirectUri(exchange);
+        exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.FOUND);
+        exchange.getResponse().getHeaders().setLocation(URI.create(redirectUri));
+        return exchange.getResponse().setComplete();
+    }
+}

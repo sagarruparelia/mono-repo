@@ -9,8 +9,8 @@ import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+
 @Configuration
-@ConditionalOnProperty(name = "spring.session.store-type", havingValue = "redis")
 public class SessionConfig {
 
     private final SessionProperties sessionProperties;
@@ -20,6 +20,7 @@ public class SessionConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "spring.session.store-type", havingValue = "redis")
     public ReactiveRedisOperations<String, String> reactiveRedisOperations(
             ReactiveRedisConnectionFactory connectionFactory) {
         RedisSerializationContext<String, String> serializationContext =

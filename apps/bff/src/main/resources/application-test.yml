@@ -4,6 +4,26 @@ spring:
   session:
     store-type: none
 
+  # OAuth2 test configuration (minimal valid config)
+  security:
+    oauth2:
+      client:
+        registration:
+          hsid:
+            client-id: test-client
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/api/auth/callback"
+            scope: openid,profile,email
+            client-authentication-method: none
+        provider:
+          hsid:
+            issuer-uri: http://localhost:8180/realms/test
+            authorization-uri: http://localhost:8180/realms/test/protocol/openid-connect/auth
+            token-uri: http://localhost:8180/realms/test/protocol/openid-connect/token
+            jwk-set-uri: http://localhost:8180/realms/test/protocol/openid-connect/certs
+            user-info-uri: http://localhost:8180/realms/test/protocol/openid-connect/userinfo
+            user-name-attribute: sub
+
   # Disable data sources for tests
   autoconfigure:
     exclude:
@@ -11,6 +31,7 @@ spring:
       - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
       - org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration
       - org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
 
   # Disable config imports for tests
   config:
