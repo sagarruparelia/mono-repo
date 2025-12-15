@@ -6,15 +6,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
+
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 /**
  * Filter for external partner authentication via mTLS ALB.
@@ -27,37 +32,35 @@ import reactor.core.publisher.Mono;
  *   <li>Maps headers for downstream authorization filters</li>
  * </ol>
  *
- * <p>Architecture:
- * <pre>
- * Partner Site -> Partner Backend -> mTLS ALB -> BFF
- *                      |
- *                   Adds headers:
- *                   - X-Client-Id (partner identifier)
- *                   - X-User-Id (authenticated user)
- *                   - X-Persona (agent, case_worker, etc.)
- *                   - X-IDP-Type (partner IDP identifier)
- * </pre>
+ * @see ExternalIntegrationProperties
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 @ConditionalOnProperty(name = "app.external-integration.enabled", havingValue = "true")
 public class ExternalAuthFilter implements WebFilter {
 
-    private static final Logger log = LoggerFactory.getLogger(ExternalAuthFilter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ExternalAuthFilter.class);
 
     // Header names for mapping to proxy auth system
     private static final String PROXY_AUTH_TYPE_HEADER = "X-Auth-Type";
     private static final String PROXY_OPERATOR_ID_HEADER = "X-Operator-Id";
     private static final String PROXY_PARTNER_ID_HEADER = "X-Partner-Id";
 
+    // Validation pattern for identifiers (alphanumeric, dash, underscore)
+    private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,128}$");
+
+    // Max length for header values
+    private static final int MAX_HEADER_LENGTH = 256;
+
     private final ExternalIntegrationProperties properties;
 
-    public ExternalAuthFilter(ExternalIntegrationProperties properties) {
+    public ExternalAuthFilter(@NonNull ExternalIntegrationProperties properties) {
         this.properties = properties;
     }
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    @NonNull
+    public Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getPath().value();
 
@@ -67,52 +70,86 @@ public class ExternalAuthFilter implements WebFilter {
         }
 
         // Check if this is an external integration request (via mTLS ALB)
-        String clientId = request.getHeaders().getFirst(properties.headers().clientId());
+        String clientId = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().clientId()));
 
         if (clientId == null || clientId.isBlank()) {
             // Not an external integration request - pass through
             return chain.filter(exchange);
         }
 
-        log.debug("Processing external integration request from client: {}", clientId);
+        // Validate client ID format
+        if (!isValidIdentifier(clientId)) {
+            LOG.warn("Invalid client ID format in external request");
+            return forbiddenResponse(exchange, "INVALID_CLIENT_ID", "Invalid client identifier format");
+        }
+
+        LOG.debug("Processing external integration request from client: {}", sanitizeForLog(clientId));
 
         // Validate required headers
-        String persona = request.getHeaders().getFirst(properties.headers().persona());
-        String userId = request.getHeaders().getFirst(properties.headers().userId());
-        String idpType = request.getHeaders().getFirst(properties.headers().idpType());
+        String persona = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().persona()));
+        String userId = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().userId()));
+        String idpType = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().idpType()));
 
         // Persona is required
         if (persona == null || persona.isBlank()) {
-            log.warn("External request missing persona header from client: {}", clientId);
+            LOG.warn("External request missing persona header from client: {}", sanitizeForLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_PERSONA", "X-Persona header is required");
         }
 
         // User ID is required
         if (userId == null || userId.isBlank()) {
-            log.warn("External request missing user-id header from client: {}", clientId);
+            LOG.warn("External request missing user-id header from client: {}", sanitizeForLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_USER_ID", "X-User-Id header is required");
+        }
+
+        // Validate identifiers format
+        if (!isValidIdentifier(persona)) {
+            LOG.warn("Invalid persona format from client: {}", sanitizeForLog(clientId));
+            return forbiddenResponse(exchange, "INVALID_PERSONA", "Invalid persona format");
+        }
+
+        if (!isValidIdentifier(userId)) {
+            LOG.warn("Invalid user ID format from client: {}", sanitizeForLog(clientId));
+            return forbiddenResponse(exchange, "INVALID_USER_ID", "Invalid user ID format");
         }
 
         // Validate persona is allowed
         if (!properties.allowedPersonas().contains(persona)) {
-            log.warn("External request with invalid persona: {} from client: {}", persona, clientId);
-            return forbiddenResponse(exchange, "INVALID_PERSONA",
-                    "Persona not allowed: " + persona);
+            LOG.warn("External request with disallowed persona from client: {}", sanitizeForLog(clientId));
+            return forbiddenResponse(exchange, "INVALID_PERSONA", "Persona not allowed");
         }
 
         // Validate IDP type if configured
-        if (!properties.trustedIdpTypes().isEmpty() &&
-            (idpType == null || !properties.trustedIdpTypes().contains(idpType))) {
-            log.warn("External request with untrusted IDP type: {} from client: {}", idpType, clientId);
-            return forbiddenResponse(exchange, "UNTRUSTED_IDP",
-                    "IDP type not trusted: " + (idpType != null ? idpType : "null"));
+        if (!properties.trustedIdpTypes().isEmpty()) {
+            if (idpType == null || !properties.trustedIdpTypes().contains(idpType)) {
+                LOG.warn("External request with untrusted IDP type from client: {}", sanitizeForLog(clientId));
+                return forbiddenResponse(exchange, "UNTRUSTED_IDP", "IDP type not trusted");
+            }
         }
 
         // Map external headers to proxy auth headers for downstream processing
-        ServerHttpRequest mutatedRequest = new ServerHttpRequestDecorator(request) {
+        ServerHttpRequest mutatedRequest = createMutatedRequest(request, userId, clientId);
+
+        LOG.info("External auth validated - client: {}, persona: {}",
+                sanitizeForLog(clientId), sanitizeForLog(persona));
+
+        return chain.filter(exchange.mutate().request(mutatedRequest).build());
+    }
+
+    /**
+     * Creates a mutated request with proxy auth headers.
+     */
+    @NonNull
+    private ServerHttpRequest createMutatedRequest(
+            @NonNull ServerHttpRequest request,
+            @NonNull String userId,
+            @NonNull String clientId) {
+
+        return new ServerHttpRequestDecorator(request) {
             @Override
-            public org.springframework.http.HttpHeaders getHeaders() {
-                org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            @NonNull
+            public HttpHeaders getHeaders() {
+                HttpHeaders headers = new HttpHeaders();
                 headers.putAll(super.getHeaders());
 
                 // Set auth type for downstream filters
@@ -127,47 +164,102 @@ public class ExternalAuthFilter implements WebFilter {
                 return headers;
             }
         };
-
-        log.info("External auth validated - client: {}, persona: {}, userId: {}, idpType: {}",
-                clientId, persona, userId, idpType);
-
-        return chain.filter(exchange.mutate().request(mutatedRequest).build());
     }
 
-    private boolean isPublicPath(String path) {
-        return path.equals("/") ||
+    /**
+     * Checks if the path is a public path that doesn't require authentication.
+     */
+    private boolean isPublicPath(@NonNull String path) {
+        return "/".equals(path) ||
                path.startsWith("/api/auth/") ||
                path.startsWith("/actuator/") ||
-               path.equals("/health");
+               "/health".equals(path);
     }
 
-    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String code, String message) {
+    /**
+     * Validates that an identifier matches the safe pattern.
+     */
+    private boolean isValidIdentifier(String value) {
+        return value != null && SAFE_ID_PATTERN.matcher(value).matches();
+    }
+
+    /**
+     * Sanitizes a header value by trimming and limiting length.
+     */
+    private String sanitizeHeaderValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() > MAX_HEADER_LENGTH) {
+            return trimmed.substring(0, MAX_HEADER_LENGTH);
+        }
+        return trimmed;
+    }
+
+    /**
+     * Sanitizes a value for safe logging to prevent log injection.
+     */
+    @NonNull
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return value
+                .replace("\n", "")
+                .replace("\r", "")
+                .replace("\t", "")
+                .substring(0, Math.min(value.length(), 64));
+    }
+
+    @NonNull
+    private Mono<Void> unauthorizedResponse(
+            @NonNull ServerWebExchange exchange,
+            @NonNull String code,
+            @NonNull String message) {
+
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
         String body = String.format(
-                """
-                {"error":"unauthorized","code":"%s","message":"%s"}""",
-                code, message);
+                "{\"error\":\"unauthorized\",\"code\":\"%s\",\"message\":\"%s\"}",
+                escapeJson(code), escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
-                        .wrap(body.getBytes())));
+                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
     }
 
-    private Mono<Void> forbiddenResponse(ServerWebExchange exchange, String code, String message) {
+    @NonNull
+    private Mono<Void> forbiddenResponse(
+            @NonNull ServerWebExchange exchange,
+            @NonNull String code,
+            @NonNull String message) {
+
         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
         String body = String.format(
-                """
-                {"error":"access_denied","code":"%s","message":"%s"}""",
-                code, message);
+                "{\"error\":\"access_denied\",\"code\":\"%s\",\"message\":\"%s\"}",
+                escapeJson(code), escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
-                        .wrap(body.getBytes())));
+                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
+    }
+
+    /**
+     * Escapes special characters for JSON string values.
+     */
+    @NonNull
+    private String escapeJson(@NonNull String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

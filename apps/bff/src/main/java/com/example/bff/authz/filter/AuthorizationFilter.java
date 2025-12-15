@@ -14,6 +14,7 @@ import org.springframework.core.Ordered;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -21,21 +22,27 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * ABAC Authorization Filter - enforces attribute-based access control on protected paths.
  *
  * <p>Intercepts requests to /api/dependent/{id} and /api/member/{id} paths
  * and evaluates ABAC policies to determine access.
+ *
+ * @see AbacAuthorizationService
+ * @see AuthzProperties
  */
 @Component
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
 public class AuthorizationFilter implements WebFilter, Ordered {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthorizationFilter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AuthorizationFilter.class);
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
+    private static final int MAX_RESOURCE_ID_LENGTH = 128;
 
     @Nullable
     private final AbacAuthorizationService authorizationService;
@@ -48,7 +55,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
 
     public AuthorizationFilter(
             @Nullable AbacAuthorizationService authorizationService,
-            AuthzProperties authzProperties) {
+            @NonNull AuthzProperties authzProperties) {
         this.authorizationService = authorizationService;
         this.authzProperties = authzProperties;
 
@@ -61,7 +68,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
                 "^/api/(?:dependent|member)/[^/]+/(?:%s)(?:/.*)?$", sensitiveSegments);
         this.sensitivePathPattern = Pattern.compile(sensitivePatternStr);
 
-        log.info("AuthorizationFilter initialized with resource pattern: {} and sensitive segments: {}",
+        LOG.info("AuthorizationFilter initialized with resource pattern: {} and sensitive segments: {}",
                 authzProperties.pathPatterns().resourcePattern(),
                 sensitiveSegments);
     }
@@ -72,7 +79,8 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     }
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    @NonNull
+    public Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         if (!authzProperties.enabled() || authorizationService == null) {
             return chain.filter(exchange);
         }
@@ -86,7 +94,13 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         }
 
         String resourceType = resourceMatcher.group(1); // "dependent" or "member"
-        String resourceId = resourceMatcher.group(2);
+        String resourceId = sanitizeResourceId(resourceMatcher.group(2));
+
+        if (resourceId == null) {
+            LOG.warn("Invalid resource ID format in request path");
+            return forbiddenResponse(exchange, PolicyDecision.deny("INVALID_RESOURCE_ID", "Invalid resource identifier"));
+        }
+
         boolean isSensitive = sensitivePathPattern.matcher(path).matches();
 
         // Build resource attributes
@@ -100,12 +114,17 @@ public class AuthorizationFilter implements WebFilter, Ordered {
                 .flatMap(subject -> authorizationService.authorize(subject, resource, action, exchange.getRequest()))
                 .flatMap(decision -> handleDecision(exchange, chain, decision, resourceId))
                 .switchIfEmpty(Mono.defer(() -> {
-                    log.warn("Could not build subject attributes for authorization");
+                    LOG.warn("Could not build subject attributes for authorization");
                     return unauthorizedResponse(exchange, "Authentication required");
                 }));
     }
 
-    private ResourceAttributes buildResourceAttributes(String type, String id, boolean isSensitive) {
+    @NonNull
+    private ResourceAttributes buildResourceAttributes(
+            @NonNull String type,
+            @NonNull String id,
+            boolean isSensitive) {
+
         ResourceAttributes.Sensitivity sensitivity = isSensitive
                 ? ResourceAttributes.Sensitivity.SENSITIVE
                 : ResourceAttributes.Sensitivity.NORMAL;
@@ -115,7 +134,11 @@ public class AuthorizationFilter implements WebFilter, Ordered {
                 : ResourceAttributes.dependent(id, sensitivity);
     }
 
-    private Mono<SubjectAttributes> buildSubjectAttributes(ServerWebExchange exchange, AuthType authType) {
+    @NonNull
+    private Mono<SubjectAttributes> buildSubjectAttributes(
+            @NonNull ServerWebExchange exchange,
+            @NonNull AuthType authType) {
+
         if (authType == AuthType.PROXY) {
             return authorizationService.buildProxySubject(exchange.getRequest());
         }
@@ -123,64 +146,148 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         // HSID - get session from cookie
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
-            log.debug("No session cookie for HSID authorization");
+            LOG.debug("No session cookie for HSID authorization");
             return Mono.empty();
         }
 
-        return authorizationService.buildHsidSubject(sessionCookie.getValue());
+        String sessionId = sessionCookie.getValue();
+        // Validate session ID format (UUID)
+        if (!isValidSessionId(sessionId)) {
+            LOG.warn("Invalid session ID format");
+            return Mono.empty();
+        }
+
+        return authorizationService.buildHsidSubject(sessionId);
     }
 
+    @NonNull
     private Mono<Void> handleDecision(
-            ServerWebExchange exchange,
-            WebFilterChain chain,
-            PolicyDecision decision,
-            String resourceId) {
+            @NonNull ServerWebExchange exchange,
+            @NonNull WebFilterChain chain,
+            @NonNull PolicyDecision decision,
+            @NonNull String resourceId) {
 
         if (decision.isAllowed()) {
-            log.debug("ABAC: Access ALLOWED - policy={}, resource={}",
-                    decision.policyId(), resourceId);
+            LOG.debug("ABAC: Access ALLOWED - policy={}, resource={}",
+                    sanitizeForLog(decision.policyId()), sanitizeForLog(resourceId));
             return chain.filter(exchange);
         }
 
-        log.warn("ABAC: Access DENIED - policy={}, reason={}, resource={}",
-                decision.policyId(), decision.reason(), resourceId);
+        LOG.warn("ABAC: Access DENIED - policy={}, reason={}, resource={}",
+                sanitizeForLog(decision.policyId()),
+                sanitizeForLog(decision.reason()),
+                sanitizeForLog(resourceId));
         return forbiddenResponse(exchange, decision);
     }
 
-    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {
+    /**
+     * Sanitizes and validates resource ID from URL path.
+     *
+     * @param resourceId the raw resource ID
+     * @return sanitized resource ID or null if invalid
+     */
+    @Nullable
+    private String sanitizeResourceId(@Nullable String resourceId) {
+        if (resourceId == null || resourceId.isBlank()) {
+            return null;
+        }
+
+        String trimmed = resourceId.trim();
+        if (trimmed.length() > MAX_RESOURCE_ID_LENGTH) {
+            return null;
+        }
+
+        // Allow alphanumeric, dash, underscore
+        if (!trimmed.matches("^[a-zA-Z0-9_-]+$")) {
+            return null;
+        }
+
+        return trimmed;
+    }
+
+    /**
+     * Validates session ID format (UUID).
+     */
+    private boolean isValidSessionId(@Nullable String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return false;
+        }
+        return sessionId.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    }
+
+    /**
+     * Sanitizes a value for safe logging.
+     */
+    @NonNull
+    private String sanitizeForLog(@Nullable String value) {
+        if (value == null) {
+            return "null";
+        }
+        return value
+                .replace("\n", "")
+                .replace("\r", "")
+                .replace("\t", "")
+                .substring(0, Math.min(value.length(), 64));
+    }
+
+    @NonNull
+    private Mono<Void> unauthorizedResponse(
+            @NonNull ServerWebExchange exchange,
+            @NonNull String message) {
+
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-        String body = String.format("""
-                {"error":"unauthorized","code":"AUTH_REQUIRED","message":"%s"}""", message);
+        String body = String.format(
+                "{\"error\":\"unauthorized\",\"code\":\"AUTH_REQUIRED\",\"message\":\"%s\"}",
+                escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
-                        .wrap(body.getBytes())));
+                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
     }
 
-    private Mono<Void> forbiddenResponse(ServerWebExchange exchange, PolicyDecision decision) {
+    @NonNull
+    private Mono<Void> forbiddenResponse(
+            @NonNull ServerWebExchange exchange,
+            @NonNull PolicyDecision decision) {
+
         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-        String missingAttrs = decision.missingAttributes().isEmpty()
-                ? ""
-                : ",\"missing\":[" + decision.missingAttributes().stream()
-                        .map(s -> "\"" + s + "\"")
-                        .reduce((a, b) -> a + "," + b)
-                        .orElse("") + "]";
+        String missingAttrs = "";
+        if (decision.missingAttributes() != null && !decision.missingAttributes().isEmpty()) {
+            missingAttrs = ",\"missing\":[" +
+                    decision.missingAttributes().stream()
+                            .map(s -> "\"" + escapeJson(s) + "\"")
+                            .collect(Collectors.joining(",")) +
+                    "]";
+        }
 
-        String body = String.format("""
-                {"error":"access_denied","code":"%s","policy":"%s","message":"%s"%s}""",
-                decision.policyId(),
-                decision.policyId(),
-                decision.reason().replace("\"", "'"),
+        String body = String.format(
+                "{\"error\":\"access_denied\",\"code\":\"%s\",\"policy\":\"%s\",\"message\":\"%s\"%s}",
+                escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
+                escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
+                escapeJson(decision.reason() != null ? decision.reason() : "Access denied"),
                 missingAttrs);
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
-                        .wrap(body.getBytes())));
+                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
+    }
+
+    /**
+     * Escapes special characters for JSON string values.
+     */
+    @NonNull
+    private String escapeJson(@NonNull String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }
