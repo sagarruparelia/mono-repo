@@ -28,9 +28,15 @@ interface AuthActions {
 
   /** Refresh session expiry (for sliding sessions) */
   refreshSession: (expiry: number) => void;
+
+  /** Set selected child for parent persona (global child selector) */
+  setSelectedChild: (childId: string | null) => void;
 }
 
-type AuthStore = AuthContext & AuthActions;
+type AuthStore = AuthContext & AuthActions & {
+  /** Selected child ID for parent persona (null means viewing self) */
+  selectedChildId?: string | null;
+};
 
 const initialState: AuthContext = {
   isAuthenticated: false,
@@ -72,9 +78,11 @@ export const useAuthStore = create<AuthStore>()(
           sessionExpiry: undefined,
         }),
 
-      clearAuth: () => set(initialState),
+      clearAuth: () => set({ ...initialState, selectedChildId: null }),
 
       refreshSession: (expiry) => set({ sessionExpiry: expiry }),
+
+      setSelectedChild: (childId) => set({ selectedChildId: childId }),
     }),
     {
       name: 'auth-storage',
@@ -88,6 +96,7 @@ export const useAuthStore = create<AuthStore>()(
         memberId: state.memberId,
         operatorId: state.operatorId,
         operatorName: state.operatorName,
+        selectedChildId: state.selectedChildId,
       }),
     }
   )
@@ -130,3 +139,24 @@ export const useOperatorInfo = () =>
       operatorName: state.operatorName,
     }))
   );
+
+/**
+ * Get the currently selected child ID (for parent persona)
+ * Returns null if viewing self
+ */
+export const useSelectedChildId = () =>
+  useAuthStore((state) => state.selectedChildId);
+
+/**
+ * Get the effective memberId for API calls
+ * - Parent with child selected: returns selectedChildId
+ * - Parent with no selection: returns parent's memberId (user.sub)
+ * - Individual/other: returns their own memberId
+ */
+export const useEffectiveMemberId = () =>
+  useAuthStore((state) => {
+    if (state.persona === 'parent' && state.selectedChildId) {
+      return state.selectedChildId;
+    }
+    return state.memberId ?? state.user?.sub;
+  });

@@ -1,0 +1,85 @@
+.section {
+  padding: 1rem 0;
+}
+
+.loading,
+.error,
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.error {
+  color: #dc3545;
+  background: #fff5f5;
+  border-radius: 0.5rem;
+}
+
+.empty {
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  color: #6c757d;
+}
+
+.tableContainer {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.primaryCell {
+  font-weight: 500;
+  color: #212529;
+}
+
+.monoCell {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-size: 0.8125rem;
+}
+
+.severityBadge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.severityMild {
+  background: #d4edda;
+  color: #155724;
+}
+
+.severityModerate {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.severitySevere {
+  background: #f8d7da;
+  color: #721c24;
+}

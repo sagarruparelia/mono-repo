@@ -19,6 +19,8 @@ export {
   useIsProxyUser,
   useMemberId,
   useOperatorInfo,
+  useSelectedChildId,
+  useEffectiveMemberId,
 } from './stores/auth.store';
 
 // API Client
@@ -30,8 +32,15 @@ export { ApiClientProvider, useApiClient } from './api/ApiClientContext';
 export { queryClient, createQueryClient } from './queries/queryClient';
 
 // User Queries
-export { userKeys, useUserProfile, useSessionInfo, useLogout } from './queries/user.queries';
-export type { UserProfile, SessionInfo } from './queries/user.queries';
+export {
+  userKeys,
+  useUserProfile,
+  useSessionInfo,
+  useLogout,
+  useUserInfo,
+  useDependentsMetadata,
+} from './queries/user.queries';
+export type { UserProfile, SessionInfo, UserInfo, DependentMetadata } from './queries/user.queries';
 
 // Summary Queries (MFE)
 export { summaryKeys, useSummary } from './queries/summary.queries';
@@ -53,5 +62,15 @@ export {
 } from './queries/document.queries';
 export type { DocumentData, DocumentUploadRequest, DocumentType } from './queries/document.queries';
 
+// Health Queries (MFE)
+export {
+  healthKeys,
+  useImmunizations,
+  useAllergies,
+  useMedications,
+} from './queries/health.queries';
+export type { Immunization, Allergy, Medication } from './queries/health.queries';
+
 // Components
 export { ErrorBoundary } from './components/ErrorBoundary';
+export { ChildSelector } from './components/ChildSelector';

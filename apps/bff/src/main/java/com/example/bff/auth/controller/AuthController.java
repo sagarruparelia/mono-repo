@@ -1,8 +1,10 @@
 package com.example.bff.auth.controller;
 
+import com.example.bff.auth.dto.DependentDto;
 import com.example.bff.session.model.SessionData;
 import com.example.bff.session.service.SessionService;
 import org.springframework.http.HttpCookie;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,6 +17,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -33,7 +36,7 @@ public class AuthController {
     /**
      * Returns current user information from OIDC token
      */
-    @GetMapping("/me")
+    @GetMapping("/user-info")
     public Mono<ResponseEntity<Map<String, Object>>> getCurrentUser(
             @AuthenticationPrincipal OidcUser user) {
         if (user == null) {
@@ -93,6 +96,50 @@ public class AuthController {
                         "valid", false,
                         "reason", "session_not_found"
                 )));
+    }
+
+    /**
+     * Returns dependent metadata for parent persona
+     * Used by the global child selector in the frontend
+     */
+    @GetMapping("/dependents")
+    public Mono<ResponseEntity<List<DependentDto>>> getDependents(ServerWebExchange exchange) {
+        if (sessionService == null) {
+            return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build());
+        }
+
+        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
+
+        if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
+        }
+
+        String sessionId = sessionCookie.getValue();
+
+        return sessionService.getSession(sessionId)
+                .map(session -> {
+                    // Only parent persona can access dependents
+                    if (!session.isParent()) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).<List<DependentDto>>build();
+                    }
+
+                    if (!session.hasDependents()) {
+                        return ResponseEntity.ok(List.<DependentDto>of());
+                    }
+
+                    // Map dependent IDs to DTOs
+                    // TODO: Fetch actual names from member service
+                    List<DependentDto> dependents = session.dependents().stream()
+                            .map(id -> new DependentDto(
+                                    id,
+                                    "Child " + id.substring(0, Math.min(8, id.length())),
+                                    null
+                            ))
+                            .toList();
+
+                    return ResponseEntity.ok(dependents);
+                })
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
     /**

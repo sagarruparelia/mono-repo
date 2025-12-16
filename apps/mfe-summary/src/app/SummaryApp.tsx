@@ -1,42 +1,29 @@
-import { useSummary } from '@mono-repo/shared-state';
+import { useState } from 'react';
+import { useUserInfo } from '@mono-repo/shared-state';
 import type { MfeProps } from '@mono-repo/shared-state';
+import { ImmunizationSection } from './components/ImmunizationSection';
+import { AllergySection } from './components/AllergySection';
+import { MedicationSection } from './components/MedicationSection';
 import styles from './app.module.css';
 
-export type SummaryAppProps = MfeProps;
+type Tab = 'immunizations' | 'allergies' | 'medications';
 
-export function SummaryApp({ memberId, persona, operatorId, operatorName }: SummaryAppProps) {
-  const { data: summary, isLoading, error } = useSummary(memberId);
+export type HealthSummaryAppProps = MfeProps;
 
-  if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loading}>Loading summary...</div>
-      </div>
-    );
-  }
+/**
+ * Health Summary MFE with tabbed navigation
+ * Displays immunization, allergy, and medication records
+ */
+export function HealthSummaryApp({ memberId, persona, operatorId, operatorName }: HealthSummaryAppProps) {
+  // Fetch user info on first load - uses ApiClient from context (supports serviceBaseUrl for web components)
+  useUserInfo();
 
-  if (error) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.error}>
-          Failed to load summary: {(error as Error).message}
-        </div>
-      </div>
-    );
-  }
-
-  if (!summary) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.empty}>No summary data available</div>
-      </div>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<Tab>('immunizations');
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h2 className={styles.title}>Member Summary</h2>
+        <h2 className={styles.title}>Health Summary</h2>
         {operatorName && (
           <span className={styles.operator}>
             Viewing as: {operatorName} ({persona})
@@ -44,24 +31,36 @@ export function SummaryApp({ memberId, persona, operatorId, operatorName }: Summ
         )}
       </header>
 
-      <div className={styles.memberInfo}>
-        <h3>{summary.name}</h3>
-        <span className={styles.status}>{summary.status}</span>
-        <span className={styles.lastUpdated}>
-          Last updated: {new Date(summary.lastUpdated).toLocaleDateString()}
-        </span>
-      </div>
+      <nav className={styles.tabs}>
+        <button
+          className={`${styles.tab} ${activeTab === 'immunizations' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('immunizations')}
+        >
+          Immunizations
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'allergies' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('allergies')}
+        >
+          Allergies
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'medications' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('medications')}
+        >
+          Medications
+        </button>
+      </nav>
 
-      <div className={styles.metrics}>
-        {summary.metrics.map((metric) => (
-          <div key={metric.key} className={styles.metricCard}>
-            <span className={styles.metricLabel}>{metric.label}</span>
-            <span className={styles.metricValue}>{metric.value}</span>
-          </div>
-        ))}
+      <div className={styles.tabContent}>
+        {activeTab === 'immunizations' && <ImmunizationSection memberId={memberId} />}
+        {activeTab === 'allergies' && <AllergySection memberId={memberId} />}
+        {activeTab === 'medications' && <MedicationSection memberId={memberId} />}
       </div>
     </div>
   );
 }
 
-export default SummaryApp;
+// Keep backward compatibility with old name
+export { HealthSummaryApp as SummaryApp };
+export default HealthSummaryApp;

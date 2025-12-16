@@ -1,17 +1,16 @@
 import { useEffectiveMemberId, usePersona, useOperatorInfo } from '@mono-repo/shared-state';
-import { ProfileApp } from '@mono-repo/mfe-profile';
+import { HealthSummaryApp } from '@mono-repo/mfe-summary';
 import styles from './routes.module.css';
 
 /**
- * Profile page - uses ProfileApp React component directly
+ * Health Summary page route
  * Uses the effective memberId which respects the global child selector
  */
-export function Profile() {
+export function HealthSummary() {
   const memberId = useEffectiveMemberId();
   const persona = usePersona();
   const { operatorId, operatorName } = useOperatorInfo();
 
-  // Guard: Don't render MFE without valid session
   if (!memberId) {
     return (
       <div className={styles.page}>
@@ -23,7 +22,7 @@ export function Profile() {
   return (
     <div className={styles.page}>
       <div className={styles.mfeContainer}>
-        <ProfileApp
+        <HealthSummaryApp
           memberId={memberId}
           persona={persona || 'individual'}
           operatorId={operatorId}
@@ -34,4 +33,4 @@ export function Profile() {
   );
 }
 
-export default Profile;
+export default HealthSummary;

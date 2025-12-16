@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useProfile, useUpdateProfile } from '@mono-repo/shared-state';
+import { useProfile, useUpdateProfile, useUserInfo } from '@mono-repo/shared-state';
 import type { MfeProps, ProfileUpdatePayload, Persona } from '@mono-repo/shared-state';
 import { DocumentsSection } from './components/DocumentsSection';
 import styles from './app.module.css';
@@ -7,6 +7,9 @@ import styles from './app.module.css';
 export type ProfileAppProps = MfeProps;
 
 export function ProfileApp({ memberId, persona, operatorId, operatorName }: ProfileAppProps) {
+  // Fetch user info on first load - uses ApiClient from context (supports serviceBaseUrl for web components)
+  useUserInfo();
+
   const { data: profile, isLoading, error } = useProfile(memberId);
   const updateProfile = useUpdateProfile(memberId);
   const [isEditing, setIsEditing] = useState(false);

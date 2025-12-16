@@ -1,19 +1,22 @@
 /**
- * Web Component wrapper for SummaryApp
+ * Web Component wrapper for HealthSummaryApp
  * Allows embedding in external sites via:
  *   <script src="https://web-cl.abc.com/mfe/summary/bundle.js"></script>
- *   <mfe-summary member-id="123" service-base-url="https://web-cl.abc.com"></mfe-summary>
+ *   <mfe-health-summary member-id="123" service-base-url="https://web-cl.abc.com"></mfe-health-summary>
+ *
+ * Legacy element name (mfe-summary) is still supported for backward compatibility
  */
 import { createRoot, Root } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient, ApiClientProvider } from '@mono-repo/shared-state';
-import { SummaryApp } from './app/SummaryApp';
+import { HealthSummaryApp } from './app/SummaryApp';
 import type { Persona } from '@mono-repo/shared-state';
 
 // CSS will be injected into shadow DOM
 import appStyles from './app/app.module.css?inline';
+import sectionStyles from './app/components/sections.module.css?inline';
 
-class MfeSummaryElement extends HTMLElement {
+class MfeHealthSummaryElement extends HTMLElement {
   private root: Root | null = null;
   private shadowRoot_: ShadowRoot;
   private queryClient = createQueryClient();
@@ -52,7 +55,7 @@ class MfeSummaryElement extends HTMLElement {
 
     // Validate required attributes
     if (!memberId) {
-      console.error('mfe-summary: member-id attribute is required');
+      console.error('mfe-health-summary: member-id attribute is required');
       return;
     }
 
@@ -60,12 +63,12 @@ class MfeSummaryElement extends HTMLElement {
     if (!this.root) {
       // Inject styles into shadow DOM
       const styleSheet = document.createElement('style');
-      styleSheet.textContent = appStyles;
+      styleSheet.textContent = appStyles + '\n' + sectionStyles;
       this.shadowRoot_.appendChild(styleSheet);
 
       // Create mount point
       const container = document.createElement('div');
-      container.id = 'mfe-summary-root';
+      container.id = 'mfe-health-summary-root';
       this.shadowRoot_.appendChild(container);
       this.root = createRoot(container);
     }
@@ -73,7 +76,7 @@ class MfeSummaryElement extends HTMLElement {
     this.root.render(
       <QueryClientProvider client={this.queryClient}>
         <ApiClientProvider serviceBaseUrl={serviceBaseUrl}>
-          <SummaryApp
+          <HealthSummaryApp
             memberId={memberId}
             persona={persona}
             operatorId={operatorId}
@@ -85,10 +88,15 @@ class MfeSummaryElement extends HTMLElement {
   }
 }
 
-// Register custom element
+// Register custom elements
+if (!customElements.get('mfe-health-summary')) {
+  customElements.define('mfe-health-summary', MfeHealthSummaryElement);
+}
+
+// Register legacy element name for backward compatibility
 if (!customElements.get('mfe-summary')) {
-  customElements.define('mfe-summary', MfeSummaryElement);
+  customElements.define('mfe-summary', MfeHealthSummaryElement);
 }
 
 // Export for UMD/global access
-export { MfeSummaryElement };
+export { MfeHealthSummaryElement };
