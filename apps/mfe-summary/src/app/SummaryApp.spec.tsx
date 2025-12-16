@@ -1,23 +1,41 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SummaryApp } from './SummaryApp';
+import { HealthSummaryApp } from './SummaryApp';
 
 // Mock the shared-state hooks
 vi.mock('@mono-repo/shared-state', () => ({
-  useSummary: vi.fn(),
+  useUserInfo: vi.fn(),
   useApiClient: vi.fn(() => ({
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
   })),
+  // Health hooks used by child sections
+  useImmunizations: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
+  useAllergies: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
+  useMedications: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
 }));
 
 // eslint-disable-next-line import/first
-import { useSummary } from '@mono-repo/shared-state';
+import { useImmunizations, useAllergies, useMedications } from '@mono-repo/shared-state';
 
-const mockUseSummary = vi.mocked(useSummary);
+const mockUseImmunizations = vi.mocked(useImmunizations);
+const mockUseAllergies = vi.mocked(useAllergies);
+const mockUseMedications = vi.mocked(useMedications);
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -33,101 +51,34 @@ const createWrapper = () => {
   );
 };
 
-describe('SummaryApp', () => {
+describe('HealthSummaryApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render loading state', () => {
-    mockUseSummary.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    } as ReturnType<typeof useSummary>);
-
+  it('should render the Health Summary header', () => {
     render(
-      <SummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberId="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
-    expect(screen.getByText('Loading summary...')).toBeTruthy();
+    expect(screen.getByText('Health Summary')).toBeTruthy();
   });
 
-  it('should render error state', () => {
-    mockUseSummary.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error('Failed to fetch'),
-    } as ReturnType<typeof useSummary>);
-
+  it('should render all three tabs', () => {
     render(
-      <SummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberId="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
-    expect(screen.getByText(/Failed to load summary/)).toBeTruthy();
-  });
-
-  it('should render empty state when no data', () => {
-    mockUseSummary.mockReturnValue({
-      data: null,
-      isLoading: false,
-      error: null,
-    } as unknown as ReturnType<typeof useSummary>);
-
-    render(
-      <SummaryApp memberId="test-123" persona="individual" />,
-      { wrapper: createWrapper() }
-    );
-
-    expect(screen.getByText('No summary data available')).toBeTruthy();
-  });
-
-  it('should render summary data', () => {
-    mockUseSummary.mockReturnValue({
-      data: {
-        memberId: 'test-123',
-        name: 'John Doe',
-        status: 'Active',
-        lastUpdated: '2024-01-15T00:00:00Z',
-        metrics: [
-          { key: 'visits', label: 'Total Visits', value: 42 },
-          { key: 'balance', label: 'Balance', value: '$1,234' },
-        ],
-      },
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useSummary>);
-
-    render(
-      <SummaryApp memberId="test-123" persona="individual" />,
-      { wrapper: createWrapper() }
-    );
-
-    expect(screen.getByText('Member Summary')).toBeTruthy();
-    expect(screen.getByText('John Doe')).toBeTruthy();
-    expect(screen.getByText('Active')).toBeTruthy();
-    expect(screen.getByText('Total Visits')).toBeTruthy();
-    expect(screen.getByText('42')).toBeTruthy();
-    expect(screen.getByText('Balance')).toBeTruthy();
-    expect(screen.getByText('$1,234')).toBeTruthy();
+    expect(screen.getByText('Immunizations')).toBeTruthy();
+    expect(screen.getByText('Allergies')).toBeTruthy();
+    expect(screen.getByText('Medications')).toBeTruthy();
   });
 
   it('should display operator info for proxy personas', () => {
-    mockUseSummary.mockReturnValue({
-      data: {
-        memberId: 'test-123',
-        name: 'John Doe',
-        status: 'Active',
-        lastUpdated: '2024-01-15T00:00:00Z',
-        metrics: [],
-      },
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useSummary>);
-
     render(
-      <SummaryApp
+      <HealthSummaryApp
         memberId="test-123"
         persona="agent"
         operatorId="op-456"
@@ -140,39 +91,47 @@ describe('SummaryApp', () => {
     expect(screen.getByText(/agent/)).toBeTruthy();
   });
 
-  it('should not display operator info for HSID personas', () => {
-    mockUseSummary.mockReturnValue({
-      data: {
-        memberId: 'test-123',
-        name: 'John Doe',
-        status: 'Active',
-        lastUpdated: '2024-01-15T00:00:00Z',
-        metrics: [],
-      },
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useSummary>);
-
+  it('should not display operator info for individual personas', () => {
     render(
-      <SummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberId="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
     expect(screen.queryByText(/Viewing as:/)).toBeNull();
   });
 
-  it('should call useSummary with correct memberId', () => {
-    mockUseSummary.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    } as ReturnType<typeof useSummary>);
-
+  it('should switch to Allergies tab when clicked', () => {
     render(
-      <SummaryApp memberId="member-xyz" persona="individual" />,
+      <HealthSummaryApp memberId="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
-    expect(mockUseSummary).toHaveBeenCalledWith('member-xyz');
+    const allergiesTab = screen.getByText('Allergies');
+    fireEvent.click(allergiesTab);
+
+    // Verify the tab is now active by checking the class
+    expect(allergiesTab.className).toContain('activeTab');
+  });
+
+  it('should switch to Medications tab when clicked', () => {
+    render(
+      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      { wrapper: createWrapper() }
+    );
+
+    const medicationsTab = screen.getByText('Medications');
+    fireEvent.click(medicationsTab);
+
+    // Verify the tab is now active
+    expect(medicationsTab.className).toContain('activeTab');
+  });
+
+  it('should call useImmunizations with correct memberId', () => {
+    render(
+      <HealthSummaryApp memberId="member-xyz" persona="individual" />,
+      { wrapper: createWrapper() }
+    );
+
+    expect(mockUseImmunizations).toHaveBeenCalledWith('member-xyz');
   });
 });

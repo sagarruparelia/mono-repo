@@ -18,6 +18,7 @@ vi.mock('@mono-repo/shared-state', () => ({
     setBaseUrl: vi.fn(),
   },
   ApiClientProvider: ({ children }: { children: React.ReactNode }) => children,
+  useUserInfo: vi.fn(),
   useProfile: () => ({
     data: {
       memberId: 'test-123',
@@ -41,6 +42,23 @@ vi.mock('@mono-repo/shared-state', () => ({
     isError: false,
     error: null,
   }),
+  // Document hooks used by DocumentsSection
+  useDocuments: () => ({
+    data: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useUploadDocument: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useDeleteDocument: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  getDocumentDownloadUrl: vi.fn(() => '/api/documents/test'),
+  formatFileSize: vi.fn((size: number) => `${size} bytes`),
 }));
 
 // eslint-disable-next-line import/first -- Import after mocking

@@ -18,6 +18,7 @@ vi.mock('@mono-repo/shared-state', () => ({
     setBaseUrl: vi.fn(),
   },
   ApiClientProvider: ({ children }: { children: React.ReactNode }) => children,
+  useUserInfo: vi.fn(),
   useSummary: () => ({
     data: {
       memberId: 'test-123',
@@ -28,6 +29,22 @@ vi.mock('@mono-repo/shared-state', () => ({
         { key: 'metric1', label: 'Metric 1', value: 100 },
       ],
     },
+    isLoading: false,
+    error: null,
+  }),
+  // Health hooks used by child sections
+  useImmunizations: () => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  }),
+  useAllergies: () => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  }),
+  useMedications: () => ({
+    data: [],
     isLoading: false,
     error: null,
   }),
@@ -50,7 +67,13 @@ describe('MfeSummaryElement Web Component', () => {
   it('should be registered as a custom element', () => {
     const ElementClass = customElements.get('mfe-summary');
     expect(ElementClass).toBeDefined();
+    // MfeSummaryElement is the legacy alias class
     expect(ElementClass?.name).toBe('MfeSummaryElement');
+  });
+
+  it('should register both primary and legacy element names', () => {
+    expect(customElements.get('mfe-health-summary')).toBeDefined();
+    expect(customElements.get('mfe-summary')).toBeDefined();
   });
 
   it('should have observed attributes defined', () => {

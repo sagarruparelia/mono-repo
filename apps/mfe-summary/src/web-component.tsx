@@ -88,6 +88,9 @@ class MfeHealthSummaryElement extends HTMLElement {
   }
 }
 
+// Alias class for legacy element name support (custom elements require unique classes)
+class MfeSummaryElement extends MfeHealthSummaryElement {}
+
 // Register custom elements
 if (!customElements.get('mfe-health-summary')) {
   customElements.define('mfe-health-summary', MfeHealthSummaryElement);
@@ -95,7 +98,7 @@ if (!customElements.get('mfe-health-summary')) {
 
 // Register legacy element name for backward compatibility
 if (!customElements.get('mfe-summary')) {
-  customElements.define('mfe-summary', MfeHealthSummaryElement);
+  customElements.define('mfe-summary', MfeSummaryElement);
 }
 
 // Export for UMD/global access

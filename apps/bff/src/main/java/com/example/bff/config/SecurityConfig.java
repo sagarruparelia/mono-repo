@@ -3,10 +3,8 @@ package com.example.bff.config;
 import com.example.bff.auth.handler.HsidAuthenticationSuccessHandler;
 import com.example.bff.auth.handler.HsidLogoutSuccessHandler;
 import com.example.bff.config.properties.SecurityPathsProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
@@ -17,7 +15,7 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
 import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
 import org.springframework.security.web.server.csrf.ServerCsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.server.util.matcher.PathPatternParserServerWebExchangeMatcher;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -69,8 +67,22 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new ServerCsrfTokenRequestAttributeHandler())
-                        // Disable CSRF for API endpoints (they use session cookies + CORS)
-                        .requireCsrfProtectionMatcher(new PathPatternParserServerWebExchangeMatcher("/api/**", HttpMethod.POST))
+                        // Enable CSRF for all state-changing operations (POST, PUT, DELETE, PATCH)
+                        // Exclude OAuth2 login/callback paths which are handled by Spring Security
+                        .requireCsrfProtectionMatcher(exchange -> {
+                            String method = exchange.getRequest().getMethod().name();
+                            String path = exchange.getRequest().getPath().value();
+                            // Skip non-state-changing methods
+                            if ("GET".equals(method) || "HEAD".equals(method) || "OPTIONS".equals(method) || "TRACE".equals(method)) {
+                                return ServerWebExchangeMatcher.MatchResult.notMatch();
+                            }
+                            // Skip OAuth2 login/callback paths (handled by Spring Security CSRF protection)
+                            if (path.startsWith("/oauth2/") || path.startsWith("/login/oauth2/")) {
+                                return ServerWebExchangeMatcher.MatchResult.notMatch();
+                            }
+                            // Require CSRF for all other state-changing requests
+                            return ServerWebExchangeMatcher.MatchResult.match();
+                        })
                 )
                 .build();
     }

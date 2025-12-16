@@ -201,9 +201,49 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     private String getRedirectUri(ServerWebExchange exchange) {
         HttpCookie redirectCookie = exchange.getRequest().getCookies().getFirst(REDIRECT_URI_COOKIE);
         if (redirectCookie != null && !redirectCookie.getValue().isBlank()) {
-            return redirectCookie.getValue();
+            String uri = redirectCookie.getValue();
+            // Security: Only allow relative paths to prevent open redirect attacks
+            if (isValidRelativePath(uri)) {
+                return uri;
+            }
+            log.warn("Rejected potentially malicious redirect URI: {}", sanitizeForLog(uri));
         }
         return "/";
+    }
+
+    /**
+     * Validates that the URI is a safe relative path.
+     * Prevents open redirect attacks by rejecting:
+     * - Absolute URLs (http://, https://, //)
+     * - Protocol-relative URLs (//evil.com)
+     * - Data URIs (data:)
+     * - JavaScript URIs (javascript:)
+     */
+    private boolean isValidRelativePath(String uri) {
+        if (uri == null || uri.isBlank()) {
+            return false;
+        }
+        // Must start with / but not //
+        if (!uri.startsWith("/") || uri.startsWith("//")) {
+            return false;
+        }
+        // Block protocol handlers
+        String lowerUri = uri.toLowerCase();
+        if (lowerUri.contains("://") || lowerUri.startsWith("javascript:") || lowerUri.startsWith("data:")) {
+            return false;
+        }
+        // Block encoded variants
+        if (uri.contains("%2f%2f") || uri.contains("%2F%2F")) {
+            return false;
+        }
+        return true;
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return value.replaceAll("[\\r\\n\\t]", "").substring(0, Math.min(value.length(), 64));
     }
 
     private Mono<Void> redirectToApp(ServerWebExchange exchange) {

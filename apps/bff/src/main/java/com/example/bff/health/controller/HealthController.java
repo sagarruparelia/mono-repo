@@ -3,7 +3,9 @@ package com.example.bff.health.controller;
 import com.example.bff.health.dto.AllergyDto;
 import com.example.bff.health.dto.ImmunizationDto;
 import com.example.bff.health.dto.MedicationDto;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,14 +20,18 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/mfe")
+@Validated
 public class HealthController {
+
+    // Regex pattern for valid member IDs: alphanumeric, hyphens, underscores only
+    private static final String MEMBER_ID_PATTERN = "^[a-zA-Z0-9_-]{1,128}$";
 
     /**
      * Get immunization records for a member
      */
     @GetMapping("/immunizations/{memberId}")
     public Mono<ResponseEntity<List<ImmunizationDto>>> getImmunizations(
-            @PathVariable String memberId) {
+            @PathVariable @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId) {
         // TODO: Fetch from external health service
         // For now, return mock data
         List<ImmunizationDto> immunizations = List.of(
@@ -60,7 +66,7 @@ public class HealthController {
      */
     @GetMapping("/allergies/{memberId}")
     public Mono<ResponseEntity<List<AllergyDto>>> getAllergies(
-            @PathVariable String memberId) {
+            @PathVariable @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId) {
         // TODO: Fetch from external health service
         // For now, return mock data
         List<AllergyDto> allergies = List.of(
@@ -88,7 +94,7 @@ public class HealthController {
      */
     @GetMapping("/medications/{memberId}")
     public Mono<ResponseEntity<List<MedicationDto>>> getMedications(
-            @PathVariable String memberId) {
+            @PathVariable @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId) {
         // TODO: Fetch from external health service
         // For now, return mock data
         List<MedicationDto> medications = List.of(

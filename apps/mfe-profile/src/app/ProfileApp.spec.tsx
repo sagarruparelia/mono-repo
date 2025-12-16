@@ -7,12 +7,30 @@ import { ProfileApp } from './ProfileApp';
 vi.mock('@mono-repo/shared-state', () => ({
   useProfile: vi.fn(),
   useUpdateProfile: vi.fn(),
+  useUserInfo: vi.fn(),
   useApiClient: vi.fn(() => ({
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
   })),
+  // Document hooks used by DocumentsSection
+  useDocuments: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+  useUploadDocument: vi.fn(() => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  })),
+  useDeleteDocument: vi.fn(() => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  })),
+  getDocumentDownloadUrl: () => '/api/documents/test',
+  formatFileSize: (size: number) => `${size} bytes`,
 }));
 
 // eslint-disable-next-line import/first

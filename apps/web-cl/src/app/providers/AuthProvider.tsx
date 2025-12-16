@@ -1,9 +1,8 @@
 import { ReactNode, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   useAuthStore,
   useSessionInfo,
-  useIsAuthenticated,
 } from '@mono-repo/shared-state';
 
 interface AuthProviderProps {
@@ -18,8 +17,8 @@ interface AuthProviderProps {
  */
 export function AuthProvider({ children }: AuthProviderProps) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const isAuthenticated = useIsAuthenticated();
+  // Track sessionExpiry via selector to properly re-run effect when it changes
+  const sessionExpiry = useAuthStore((state) => state.sessionExpiry);
   const { setHsidAuth, clearAuth } = useAuthStore();
 
   // Fetch session info to verify/sync auth state
@@ -44,11 +43,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [sessionInfo, sessionError, setHsidAuth, clearAuth]);
 
-  // Handle session expiry
+  // Handle session expiry - re-runs when sessionExpiry changes
   useEffect(() => {
-    const state = useAuthStore.getState();
-    if (state.sessionExpiry) {
-      const timeUntilExpiry = state.sessionExpiry - Date.now();
+    if (sessionExpiry) {
+      const timeUntilExpiry = sessionExpiry - Date.now();
       if (timeUntilExpiry > 0) {
         const timer = setTimeout(() => {
           clearAuth();
@@ -58,7 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return () => clearTimeout(timer);
       }
     }
-  }, [clearAuth, navigate]);
+  }, [sessionExpiry, clearAuth, navigate]);
 
   return <>{children}</>;
 }
