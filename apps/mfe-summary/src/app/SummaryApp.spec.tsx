@@ -31,11 +31,9 @@ vi.mock('@mono-repo/shared-state', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { useImmunizations, useAllergies, useMedications } from '@mono-repo/shared-state';
+import { useImmunizations } from '@mono-repo/shared-state';
 
 const mockUseImmunizations = vi.mocked(useImmunizations);
-const mockUseAllergies = vi.mocked(useAllergies);
-const mockUseMedications = vi.mocked(useMedications);
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
