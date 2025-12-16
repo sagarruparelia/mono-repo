@@ -114,4 +114,28 @@ public record ResourceAttributes(
     public boolean isMember() {
         return type == ResourceType.MEMBER;
     }
+
+    /**
+     * Check if resource is a document type.
+     */
+    public boolean isDocument() {
+        return type == ResourceType.DOCUMENT;
+    }
+
+    /**
+     * Create resource attributes for a document.
+     * Documents are always sensitive (require DAA+RPR+ROI for parent view).
+     *
+     * @param documentId the document ID (or "list" for list operations, "new" for upload)
+     * @param ownerId the youth (member) who owns the document
+     */
+    public static ResourceAttributes document(String documentId, String ownerId) {
+        return new ResourceAttributes(
+                ResourceType.DOCUMENT,
+                documentId,
+                Sensitivity.SENSITIVE,
+                ownerId,
+                null
+        );
+    }
 }

@@ -279,6 +279,38 @@ export class ApiClient {
   async delete<T>(path: string): Promise<T> {
     return this.request<T>('DELETE', path);
   }
+
+  /**
+   * Upload file with multipart/form-data
+   * Note: Does not set Content-Type header - browser will set it with boundary
+   */
+  async uploadFile<T>(
+    path: string,
+    file: File,
+    metadata?: Record<string, string>
+  ): Promise<T> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (metadata) {
+      Object.entries(metadata).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          formData.append(key, value);
+        }
+      });
+    }
+
+    const url = this.buildUrl(path);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      // Don't set Content-Type - browser will set it with multipart boundary
+    });
+
+    return this.responseInterceptor<T>(response);
+  }
 }
 
 /**

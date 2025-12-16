@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useProfile, useUpdateProfile } from '@mono-repo/shared-state';
-import type { MfeProps, ProfileUpdatePayload } from '@mono-repo/shared-state';
+import type { MfeProps, ProfileUpdatePayload, Persona } from '@mono-repo/shared-state';
+import { DocumentsSection } from './components/DocumentsSection';
 import styles from './app.module.css';
 
 export type ProfileAppProps = MfeProps;
@@ -112,7 +113,12 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
                     onChange={(e) =>
                       setEditForm({
                         ...editForm,
-                        address: { ...editForm.address!, street: e.target.value },
+                        address: {
+                          street: e.target.value,
+                          city: editForm.address?.city ?? '',
+                          state: editForm.address?.state ?? '',
+                          zip: editForm.address?.zip ?? '',
+                        },
                       })
                     }
                   />
@@ -125,7 +131,12 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
                       onChange={(e) =>
                         setEditForm({
                           ...editForm,
-                          address: { ...editForm.address!, city: e.target.value },
+                          address: {
+                            street: editForm.address?.street ?? '',
+                            city: e.target.value,
+                            state: editForm.address?.state ?? '',
+                            zip: editForm.address?.zip ?? '',
+                          },
                         })
                       }
                     />
@@ -137,7 +148,12 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
                       onChange={(e) =>
                         setEditForm({
                           ...editForm,
-                          address: { ...editForm.address!, state: e.target.value },
+                          address: {
+                            street: editForm.address?.street ?? '',
+                            city: editForm.address?.city ?? '',
+                            state: e.target.value,
+                            zip: editForm.address?.zip ?? '',
+                          },
                         })
                       }
                     />
@@ -149,7 +165,12 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
                       onChange={(e) =>
                         setEditForm({
                           ...editForm,
-                          address: { ...editForm.address!, zip: e.target.value },
+                          address: {
+                            street: editForm.address?.street ?? '',
+                            city: editForm.address?.city ?? '',
+                            state: editForm.address?.state ?? '',
+                            zip: e.target.value,
+                          },
                         })
                       }
                     />
@@ -189,8 +210,42 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
           </div>
         )}
       </div>
+
+      {/* Documents Section */}
+      <DocumentsSection
+        memberId={memberId}
+        persona={persona}
+        canUpload={canUploadDocuments(persona)}
+        canDelete={canDeleteDocuments(persona)}
+      />
     </div>
   );
+}
+
+/**
+ * Determine if persona can upload documents.
+ * - individual (youth): can upload own docs
+ * - parent: can upload for dependents (with DAA+RPR, enforced by backend)
+ * - agent/case_worker: can upload for assigned members
+ * - config: full access
+ */
+function canUploadDocuments(persona: Persona): boolean {
+  return ['individual', 'parent', 'agent', 'case_worker', 'config'].includes(persona);
+}
+
+/**
+ * Determine if persona can delete documents.
+ * - individual (youth): can delete own docs
+ * - parent: CANNOT delete (only upload and view)
+ * - agent/case_worker: can delete for assigned members
+ * - config: full access
+ */
+function canDeleteDocuments(persona: Persona): boolean {
+  // Parent cannot delete documents
+  if (persona === 'parent') {
+    return false;
+  }
+  return ['individual', 'agent', 'case_worker', 'config'].includes(persona);
 }
 
 export default ProfileApp;

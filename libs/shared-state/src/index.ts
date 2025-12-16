@@ -41,5 +41,17 @@ export type { SummaryData } from './queries/summary.queries';
 export { profileKeys, useProfile, useUpdateProfile } from './queries/profile.queries';
 export type { ProfileData, ProfileUpdatePayload } from './queries/profile.queries';
 
+// Document Queries (MFE)
+export {
+  documentKeys,
+  useDocuments,
+  useDocument,
+  useUploadDocument,
+  useDeleteDocument,
+  getDocumentDownloadUrl,
+  formatFileSize,
+} from './queries/document.queries';
+export type { DocumentData, DocumentUploadRequest, DocumentType } from './queries/document.queries';
+
 // Components
 export { ErrorBoundary } from './components/ErrorBoundary';

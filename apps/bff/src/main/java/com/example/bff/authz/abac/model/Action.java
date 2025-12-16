@@ -37,5 +37,12 @@ public enum Action {
      * HSID: Returns only viewable dependents
      * Proxy: Returns assigned members or all for config
      */
-    LIST
+    LIST,
+
+    /**
+     * Upload a resource (e.g., upload document).
+     * HSID: Youth can upload own docs, parent needs DAA + RPR for dependent
+     * Proxy: Requires assigned member or config persona
+     */
+    UPLOAD
 }
