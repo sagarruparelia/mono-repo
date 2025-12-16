@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <!-- Properties -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="bff"/>
+    <springProperty scope="context" name="ENVIRONMENT" source="spring.profiles.active" defaultValue="local"/>
+
+    <!-- ============================================== -->
+    <!-- Console Appender (Human-readable for local)   -->
+    <!-- ============================================== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg %mdc%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ============================================== -->
+    <!-- JSON Appender (Structured for production)     -->
+    <!-- ============================================== -->
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Include standard fields -->
+            <includeMdcKeyName>correlationId</includeMdcKeyName>
+            <includeMdcKeyName>requestPath</includeMdcKeyName>
+            <includeMdcKeyName>requestMethod</includeMdcKeyName>
+            <includeMdcKeyName>responseStatus</includeMdcKeyName>
+            <includeMdcKeyName>durationMs</includeMdcKeyName>
+            <includeMdcKeyName>clientIp</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>persona</includeMdcKeyName>
+            <includeMdcKeyName>memberId</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+
+            <!-- Custom fields -->
+            <customFields>{"service":"${APP_NAME}","environment":"${ENVIRONMENT}"}</customFields>
+
+            <!-- Timestamp format -->
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+
+            <!-- Include caller info for errors -->
+            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                <maxLength>2048</maxLength>
+                <shortenedClassNameLength>20</shortenedClassNameLength>
+                <rootCauseFirst>true</rootCauseFirst>
+            </throwableConverter>
+        </encoder>
+    </appender>
+
+    <!-- ============================================== -->
+    <!-- Async Appenders (for production performance)  -->
+    <!-- ============================================== -->
+    <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="JSON"/>
+    </appender>
+
+    <!-- ============================================== -->
+    <!-- Logger Configuration                          -->
+    <!-- ============================================== -->
+
+    <!-- Application loggers -->
+    <logger name="com.example.bff" level="INFO"/>
+    <logger name="com.example.bff.observability" level="DEBUG"/>
+
+    <!-- Security logging (audit trail) -->
+    <logger name="com.example.bff.authz" level="INFO"/>
+    <logger name="com.example.bff.session" level="INFO"/>
+
+    <!-- Spring Framework -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+
+    <!-- Reduce noise from libraries -->
+    <logger name="org.mongodb.driver" level="WARN"/>
+    <logger name="io.lettuce" level="WARN"/>
+    <logger name="io.netty" level="WARN"/>
+    <logger name="reactor.netty" level="WARN"/>
+    <logger name="software.amazon.awssdk" level="WARN"/>
+    <logger name="org.apache.http" level="WARN"/>
+
+    <!-- ============================================== -->
+    <!-- Profile-specific Configuration                -->
+    <!-- ============================================== -->
+
+    <!-- Local Development: Console output -->
+    <springProfile name="local,default">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <!-- Enable debug for local development -->
+        <logger name="com.example.bff" level="DEBUG"/>
+    </springProfile>
+
+    <!-- Test: Console output with reduced verbosity -->
+    <springProfile name="test,e2e">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.example.bff" level="INFO"/>
+    </springProfile>
+
+    <!-- Production/Staging: JSON output -->
+    <springProfile name="prod,staging,production">
+        <root level="INFO">
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+        <!-- Slightly more verbose for troubleshooting -->
+        <logger name="com.example.bff" level="INFO"/>
+        <logger name="com.example.bff.authz" level="INFO"/>
+    </springProfile>
+
+</configuration>
