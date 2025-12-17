@@ -1,0 +1,91 @@
+# ABAC Policy Definitions
+# Config-driven policies replace hardcoded Java classes
+# Each policy defines: conditions to match, permissions required, and decision logic
+
+abac:
+  policies:
+    # HSID Policies
+    - id: HSID_VIEW_DEPENDENT
+      description: "HSID parent can view dependent with DAA + RPR permissions"
+      priority: 100
+      conditions:
+        auth-type: HSID
+        resource-type: dependent
+        action: VIEW
+        sensitive: false
+      required-permissions: [DAA, RPR]
+
+    - id: HSID_VIEW_SENSITIVE
+      description: "HSID parent can view sensitive dependent data with DAA + RPR + ROI"
+      priority: 100
+      conditions:
+        auth-type: HSID
+        resource-type: dependent
+        action: [VIEW, VIEW_SENSITIVE]
+        sensitive: true
+      required-permissions: [DAA, RPR, ROI]
+
+    # Parent Document Policies
+    - id: PARENT_VIEW_DOCUMENT
+      description: "Parent can view youth's documents with DAA + RPR + ROI"
+      priority: 100
+      conditions:
+        auth-type: HSID
+        persona: parent
+        resource-type: document
+        action: [VIEW, VIEW_SENSITIVE, LIST]
+      required-permissions: [DAA, RPR, ROI]
+
+    - id: PARENT_UPLOAD_DOCUMENT
+      description: "Parent can upload documents for youth with DAA + RPR (no edit/delete)"
+      priority: 100
+      conditions:
+        auth-type: HSID
+        persona: parent
+        resource-type: document
+        action: UPLOAD
+      required-permissions: [DAA, RPR]
+
+    # Youth Document Policy
+    - id: YOUTH_OWNER_DOCUMENT
+      description: "Youth (individual) can fully manage their own documents"
+      priority: 150  # Higher priority - owner check first
+      conditions:
+        auth-type: HSID
+        persona: individual
+        resource-type: document
+      owner-check: true  # Subject userId must match resource ownerId
+
+    # Proxy Policies
+    - id: PROXY_VIEW_MEMBER
+      description: "Proxy user can view assigned member or config can view any member"
+      priority: 100
+      conditions:
+        auth-type: PROXY
+        resource-type: [member, dependent]
+        action: VIEW
+        sensitive: false
+      proxy-rules:
+        config-full-access: true
+        require-assignment: true
+
+    - id: PROXY_VIEW_SENSITIVE
+      description: "Only config persona can view sensitive member data"
+      priority: 100
+      conditions:
+        auth-type: PROXY
+        resource-type: [member, dependent]
+        action: [VIEW, VIEW_SENSITIVE]
+        sensitive: true
+      proxy-rules:
+        config-only: true
+
+    - id: PROXY_DOCUMENT
+      description: "Proxy users can access documents for assigned members"
+      priority: 100
+      conditions:
+        auth-type: PROXY
+        resource-type: document
+      proxy-rules:
+        config-full-access: true
+        require-assignment: true

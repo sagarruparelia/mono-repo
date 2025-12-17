@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, Outlet } from 'react-router-dom';
 import { AuthGuard } from './guards/AuthGuard';
 import { AppLayout } from './components/AppLayout';
 import styles from './app.module.css';
@@ -15,6 +15,17 @@ function LoadingFallback() {
   return <div className={styles.loading}>Loading...</div>;
 }
 
+/** Protected layout wrapper - applies AuthGuard + AppLayout to child routes */
+function ProtectedLayout() {
+  return (
+    <AuthGuard>
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+    </AuthGuard>
+  );
+}
+
 export function App() {
   return (
     <div className={styles.app}>
@@ -23,56 +34,16 @@ export function App() {
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
 
-          {/* Protected routes with AppLayout */}
-          <Route
-            path="/app"
-            element={
-              <AuthGuard>
-                <AppLayout>
-                  <Dashboard />
-                </AppLayout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/app/dashboard"
-            element={
-              <AuthGuard>
-                <AppLayout>
-                  <Dashboard />
-                </AppLayout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/app/health-summary"
-            element={
-              <AuthGuard>
-                <AppLayout>
-                  <HealthSummary />
-                </AppLayout>
-              </AuthGuard>
-            }
-          />
-          {/* Legacy summary route - redirects to health-summary */}
-          <Route
-            path="/app/summary"
-            element={
-              <AuthGuard>
-                <Summary />
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/app/profile"
-            element={
-              <AuthGuard>
-                <AppLayout>
-                  <Profile />
-                </AppLayout>
-              </AuthGuard>
-            }
-          />
+          {/* Protected routes - all wrapped with AuthGuard + AppLayout */}
+          <Route path="/app" element={<ProtectedLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="health-summary" element={<HealthSummary />} />
+            <Route path="profile" element={<Profile />} />
+          </Route>
+
+          {/* Legacy route without AppLayout */}
+          <Route path="/app/summary" element={<AuthGuard><Summary /></AuthGuard>} />
         </Routes>
       </Suspense>
     </div>

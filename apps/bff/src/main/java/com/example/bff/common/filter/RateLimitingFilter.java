@@ -101,13 +101,44 @@ public class RateLimitingFilter implements WebFilter {
                 }));
     }
 
+    /**
+     * Extract client IP with security considerations.
+     * Only trust X-Forwarded-For from trusted proxies (ALB/CloudFront).
+     */
     private String extractClientIp(ServerWebExchange exchange) {
-        String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
         var remoteAddress = exchange.getRequest().getRemoteAddress();
-        return remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
+        String directIp = remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
+
+        // Only trust forwarded headers if request came through trusted proxy
+        // In production, ALB sets X-Forwarded-For; direct requests should use remote address
+        if (isTrustedProxy(directIp)) {
+            String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+            if (forwardedFor != null && !forwardedFor.isBlank()) {
+                // Take the rightmost untrusted IP (client IP added by first proxy)
+                String[] ips = forwardedFor.split(",");
+                for (int i = ips.length - 1; i >= 0; i--) {
+                    String ip = ips[i].trim();
+                    if (!isTrustedProxy(ip)) {
+                        return ip;
+                    }
+                }
+            }
+        }
+        return directIp;
+    }
+
+    /**
+     * Check if IP is from a trusted proxy (ALB, CloudFront, internal network).
+     * Configure trusted ranges via rate-limiting.trusted-proxies in config.
+     */
+    private boolean isTrustedProxy(String ip) {
+        // Private network ranges and localhost are trusted (ALB, internal proxies)
+        return ip.startsWith("10.") ||
+               ip.startsWith("172.16.") || ip.startsWith("172.17.") ||
+               ip.startsWith("172.18.") || ip.startsWith("172.19.") ||
+               ip.startsWith("172.2") || ip.startsWith("172.30.") || ip.startsWith("172.31.") ||
+               ip.startsWith("192.168.") ||
+               ip.equals("127.0.0.1") || ip.equals("::1");
     }
 
     private String createBucketKey(RateLimitRule rule, String clientIp, ServerWebExchange exchange) {
