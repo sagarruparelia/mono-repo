@@ -27,13 +27,65 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        {{- toYaml .Values.global.podSecurityContext | nindent 8 }}
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      # Topology spread for multi-AZ distribution
+      {{- if .Values.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ .Values.topologySpreadConstraints.topologyKey }}
+          whenUnsatisfiable: {{ .Values.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "frontend.selectorLabels" . | nindent 14 }}
+      {{- end }}
+      {{- if .Values.cloudfront.enabled }}
+      # Init container to prepare nginx config with CloudFront secret
+      initContainers:
+        - name: config-init
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp /etc/nginx/nginx.conf /nginx-conf/nginx.conf
+              if [ -n "$CLOUDFRONT_ORIGIN_SECRET" ]; then
+                sed -i "s/CLOUDFRONT_SECRET_PLACEHOLDER/$CLOUDFRONT_ORIGIN_SECRET/g" /nginx-conf/nginx.conf
+              fi
+          env:
+            - name: CLOUDFRONT_ORIGIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudfront.secretName }}
+                  key: {{ .Values.cloudfront.secretKey }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /nginx-conf
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
-            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           image: "{{ .Values.global.imageRegistry }}{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.cloudfront.enabled }}
+          # Override entrypoint to skip config processing (done by init container)
+          command: ["nginx", "-g", "daemon off;", "-c", "/nginx-conf/nginx.conf"]
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -49,15 +101,24 @@ spec:
               mountPath: /tmp
             - name: nginx-cache
               mountPath: /var/cache/nginx
-            - name: nginx-run
-              mountPath: /var/run
+            - name: nginx-log
+              mountPath: /var/log/nginx
+            {{- if .Values.cloudfront.enabled }}
+            - name: nginx-conf
+              mountPath: /nginx-conf
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
         - name: nginx-cache
           emptyDir: {}
-        - name: nginx-run
+        - name: nginx-log
           emptyDir: {}
+        {{- if .Values.cloudfront.enabled }}
+        - name: nginx-conf
+          emptyDir: {}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

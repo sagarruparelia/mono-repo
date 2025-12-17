@@ -5,14 +5,27 @@
 
 services:
   # ---------------------------------------------------------------------------
-  # Redis/Valkey - Session Store
+  # Redis/Valkey - Session Store (v9.0.1 - Dec 2025)
   # ---------------------------------------------------------------------------
   redis:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9.0-alpine
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # MongoDB - Document Store (v8.x - Dec 2025)
+  # ---------------------------------------------------------------------------
+  mongo:
+    image: mongo:8-noble
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -51,6 +64,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/actuator/health/liveness"]
       interval: 10s
@@ -80,7 +95,7 @@ services:
   # Mock IDP (for HSID OAuth2 simulation)
   # ---------------------------------------------------------------------------
   mock-idp:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     ports:
       - "8081:80"
     command: >
@@ -92,7 +107,7 @@ services:
   # Mock Permissions API
   # ---------------------------------------------------------------------------
   mock-permissions:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     ports:
       - "8082:80"
     command: >

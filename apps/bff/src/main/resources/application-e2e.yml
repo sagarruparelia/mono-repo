@@ -23,13 +23,9 @@ spring:
             jwk-set-uri: http://localhost:9999/.well-known/jwks.json
             user-info-uri: http://localhost:9999/userinfo
 
-  # Disable data sources and OAuth2 for local E2E (no IDP available)
+  # Disable OAuth2 for E2E (no IDP available) - keep MongoDB and Redis for Docker
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration
-      - org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration
       - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
       - org.springframework.boot.autoconfigure.security.oauth2.client.reactive.ReactiveOAuth2ClientAutoConfiguration
 
@@ -39,6 +35,7 @@ spring:
       - optional:classpath:config/security-paths.yml
       - optional:classpath:config/rate-limiting.yml
       - optional:classpath:config/zero-trust.yml
+      - optional:classpath:config/abac-policies.yml
 
 # Security paths for E2E
 security:
@@ -94,9 +91,9 @@ app:
         operator-name: X-Operator-Name
         correlation-id: X-Correlation-Id
 
-  # Enable authorization with mock permissions
+  # Enable authorization (required by DocumentController)
   authz:
-    enabled: false  # Disable ABAC for simpler E2E testing
+    enabled: true
     permissions-api:
       url: http://mock-permissions:8082
       timeout: 5s
@@ -126,3 +123,13 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    # Disable non-critical health indicators for E2E testing
+    s3:
+      enabled: false
+    permissionsApi:
+      enabled: false
+
+  # Disable tracing for E2E (no OTLP collector)
+  tracing:
+    enabled: false

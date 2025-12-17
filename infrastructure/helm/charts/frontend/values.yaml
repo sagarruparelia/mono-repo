@@ -1,4 +1,5 @@
 # Default values for frontend chart
+# Enterprise production-ready configuration
 
 replicaCount: 2
 
@@ -10,6 +11,20 @@ image:
 nameOverride: ""
 fullnameOverride: ""
 
+# =============================================================================
+# CloudFront Configuration
+# =============================================================================
+cloudfront:
+  # Enable origin verification (requires CloudFront custom header)
+  enabled: false
+  # Secret name containing CLOUDFRONT_ORIGIN_SECRET
+  # Create with: kubectl create secret generic cloudfront-origin --from-literal=secret=<your-secret>
+  secretName: cloudfront-origin
+  secretKey: secret
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
 service:
   type: ClusterIP
   port: 8080
@@ -20,6 +35,9 @@ ingress:
   annotations: {}
   hosts: []
 
+# =============================================================================
+# Resource Configuration
+# =============================================================================
 resources:
   requests:
     cpu: 100m
@@ -28,18 +46,43 @@ resources:
     cpu: 500m
     memory: 256Mi
 
+# =============================================================================
+# Autoscaling Configuration
+# =============================================================================
 autoscaling:
   enabled: true
   minReplicas: 2
   maxReplicas: 6
   targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
 
+# =============================================================================
+# Pod Disruption Budget (High Availability)
+# =============================================================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# =============================================================================
+# Topology Spread (Multi-AZ Distribution)
+# =============================================================================
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+# =============================================================================
+# Health Checks
+# =============================================================================
 livenessProbe:
   httpGet:
     path: /health
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 readinessProbe:
   httpGet:
@@ -47,7 +90,12 @@ readinessProbe:
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
 
+# =============================================================================
+# Scheduling
+# =============================================================================
 nodeSelector: {}
 tolerations: []
 affinity: {}
