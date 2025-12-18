@@ -52,16 +52,25 @@ spec:
             - /bin/sh
             - -c
             - |
+              # Copy nginx configs to writable volume
               cp /etc/nginx/nginx.conf /nginx-conf/nginx.conf
+              cp /etc/nginx/conf.d/mfe-allowed-origins.conf /nginx-conf/mfe-allowed-origins.conf
+              # Update include path to use /nginx-conf/ directory
+              sed -i "s|/etc/nginx/conf.d/mfe-allowed-origins.conf|/nginx-conf/mfe-allowed-origins.conf|g" /nginx-conf/nginx.conf
+              # Substitute CloudFront secret
               if [ -n "$CLOUDFRONT_ORIGIN_SECRET" ]; then
                 sed -i "s/CLOUDFRONT_SECRET_PLACEHOLDER/$CLOUDFRONT_ORIGIN_SECRET/g" /nginx-conf/nginx.conf
               fi
+              # Substitute MFE allowed origins
+              sed -i "s/\${MFE_ALLOWED_ORIGINS}/$MFE_ALLOWED_ORIGINS/g" /nginx-conf/mfe-allowed-origins.conf
           env:
             - name: CLOUDFRONT_ORIGIN_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.cloudfront.secretName }}
                   key: {{ .Values.cloudfront.secretKey }}
+            - name: MFE_ALLOWED_ORIGINS
+              value: {{ .Values.mfe.allowedOrigins | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -86,6 +95,9 @@ spec:
           # Override entrypoint to skip config processing (done by init container)
           command: ["nginx", "-g", "daemon off;", "-c", "/nginx-conf/nginx.conf"]
           {{- end }}
+          env:
+            - name: MFE_ALLOWED_ORIGINS
+              value: {{ .Values.mfe.allowedOrigins | quote }}
           ports:
             - name: http
               containerPort: 8080

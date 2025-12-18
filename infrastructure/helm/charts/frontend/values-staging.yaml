@@ -1,0 +1,17 @@
+# Staging environment values
+# Usage: helm upgrade frontend ./frontend -f values.yaml -f values-staging.yaml
+
+replicaCount: 2
+
+# MFE allowed origins for staging
+mfe:
+  allowedOrigins: "*.staging.abc.com *.uat.partner1.com *.staging.partner2.com"
+
+# Moderate resources for staging
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

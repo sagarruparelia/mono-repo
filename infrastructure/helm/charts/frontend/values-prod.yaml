@@ -1,0 +1,29 @@
+# Production environment values
+# Usage: helm upgrade frontend ./frontend -f values.yaml -f values-prod.yaml
+
+replicaCount: 3
+
+# CloudFront enabled in production
+cloudfront:
+  enabled: true
+  secretName: cloudfront-origin
+  secretKey: secret
+
+# MFE allowed origins for production
+mfe:
+  allowedOrigins: "*.abc.com *.partner1.com *.partner2.com"
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Production resources
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi

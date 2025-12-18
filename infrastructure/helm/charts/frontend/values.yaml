@@ -23,6 +23,20 @@ cloudfront:
   secretKey: secret
 
 # =============================================================================
+# MFE (Micro Frontend) Configuration
+# =============================================================================
+mfe:
+  # Allowed origins for MFE bundle embedding (referer-based soft security)
+  # Space-separated list of domains that can embed MFE bundles
+  # Supports wildcards: *.example.com matches sub.example.com
+  # Real security is enforced at API layer via OAuth2
+  allowedOrigins: "localhost 127.0.0.1"
+  # Examples per environment:
+  #   dev:     "localhost *.dev.abc.com *.dev.partner1.com"
+  #   staging: "*.staging.abc.com *.uat.partner1.com"
+  #   prod:    "*.abc.com *.partner1.com *.partner2.com"
+
+# =============================================================================
 # Service Configuration
 # =============================================================================
 service:

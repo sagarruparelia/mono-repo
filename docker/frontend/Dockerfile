@@ -80,6 +80,9 @@ RUN mkdir -p /var/cache/nginx/client_temp \
 # Copy nginx configuration
 COPY --chown=nginx:nginx docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
+# Copy MFE allowed origins config (can be overridden by ConfigMap mount)
+COPY --chown=nginx:nginx docker/nginx/mfe-allowed-origins.conf /etc/nginx/conf.d/mfe-allowed-origins.conf
+
 # Copy entrypoint script
 COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
@@ -94,6 +97,11 @@ COPY --from=builder --chown=nginx:nginx /app/dist/mfe/ /usr/share/nginx/html/mfe
 # Environment variable for CloudFront origin verification
 # Set this in K8s deployment when CloudFront is configured
 ENV CLOUDFRONT_ORIGIN_SECRET=""
+
+# MFE allowed origins - space-separated list of domains
+# Override per environment via env var or K8s ConfigMap
+# Example: "*.abc.com *.partner1.com localhost"
+ENV MFE_ALLOWED_ORIGINS="localhost 127.0.0.1"
 
 # Switch to non-root user
 USER nginx
