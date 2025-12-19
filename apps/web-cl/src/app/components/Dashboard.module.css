@@ -20,6 +20,39 @@
   font-size: 0.875rem;
 }
 
+.memberLabel {
+  margin: 0.5rem 0 0;
+  padding: 0.25rem 0.75rem;
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Viewing Banner */
+.viewingBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 0.5rem;
+}
+
+.viewingLabel {
+  font-size: 0.875rem;
+  color: #92400e;
+}
+
+.viewingName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #78350f;
+}
+
 .section {
   margin-bottom: 2rem;
 }
@@ -139,8 +172,16 @@
 }
 
 .familyCardLabel {
+  display: block;
   font-size: 0.75rem;
   color: #6b7280;
+}
+
+.familyCardDob {
+  display: block;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  margin-top: 0.125rem;
 }
 
 .selectedBadge {

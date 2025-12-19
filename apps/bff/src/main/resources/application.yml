@@ -25,22 +25,24 @@ spring:
             client-authentication-method: none  # PKCE - no client secret
         provider:
           hsid:
-            issuer-uri: ${HSID_ISSUER_URI}
-            authorization-uri: ${HSID_AUTH_URI}
-            token-uri: ${HSID_TOKEN_URI}
-            jwk-set-uri: ${HSID_JWKS_URI}
-            user-info-uri: ${HSID_USERINFO_URI}
+            # HSID base URL - set this to switch environments
+
+            issuer-uri: ${HSID_BASE_URL}
+            authorization-uri: ${HSID_BASE_URL}/oidc/authorize
+            token-uri: ${HSID_BASE_URL}/oidc/token
+            jwk-set-uri: ${HSID_BASE_URL}/.well-known/jwks.json
+            user-info-uri: ${HSID_BASE_URL}/oidc/userinfo
             user-name-attribute: sub
       # Resource Server (for MFE proxy JWT validation)
       resourceserver:
         jwt:
-          issuer-uri: ${OAUTH2_CC_ISSUER_URI:${HSID_ISSUER_URI}}
+          issuer-uri: ${OAUTH2_CC_ISSUER_URI:${HSID_BASE_URL}}
           audiences: bff-api
 
   # MongoDB (existing)
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/bff}
+      uri: ${MONGODB_URI}
 
   # Redis/Valkey Session
   session:

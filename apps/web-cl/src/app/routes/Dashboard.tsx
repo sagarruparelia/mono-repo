@@ -1,10 +1,12 @@
 import { useUser, usePersona, useEffectiveMemberId, useDependentsMetadata, useUserInfo } from '@mono-repo/shared-state';
-import { YouthDashboard } from '../components/YouthDashboard';
-import { ParentDashboard } from '../components/ParentDashboard';
+import { MemberDashboard } from '../components/MemberDashboard';
+import { ResponsiblePartyDashboard } from '../components/ResponsiblePartyDashboard';
 
 /**
  * Main dashboard page after authentication
- * Renders different views based on persona (youth vs parent)
+ * Renders different views based on persona:
+ * - "individual" → Member Dashboard (viewing own records)
+ * - "parent" → Responsible Party Dashboard (can view dependents' records)
  */
 export function Dashboard() {
   const user = useUser();
@@ -15,9 +17,10 @@ export function Dashboard() {
   // Fetch user info on first load - data is cached by React Query
   useUserInfo();
 
+  // Responsible Party persona (parent in HSID terms)
   if (persona === 'parent') {
     return (
-      <ParentDashboard
+      <ResponsiblePartyDashboard
         user={user}
         dependents={dependents || []}
         selectedMemberId={effectiveMemberId}
@@ -25,7 +28,8 @@ export function Dashboard() {
     );
   }
 
-  return <YouthDashboard user={user} memberId={effectiveMemberId} />;
+  // Member persona (individual in HSID terms)
+  return <MemberDashboard user={user} memberId={effectiveMemberId} />;
 }
 
 export default Dashboard;

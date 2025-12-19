@@ -1,6 +1,7 @@
 package com.example.bff.auth.controller;
 
 import com.example.bff.auth.dto.DependentDto;
+import com.example.bff.auth.service.TokenService;
 import com.example.bff.session.model.SessionData;
 import com.example.bff.session.service.SessionService;
 import org.springframework.http.HttpCookie;
@@ -29,8 +30,14 @@ public class AuthController {
     @Nullable
     private final SessionService sessionService;
 
-    public AuthController(@Nullable SessionService sessionService) {
+    @Nullable
+    private final TokenService tokenService;
+
+    public AuthController(
+            @Nullable SessionService sessionService,
+            @Nullable TokenService tokenService) {
         this.sessionService = sessionService;
+        this.tokenService = tokenService;
     }
 
     /**
@@ -172,13 +179,61 @@ public class AuthController {
     }
 
     /**
-     * Login endpoint - redirects to HSID
-     * This is handled by Spring Security OAuth2 login
+     * Gets a fresh access token for micro-products.
+     * Refreshes the token if expired or about to expire.
+     *
+     * <p>Use this endpoint when launching micro-products that require
+     * a valid HSID access token.
+     *
+     * @return fresh access token or error if re-authentication required
+     */
+    @PostMapping("/token")
+    public Mono<ResponseEntity<Map<String, Object>>> getFreshToken(ServerWebExchange exchange) {
+        if (tokenService == null) {
+            return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of(
+                            "error", "token_service_unavailable",
+                            "message", "Token service is not configured"
+                    )));
+        }
+
+        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
+
+        if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                            "error", "no_session",
+                            "message", "No active session"
+                    )));
+        }
+
+        String sessionId = sessionCookie.getValue();
+
+        return tokenService.getFreshAccessToken(sessionId)
+                .map(accessToken -> ResponseEntity.ok(Map.<String, Object>of(
+                        "access_token", accessToken,
+                        "token_type", "Bearer"
+                )))
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of(
+                                "error", "token_expired",
+                                "message", "Session expired, please re-authenticate",
+                                "login_url", "/api/auth/login"
+                        )));
+    }
+
+    /**
+     * Login endpoint - redirects to OAuth2 authorization (HSID with PKCE)
+     * UI calls this endpoint to initiate the OIDC login flow
      */
     @GetMapping("/login")
-    public Mono<Void> login() {
-        // Spring Security will redirect to HSID
-        return Mono.empty();
+    public Mono<Void> login(ServerWebExchange exchange) {
+        // Redirect to Spring Security's OAuth2 authorization endpoint
+        // This triggers the PKCE flow with HSID
+        exchange.getResponse().setStatusCode(HttpStatus.FOUND);
+        exchange.getResponse().getHeaders().setLocation(
+                java.net.URI.create("/oauth2/authorization/hsid"));
+        return exchange.getResponse().setComplete();
     }
 
     /**

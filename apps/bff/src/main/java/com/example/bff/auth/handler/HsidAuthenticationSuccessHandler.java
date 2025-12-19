@@ -1,5 +1,7 @@
 package com.example.bff.auth.handler;
 
+import com.example.bff.auth.model.TokenData;
+import com.example.bff.auth.service.TokenService;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
 import com.example.bff.config.properties.PersonaProperties;
@@ -12,7 +14,11 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
+import org.springframework.security.oauth2.core.OAuth2RefreshToken;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.server.WebFilterExchange;
 import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
@@ -22,6 +28,7 @@ import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -37,14 +44,24 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     @Nullable
     private final PermissionsFetchService permissionsFetchService;
 
+    @Nullable
+    private final TokenService tokenService;
+
+    @Nullable
+    private final ReactiveOAuth2AuthorizedClientService authorizedClientService;
+
     private final PersonaProperties personaConfig;
 
     public HsidAuthenticationSuccessHandler(
             @Nullable SessionService sessionService,
             @Nullable PermissionsFetchService permissionsFetchService,
+            @Nullable TokenService tokenService,
+            @Nullable ReactiveOAuth2AuthorizedClientService authorizedClientService,
             PersonaProperties personaConfig) {
         this.sessionService = sessionService;
         this.permissionsFetchService = permissionsFetchService;
+        this.tokenService = tokenService;
+        this.authorizedClientService = authorizedClientService;
         this.personaConfig = personaConfig;
     }
 
@@ -81,16 +98,101 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         // Fetch permissions if service is available
         Mono<PermissionSet> permissionsMono = fetchPermissions(userId, persona);
 
+        // Get authorized client for token storage
+        Mono<OAuth2AuthorizedClient> authorizedClientMono = getAuthorizedClient(token);
+
         return sessionService.invalidateExistingSessions(userId)
-                .then(permissionsMono)
-                .flatMap(permissions -> {
+                .then(Mono.zip(permissionsMono, authorizedClientMono.defaultIfEmpty(createEmptyClient())))
+                .flatMap(tuple -> {
+                    PermissionSet permissions = tuple.getT1();
+                    OAuth2AuthorizedClient authorizedClient = tuple.getT2();
+
                     // Use permissions to get viewable dependents (overrides token dependents)
                     log.info("Creating session with {} viewable dependents for user {}",
                             permissions.getViewableDependents().size(), userId);
+
                     return sessionService.createSessionWithPermissions(
-                            userId, oidcUser, persona, clientInfo, permissions);
-                })
-                .flatMap(sessionId -> setSessionCookieAndRedirect(exchange.getExchange(), sessionId));
+                            userId, oidcUser, persona, clientInfo, permissions)
+                            .flatMap(sessionId -> storeTokensAndRedirect(
+                                    exchange.getExchange(), sessionId, authorizedClient, oidcUser));
+                });
+    }
+
+    /**
+     * Gets the OAuth2AuthorizedClient containing tokens.
+     */
+    private Mono<OAuth2AuthorizedClient> getAuthorizedClient(OAuth2AuthenticationToken token) {
+        if (authorizedClientService == null) {
+            log.debug("AuthorizedClientService not available, skipping token storage");
+            return Mono.empty();
+        }
+
+        return authorizedClientService.loadAuthorizedClient(
+                token.getAuthorizedClientRegistrationId(),
+                token.getName()
+        );
+    }
+
+    /**
+     * Creates an empty placeholder client when authorized client is not available.
+     */
+    private OAuth2AuthorizedClient createEmptyClient() {
+        return null;
+    }
+
+    /**
+     * Stores tokens and redirects to the app.
+     */
+    private Mono<Void> storeTokensAndRedirect(
+            ServerWebExchange exchange,
+            String sessionId,
+            @Nullable OAuth2AuthorizedClient authorizedClient,
+            OidcUser oidcUser) {
+
+        Mono<Void> storeTokensMono = Mono.empty();
+
+        if (tokenService != null && authorizedClient != null) {
+            TokenData tokenData = extractTokenData(authorizedClient, oidcUser);
+            if (tokenData != null) {
+                storeTokensMono = tokenService.storeTokens(sessionId, tokenData)
+                        .doOnSuccess(v -> log.debug("Tokens stored for session {}", sessionId))
+                        .onErrorResume(e -> {
+                            log.warn("Failed to store tokens: {}", e.getMessage());
+                            return Mono.empty();
+                        });
+            }
+        }
+
+        return storeTokensMono.then(setSessionCookieAndRedirect(exchange, sessionId));
+    }
+
+    /**
+     * Extracts token data from the authorized client and OIDC user.
+     */
+    @Nullable
+    private TokenData extractTokenData(OAuth2AuthorizedClient authorizedClient, OidcUser oidcUser) {
+        OAuth2AccessToken accessToken = authorizedClient.getAccessToken();
+        OAuth2RefreshToken refreshToken = authorizedClient.getRefreshToken();
+
+        if (accessToken == null) {
+            log.warn("No access token available");
+            return null;
+        }
+
+        String idToken = oidcUser.getIdToken() != null ? oidcUser.getIdToken().getTokenValue() : null;
+        Instant accessTokenExpiry = accessToken.getExpiresAt();
+        Instant refreshTokenExpiry = refreshToken != null ? refreshToken.getExpiresAt() : null;
+
+        log.debug("Extracted tokens - access expires: {}, refresh expires: {}",
+                accessTokenExpiry, refreshTokenExpiry);
+
+        return new TokenData(
+                accessToken.getTokenValue(),
+                refreshToken != null ? refreshToken.getTokenValue() : null,
+                idToken,
+                accessTokenExpiry,
+                refreshTokenExpiry
+        );
     }
 
     private Mono<PermissionSet> fetchPermissions(String userId, String persona) {
