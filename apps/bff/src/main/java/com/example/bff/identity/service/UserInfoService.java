@@ -1,0 +1,117 @@
+package com.example.bff.identity.service;
+
+import com.example.bff.config.properties.ExternalApiProperties;
+import com.example.bff.identity.dto.UserInfoResponse;
+import com.example.bff.identity.exception.IdentityServiceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.lang.NonNull;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+
+import java.time.Duration;
+
+import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
+
+/**
+ * Service for fetching user information from the User Service API.
+ * Endpoint: /api/identity/user/individual/v1/read
+ *
+ * Responses are cached in Redis for improved performance.
+ */
+@Service
+public class UserInfoService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(UserInfoService.class);
+    private static final String SERVICE_NAME = "UserService";
+
+    private final WebClient webClient;
+    private final ExternalApiProperties apiProperties;
+    private final IdentityCacheService cacheService;
+
+    public UserInfoService(
+            @Qualifier(EXTERNAL_API_WEBCLIENT) WebClient webClient,
+            ExternalApiProperties apiProperties,
+            IdentityCacheService cacheService) {
+        this.webClient = webClient;
+        this.apiProperties = apiProperties;
+        this.cacheService = cacheService;
+    }
+
+    /**
+     * Fetch user information by HSID UUID.
+     * Results are cached in Redis.
+     *
+     * @param hsidUuid The user's HSID UUID (from token sub claim)
+     * @return User information response
+     * @throws IdentityServiceException if API call fails after retries
+     */
+    @NonNull
+    public Mono<UserInfoResponse> getUserInfo(@NonNull String hsidUuid) {
+        LOG.debug("Fetching user info for hsidUuid: {}", hsidUuid);
+
+        Mono<UserInfoResponse> loader = fetchFromApi(hsidUuid);
+        return cacheService.getOrLoadUserInfo(hsidUuid, loader, UserInfoResponse.class);
+    }
+
+    /**
+     * Fetch user info directly from API (bypassing cache).
+     */
+    private Mono<UserInfoResponse> fetchFromApi(String hsidUuid) {
+        var retryConfig = apiProperties.retry();
+        var timeout = apiProperties.userService().timeout();
+
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(apiProperties.userService().path())
+                        .queryParam("hsidUuid", hsidUuid)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, response -> {
+                    if (response.statusCode() == HttpStatus.NOT_FOUND) {
+                        LOG.warn("User not found for hsidUuid: {}", hsidUuid);
+                        return Mono.error(new IdentityServiceException(
+                                SERVICE_NAME, 404, "User not found"));
+                    }
+                    return response.bodyToMono(String.class)
+                            .flatMap(body -> Mono.error(new IdentityServiceException(
+                                    SERVICE_NAME, response.statusCode().value(), body)));
+                })
+                .onStatus(HttpStatusCode::is5xxServerError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(new IdentityServiceException(
+                                        SERVICE_NAME, response.statusCode().value(), body))))
+                .bodyToMono(UserInfoResponse.class)
+                .timeout(timeout)
+                .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
+                        .maxBackoff(retryConfig.maxBackoff())
+                        .filter(this::isRetryable)
+                        .doBeforeRetry(signal -> LOG.warn(
+                                "Retrying {} API call, attempt {}: {}",
+                                SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
+                .doOnSuccess(response -> LOG.debug(
+                        "Successfully fetched user info for hsidUuid: {}", hsidUuid))
+                .doOnError(e -> LOG.error(
+                        "Failed to fetch user info for hsidUuid {}: {}", hsidUuid, e.getMessage()));
+    }
+
+    /**
+     * Check if error is retryable (5xx errors and timeouts).
+     */
+    private boolean isRetryable(Throwable throwable) {
+        if (throwable instanceof WebClientResponseException ex) {
+            return ex.getStatusCode().is5xxServerError();
+        }
+        if (throwable instanceof IdentityServiceException ex) {
+            return ex.getStatusCode() >= 500;
+        }
+        // Retry on timeout
+        return throwable instanceof java.util.concurrent.TimeoutException;
+    }
+}

@@ -1,0 +1,181 @@
+package com.example.bff.identity.service;
+
+import com.example.bff.config.properties.ExternalApiProperties;
+import com.example.bff.identity.dto.EligibilityResponse;
+import com.example.bff.identity.exception.IdentityServiceException;
+import com.example.bff.identity.model.EligibilityResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+
+import java.time.LocalDate;
+import java.util.Map;
+
+import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
+import static com.example.bff.identity.model.EligibilityResult.GRACE_PERIOD_MONTHS;
+
+/**
+ * Service for checking member eligibility via the Graph API.
+ * Endpoint: /graph/1.0.0
+ *
+ * Returns eligibility status:
+ * - ACTIVE: Currently eligible (full self-access)
+ * - INACTIVE: Expired within 18-month grace period (limited self-access)
+ * - EXPIRED: Expired beyond grace period (no self-access)
+ * - NOT_ELIGIBLE: 404 from API (no eligibility record)
+ * - UNKNOWN: API error (treated as NOT_ELIGIBLE for security)
+ */
+@Service
+public class EligibilityService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(EligibilityService.class);
+    private static final String SERVICE_NAME = "Eligibility";
+    private static final String X_IDENTIFIER_HEADER = "x-identifier";
+
+    private final WebClient webClient;
+    private final ExternalApiProperties apiProperties;
+    private final IdentityCacheService cacheService;
+
+    public EligibilityService(
+            @Qualifier(EXTERNAL_API_WEBCLIENT) WebClient webClient,
+            ExternalApiProperties apiProperties,
+            IdentityCacheService cacheService) {
+        this.webClient = webClient;
+        this.apiProperties = apiProperties;
+        this.cacheService = cacheService;
+    }
+
+    /**
+     * Check eligibility for a member.
+     * Results are cached in Redis.
+     *
+     * @param memberEid     Member's Enterprise ID
+     * @param apiIdentifier API identifier for the x-identifier header
+     * @return Eligibility result with status and term date
+     */
+    @NonNull
+    public Mono<EligibilityResult>  checkEligibility(
+            @NonNull String memberEid,
+            @Nullable String apiIdentifier) {
+
+        LOG.debug("Checking eligibility for memberEid: {}", memberEid);
+
+        Mono<EligibilityResult> loader = fetchFromApi(memberEid, apiIdentifier)
+                .map(this::toEligibilityResult);
+
+        return cacheService.getOrLoadEligibility(memberEid, loader, EligibilityResult.class);
+    }
+
+    /**
+     * Fetch eligibility directly from API.
+     */
+    private Mono<EligibilityResponse> fetchFromApi(String memberEid, @Nullable String apiIdentifier) {
+        var retryConfig = apiProperties.retry();
+        var timeout = apiProperties.eligibility().timeout();
+
+        // GraphQL query for eligibility
+        String query = """
+                query {
+                    eligibility(memberEid: "%s") {
+                        status
+                        termDate
+                    }
+                }
+                """.formatted(memberEid);
+
+        var requestBuilder = webClient.post()
+                .uri(apiProperties.eligibility().path())
+                .body(BodyInserters.fromValue(Map.of("query", query)));
+
+        // Add x-identifier header if available
+        if (apiIdentifier != null && !apiIdentifier.isBlank()) {
+            requestBuilder.header(X_IDENTIFIER_HEADER, apiIdentifier);
+        }
+
+        return requestBuilder
+                .retrieve()
+                .onStatus(status -> status == HttpStatus.NOT_FOUND, response -> {
+                    LOG.debug("No eligibility record found for memberEid: {}", memberEid);
+                    // Return empty to trigger NOT_ELIGIBLE handling
+                    return Mono.empty();
+                })
+                .onStatus(HttpStatusCode::is4xxClientError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(new IdentityServiceException(
+                                        SERVICE_NAME, response.statusCode().value(), body))))
+                .onStatus(HttpStatusCode::is5xxServerError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(new IdentityServiceException(
+                                        SERVICE_NAME, response.statusCode().value(), body))))
+                .bodyToMono(EligibilityResponse.class)
+                .timeout(timeout)
+                .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
+                        .maxBackoff(retryConfig.maxBackoff())
+                        .filter(this::isRetryable)
+                        .doBeforeRetry(signal -> LOG.warn(
+                                "Retrying {} API call, attempt {}: {}",
+                                SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
+                .switchIfEmpty(Mono.just(new EligibilityResponse(null))) // 404 case
+                .doOnSuccess(response -> LOG.debug(
+                        "Eligibility check completed for memberEid: {}", memberEid))
+                .onErrorResume(e -> {
+                    // Fail closed: return UNKNOWN on errors
+                    LOG.error("Failed to check eligibility for memberEid {}: {}", memberEid, e.getMessage());
+                    return Mono.just(new EligibilityResponse(null));
+                });
+    }
+
+    /**
+     * Convert API response to eligibility result with business logic.
+     */
+    private EligibilityResult toEligibilityResult(EligibilityResponse response) {
+        String status = response.getStatus();
+        LocalDate termDate = response.getTermDate();
+
+        // No eligibility record (404 or empty response)
+        if (status == null) {
+            return EligibilityResult.notEligible();
+        }
+
+        // Active eligibility
+        if ("active".equalsIgnoreCase(status)) {
+            return EligibilityResult.active(termDate);
+        }
+
+        // Inactive - check if within grace period
+        if (termDate != null) {
+            LocalDate gracePeriodEnd = termDate.plusMonths(GRACE_PERIOD_MONTHS);
+            if (LocalDate.now().isBefore(gracePeriodEnd)) {
+                return EligibilityResult.inactive(termDate);
+            } else {
+                return EligibilityResult.expired(termDate);
+            }
+        }
+
+        // No term date but not active - treat as expired
+        return EligibilityResult.notEligible();
+    }
+
+    /**
+     * Check if error is retryable (5xx errors and timeouts).
+     */
+    private boolean isRetryable(Throwable throwable) {
+        if (throwable instanceof WebClientResponseException ex) {
+            return ex.getStatusCode().is5xxServerError();
+        }
+        if (throwable instanceof IdentityServiceException ex) {
+            return ex.getStatusCode() >= 500;
+        }
+        return throwable instanceof java.util.concurrent.TimeoutException;
+    }
+}

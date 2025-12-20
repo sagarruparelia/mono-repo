@@ -1,5 +1,8 @@
 package com.example.bff.common.exception;
 
+import com.example.bff.identity.exception.AgeRestrictionException;
+import com.example.bff.identity.exception.IdentityServiceException;
+import com.example.bff.identity.exception.NoAccessException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -67,6 +70,63 @@ public class GlobalExceptionHandler {
                 .body(Map.of(
                         "error", "access_denied",
                         "message", "Access denied",
+                        "timestamp", Instant.now().toString()
+                ));
+    }
+
+    /**
+     * Handles age restriction violations.
+     *
+     * @param ex the exception
+     * @return error response
+     */
+    @ExceptionHandler(AgeRestrictionException.class)
+    @NonNull
+    public ResponseEntity<Map<String, Object>> handleAgeRestriction(@NonNull AgeRestrictionException ex) {
+        LOG.warn("Age restriction: {}", sanitizeForLog(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                        "error", "age_restricted",
+                        "code", "AGE_RESTRICTION",
+                        "message", "User does not meet minimum age requirement",
+                        "timestamp", Instant.now().toString()
+                ));
+    }
+
+    /**
+     * Handles no access violations (no eligibility and no managed members).
+     *
+     * @param ex the exception
+     * @return error response
+     */
+    @ExceptionHandler(NoAccessException.class)
+    @NonNull
+    public ResponseEntity<Map<String, Object>> handleNoAccess(@NonNull NoAccessException ex) {
+        LOG.warn("No access: {}", sanitizeForLog(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                        "error", "no_access",
+                        "code", "NO_ELIGIBILITY_OR_MANAGED_MEMBERS",
+                        "message", "User has no access to the system",
+                        "timestamp", Instant.now().toString()
+                ));
+    }
+
+    /**
+     * Handles identity service failures.
+     *
+     * @param ex the exception
+     * @return error response
+     */
+    @ExceptionHandler(IdentityServiceException.class)
+    @NonNull
+    public ResponseEntity<Map<String, Object>> handleIdentityServiceError(@NonNull IdentityServiceException ex) {
+        LOG.error("Identity service error: {}", sanitizeForLog(ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of(
+                        "error", "identity_service_error",
+                        "code", "IDENTITY_SERVICE_UNAVAILABLE",
+                        "message", "Unable to verify identity. Please try again later.",
                         "timestamp", Instant.now().toString()
                 ));
     }

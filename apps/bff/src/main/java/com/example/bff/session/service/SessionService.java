@@ -2,6 +2,8 @@ package com.example.bff.session.service;
 
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.config.properties.SessionProperties;
+import com.example.bff.identity.model.ManagedMember;
+import com.example.bff.identity.model.MemberAccess;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -369,6 +371,102 @@ public class SessionService {
                     storePermissions(sessionId, permissions)
                         .thenReturn(sessionId)
                 );
+    }
+
+    /**
+     * Creates a session with member access information.
+     * This is the enriched session creation that includes eligibility and managed members.
+     *
+     * @param userId       the user ID (hsidUuid)
+     * @param user         the OIDC user
+     * @param clientInfo   client connection info
+     * @param memberAccess the resolved member access data
+     * @param permissions  the permission set
+     * @return Mono emitting the new session ID
+     */
+    @NonNull
+    public Mono<String> createSessionWithMemberAccess(
+            @NonNull String userId,
+            @NonNull OidcUser user,
+            @NonNull ClientInfo clientInfo,
+            @NonNull MemberAccess memberAccess,
+            @NonNull PermissionSet permissions) {
+
+        if (!isValidUserId(userId)) {
+            LOG.warn("Invalid user ID format in createSessionWithMemberAccess");
+            return Mono.error(new IllegalArgumentException("Invalid user ID format"));
+        }
+
+        String sessionId = UUID.randomUUID().toString();
+        String sessionKey = SESSION_KEY + sessionId;
+        String userSessionKey = USER_SESSION_KEY + userId;
+
+        // Build session data map with member access fields
+        Map<String, String> sessionData = new HashMap<>();
+        sessionData.put("userId", userId);
+        sessionData.put("email", user.getEmail() != null ? user.getEmail() : "");
+        sessionData.put("name", user.getFullName() != null ? user.getFullName() : "");
+        sessionData.put("persona", memberAccess.getEffectivePersona());
+        sessionData.put("dependents", buildDependentsString(memberAccess));
+        sessionData.put("ipAddress", clientInfo.ipAddress());
+        sessionData.put("userAgentHash", clientInfo.userAgentHash());
+        sessionData.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
+        sessionData.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
+
+        // Member access fields
+        sessionData.put("eid", memberAccess.eid());
+        sessionData.put("birthdate", memberAccess.birthdate().toString());
+        sessionData.put("isResponsibleParty", String.valueOf(memberAccess.isResponsibleParty()));
+        if (memberAccess.apiIdentifier() != null) {
+            sessionData.put("apiIdentifier", memberAccess.apiIdentifier());
+        }
+        sessionData.put("eligibilityStatus", memberAccess.eligibilityStatus().name());
+        if (memberAccess.termDate() != null) {
+            sessionData.put("termDate", memberAccess.termDate().toString());
+        }
+        if (memberAccess.hasActiveManagedMembers()) {
+            sessionData.put("managedMembersJson", serializeManagedMembers(memberAccess.managedMembers()));
+            if (memberAccess.getEarliestPermissionEndDate() != null) {
+                sessionData.put("earliestPermissionEndDate", memberAccess.getEarliestPermissionEndDate().toString());
+            }
+        }
+
+        Duration ttl = sessionProperties.timeout();
+
+        LOG.info("Creating session with member access for user {}: sessionId={}, persona={}, eligibility={}",
+                sanitizeForLog(userId), sanitizeForLog(sessionId),
+                memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
+
+        return redisOps.opsForHash().putAll(sessionKey, sessionData)
+                .then(redisOps.expire(sessionKey, ttl))
+                .then(redisOps.opsForValue().set(userSessionKey, sessionId, ttl))
+                .then(storePermissions(sessionId, permissions))
+                .thenReturn(sessionId);
+    }
+
+    /**
+     * Builds a comma-separated string of dependent EIDs from managed members.
+     */
+    private String buildDependentsString(MemberAccess memberAccess) {
+        if (!memberAccess.hasActiveManagedMembers()) {
+            return "";
+        }
+        return memberAccess.managedMembers().stream()
+                .map(ManagedMember::eid)
+                .reduce((a, b) -> a + "," + b)
+                .orElse("");
+    }
+
+    /**
+     * Serializes managed members to JSON for session storage.
+     */
+    private String serializeManagedMembers(java.util.List<ManagedMember> managedMembers) {
+        try {
+            return objectMapper.writeValueAsString(managedMembers);
+        } catch (JsonProcessingException e) {
+            LOG.warn("Failed to serialize managed members: {}", e.getMessage());
+            return "[]";
+        }
     }
 
     /**

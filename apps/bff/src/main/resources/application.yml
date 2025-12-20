@@ -12,7 +12,7 @@ spring:
       - classpath:config/zero-trust.yml
       - classpath:config/abac-policies.yml
 
-  # OAuth2 Client Configuration (HSID PKCE)
+  # OAuth2 Client Configuration (HSID PKCE + External API Client Credentials)
   security:
     oauth2:
       client:
@@ -23,6 +23,12 @@ spring:
             redirect-uri: "{baseUrl}/api/auth/callback"
             scope: openid,profile,email
             client-authentication-method: none  # PKCE - no client secret
+          # External API client credentials for User Service, Eligibility, Permissions APIs
+          external-api:
+            client-id: ${EXTERNAL_API_CLIENT_ID}
+            client-secret: ${EXTERNAL_API_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope: openid
         provider:
           hsid:
             # HSID base URL - set this to switch environments
@@ -33,6 +39,8 @@ spring:
             jwk-set-uri: ${HSID_BASE_URL}/.well-known/jwks.json
             user-info-uri: ${HSID_BASE_URL}/oidc/userinfo
             user-name-attribute: sub
+          external-api:
+            token-uri: ${EXTERNAL_API_BASE_URL}/oauth2/token
       # Resource Server (for MFE proxy JWT validation)
       resourceserver:
         jwt:
@@ -190,6 +198,35 @@ app:
         required: [DAA, RPR]
       view-sensitive:
         required: [DAA, RPR, ROI]
+
+  # External Identity APIs (User Service, Eligibility, Permissions)
+  external-api:
+    base-url: ${EXTERNAL_API_BASE_URL:https://api.abc.com}
+    user-service:
+      path: /api/identity/user/individual/v1/read
+      timeout: 5s
+    eligibility:
+      path: /graph/1.0.0
+      timeout: 5s
+    permissions:
+      path: /api/consumer/prefs/del-gr/1.0.0
+      timeout: 5s
+    retry:
+      max-attempts: 3
+      initial-backoff: 100ms
+      max-backoff: 1s
+
+  # Identity API Response Caching
+  identity-cache:
+    user-service:
+      ttl: 60m
+      enabled: true
+    eligibility:
+      ttl: 60m
+      enabled: true
+    permissions:
+      ttl: 60m
+      enabled: true
 
   # External Integration (mTLS ALB for partner access)
   # Partners embed MFE components and proxy through mTLS ALB
