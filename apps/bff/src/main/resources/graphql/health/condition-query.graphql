@@ -1,0 +1,36 @@
+# Condition query for ECDH Health Data API
+# TODO: Add remaining ~30 parameters as needed
+
+query GetConditionByEid(
+  $eid: String!
+  $pageNum: Int
+  $pageSize: Int
+  $continuationToken: String
+) {
+  getConditionByEid(
+    eid: $eid
+    pageInfo: {
+      pageNum: $pageNum
+      pageSize: $pageSize
+      continuationToken: $continuationToken
+    }
+  ) {
+    pageInfo {
+      pageNum
+      pageSize
+      totalPages
+      totalRecords
+      continuationToken
+    }
+    conditions {
+      id
+      conditionCode
+      conditionName
+      category
+      onsetDate
+      abatementDate
+      clinicalStatus
+      verificationStatus
+    }
+  }
+}

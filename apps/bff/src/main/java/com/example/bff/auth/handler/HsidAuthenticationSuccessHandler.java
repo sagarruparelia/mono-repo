@@ -4,6 +4,7 @@ import com.example.bff.auth.model.TokenData;
 import com.example.bff.auth.service.TokenService;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
+import com.example.bff.health.service.HealthDataOrchestrator;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.NoAccessException;
 import com.example.bff.identity.model.MemberAccess;
@@ -61,17 +62,22 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     @Nullable
     private final ReactiveOAuth2AuthorizedClientService authorizedClientService;
 
+    @Nullable
+    private final HealthDataOrchestrator healthDataOrchestrator;
+
     public HsidAuthenticationSuccessHandler(
             @NonNull SessionService sessionService,
             @NonNull MemberAccessOrchestrator memberAccessOrchestrator,
             @Nullable PermissionsFetchService permissionsFetchService,
             @Nullable TokenService tokenService,
-            @Nullable ReactiveOAuth2AuthorizedClientService authorizedClientService) {
+            @Nullable ReactiveOAuth2AuthorizedClientService authorizedClientService,
+            @Nullable HealthDataOrchestrator healthDataOrchestrator) {
         this.sessionService = sessionService;
         this.memberAccessOrchestrator = memberAccessOrchestrator;
         this.permissionsFetchService = permissionsFetchService;
         this.tokenService = tokenService;
         this.authorizedClientService = authorizedClientService;
+        this.healthDataOrchestrator = healthDataOrchestrator;
     }
 
     @Override
@@ -134,8 +140,13 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
 
                     return sessionService.createSessionWithMemberAccess(
                             userId, oidcUser, clientInfo, memberAccess, permissions)
-                            .flatMap(sessionId -> storeTokensAndRedirect(
-                                    exchange.getExchange(), sessionId, authorizedClient, oidcUser));
+                            .flatMap(sessionId -> {
+                                // Trigger background health data fetch (fire-and-forget)
+                                triggerHealthDataFetch(memberAccess);
+
+                                return storeTokensAndRedirect(
+                                        exchange.getExchange(), sessionId, authorizedClient, oidcUser);
+                            });
                 });
     }
 
@@ -415,5 +426,27 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
             return "null";
         }
         return value.replaceAll("[\\r\\n\\t]", "").substring(0, Math.min(value.length(), 64));
+    }
+
+    /**
+     * Triggers background health data fetch for the logged-in user and their managed members.
+     * This is fire-and-forget - errors are logged but don't affect the login flow.
+     */
+    private void triggerHealthDataFetch(MemberAccess memberAccess) {
+        if (healthDataOrchestrator == null) {
+            log.debug("HealthDataOrchestrator not available, skipping background fetch");
+            return;
+        }
+
+        try {
+            healthDataOrchestrator.triggerBackgroundFetchForSession(
+                    memberAccess.eid(),
+                    null,  // apiIdentifier - not available at login time
+                    memberAccess.managedMembers()
+            );
+            log.debug("Triggered background health data fetch for user: {}", memberAccess.eid());
+        } catch (Exception e) {
+            log.warn("Failed to trigger background health data fetch: {}", e.getMessage());
+        }
     }
 }

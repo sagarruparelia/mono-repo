@@ -1,0 +1,36 @@
+# Immunization query for ECDH Health Data API
+# TODO: Add remaining ~30 parameters as needed
+
+query GetImmunizationByEid(
+  $eid: String!
+  $pageNum: Int
+  $pageSize: Int
+  $continuationToken: String
+) {
+  getImmunizationByEid(
+    eid: $eid
+    pageInfo: {
+      pageNum: $pageNum
+      pageSize: $pageSize
+      continuationToken: $continuationToken
+    }
+  ) {
+    pageInfo {
+      pageNum
+      pageSize
+      totalPages
+      totalRecords
+      continuationToken
+    }
+    immunizations {
+      id
+      vaccineCode
+      vaccineName
+      administrationDate
+      provider
+      lotNumber
+      site
+      status
+    }
+  }
+}

@@ -37,7 +37,9 @@ security:
     # Accessible via browser session (HSID) or partner headers (PROXY via mTLS ALB)
     dual-auth:
       - pattern: "/api/health/**"
-        description: "Health summary endpoints"
+        description: "Health summary endpoints (legacy)"
+      - pattern: "/api/1.0.0/health/**"
+        description: "Health data API v1.0.0 (immunization, allergy, condition)"
       - pattern: "/api/profile/**"
         description: "Member profile endpoints"
       - pattern: "/api/documents/**"

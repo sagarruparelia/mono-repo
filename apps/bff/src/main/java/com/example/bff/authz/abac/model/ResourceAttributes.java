@@ -14,11 +14,12 @@ public record ResourceAttributes(
      * Resource types in the system.
      */
     public enum ResourceType {
-        DEPENDENT,  // Child/dependent (HSID context)
-        MEMBER,     // Member (Proxy context)
+        DEPENDENT,       // Child/dependent (HSID context)
+        MEMBER,          // Member (Proxy context)
         PROFILE,
         MEDICAL_RECORD,
-        DOCUMENT
+        DOCUMENT,
+        HEALTH_DATA      // Immunizations, allergies, conditions from ECDH
     }
 
     /**
@@ -137,5 +138,44 @@ public record ResourceAttributes(
                 ownerId,
                 null
         );
+    }
+
+    /**
+     * Create resource attributes for health data.
+     * Health data (immunizations, allergies, conditions) is sensitive.
+     *
+     * @param memberId the member whose health data is being accessed
+     */
+    public static ResourceAttributes healthData(String memberId) {
+        return new ResourceAttributes(
+                ResourceType.HEALTH_DATA,
+                memberId,
+                Sensitivity.SENSITIVE,
+                memberId,
+                null
+        );
+    }
+
+    /**
+     * Create resource attributes for health data with partner context.
+     *
+     * @param memberId the member whose health data is being accessed
+     * @param partnerId the partner organization ID (for proxy context)
+     */
+    public static ResourceAttributes healthData(String memberId, String partnerId) {
+        return new ResourceAttributes(
+                ResourceType.HEALTH_DATA,
+                memberId,
+                Sensitivity.SENSITIVE,
+                memberId,
+                partnerId
+        );
+    }
+
+    /**
+     * Check if resource is health data type.
+     */
+    public boolean isHealthData() {
+        return type == ResourceType.HEALTH_DATA;
     }
 }

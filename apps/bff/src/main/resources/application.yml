@@ -29,6 +29,12 @@ spring:
             client-secret: ${EXTERNAL_API_CLIENT_SECRET}
             authorization-grant-type: client_credentials
             scope: openid
+          # ECDH Health Data API client credentials (separate from external-api)
+          ecdh-api:
+            client-id: ${ECDH_API_CLIENT_ID}
+            client-secret: ${ECDH_API_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope: openid,health.read
         provider:
           hsid:
             # HSID base URL - set this to switch environments
@@ -41,6 +47,8 @@ spring:
             user-name-attribute: sub
           external-api:
             token-uri: ${EXTERNAL_API_BASE_URL}/oauth2/token
+          ecdh-api:
+            token-uri: ${ECDH_API_BASE_URL:https://api.abc.com}/oauth2/token
       # Resource Server (for MFE proxy JWT validation)
       resourceserver:
         jwt:
@@ -227,6 +235,30 @@ app:
     permissions:
       ttl: 60m
       enabled: true
+
+  # ECDH Health Data API Configuration
+  ecdh-api:
+    base-url: ${ECDH_API_BASE_URL:https://api.abc.com}
+    graph-path: /graph/1.0.0
+    timeout: 10s
+    retry:
+      max-attempts: 3
+      initial-backoff: 100ms
+      max-backoff: 2s
+
+  # Health Data Cache Configuration (MongoDB)
+  health-data-cache:
+    enabled: true
+    ttl: 24h
+    immunizations:
+      collection: immunizations
+    allergies:
+      collection: allergies
+    conditions:
+      collection: conditions
+    proactive-fetch:
+      enabled: true
+      delay-after-login: 500ms
 
   # External Integration (mTLS ALB for partner access)
   # Partners embed MFE components and proxy through mTLS ALB
