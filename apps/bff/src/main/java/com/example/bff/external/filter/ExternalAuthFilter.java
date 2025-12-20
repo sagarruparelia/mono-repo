@@ -11,9 +11,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
-import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
@@ -22,17 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
- * Filter for external partner authentication via mTLS ALB.
- *
- * <p>External partners (e.g., partner portals embedding MFE components) authenticate
- * via mTLS with the ALB and pass user context through headers. This filter:
- * <ol>
- *   <li>Detects requests from mTLS ALB via X-Client-Id header</li>
- *   <li>Validates required headers (persona, user-id, idp-type)</li>
- *   <li>Maps headers for downstream authorization filters</li>
- * </ol>
- *
- * @see ExternalIntegrationProperties
+ * Authenticates external partner requests via mTLS ALB headers.
  */
 @Slf4j
 @Component
@@ -132,18 +123,10 @@ public class ExternalAuthFilter implements WebFilter {
         return chain.filter(exchange.mutate().request(mutatedRequest).build());
     }
 
-    /**
-     * Creates a mutated request with proxy auth headers.
-     */
     @NonNull
-    private ServerHttpRequest createMutatedRequest(
-            @NonNull ServerHttpRequest request,
-            @NonNull String userId,
-            @NonNull String clientId) {
-
+    private ServerHttpRequest createMutatedRequest(@NonNull ServerHttpRequest request, @NonNull String userId, @NonNull String clientId) {
         return new ServerHttpRequestDecorator(request) {
             @Override
-            @NonNull
             public HttpHeaders getHeaders() {
                 HttpHeaders headers = new HttpHeaders();
                 headers.putAll(super.getHeaders());
@@ -162,9 +145,6 @@ public class ExternalAuthFilter implements WebFilter {
         };
     }
 
-    /**
-     * Checks if the path is a public path that doesn't require authentication.
-     */
     private boolean isPublicPath(@NonNull String path) {
         return "/".equals(path) ||
                path.startsWith("/api/auth/") ||
@@ -172,17 +152,12 @@ public class ExternalAuthFilter implements WebFilter {
                "/health".equals(path);
     }
 
-    /**
-     * Validates that an identifier matches the safe pattern.
-     */
-    private boolean isValidIdentifier(String value) {
+    private boolean isValidIdentifier(@Nullable String value) {
         return value != null && SAFE_ID_PATTERN.matcher(value).matches();
     }
 
-    /**
-     * Sanitizes a header value by trimming and limiting length.
-     */
-    private String sanitizeHeaderValue(String value) {
+    @Nullable
+    private String sanitizeHeaderValue(@Nullable String value) {
         if (value == null) {
             return null;
         }
@@ -193,11 +168,8 @@ public class ExternalAuthFilter implements WebFilter {
         return trimmed;
     }
 
-    /**
-     * Sanitizes a value for safe logging to prevent log injection.
-     */
     @NonNull
-    private String sanitizeForLog(String value) {
+    private String sanitizeForLog(@Nullable String value) {
         if (value == null) {
             return "null";
         }
@@ -209,10 +181,7 @@ public class ExternalAuthFilter implements WebFilter {
     }
 
     @NonNull
-    private Mono<Void> unauthorizedResponse(
-            @NonNull ServerWebExchange exchange,
-            @NonNull String code,
-            @NonNull String message) {
+    private Mono<Void> unauthorizedResponse(@NonNull ServerWebExchange exchange, @NonNull String code, @NonNull String message) {
 
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
@@ -228,10 +197,7 @@ public class ExternalAuthFilter implements WebFilter {
     }
 
     @NonNull
-    private Mono<Void> forbiddenResponse(
-            @NonNull ServerWebExchange exchange,
-            @NonNull String code,
-            @NonNull String message) {
+    private Mono<Void> forbiddenResponse(@NonNull ServerWebExchange exchange, @NonNull String code, @NonNull String message) {
 
         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
@@ -246,9 +212,6 @@ public class ExternalAuthFilter implements WebFilter {
                         .wrap(body.getBytes(StandardCharsets.UTF_8))));
     }
 
-    /**
-     * Escapes special characters for JSON string values.
-     */
     @NonNull
     private String escapeJson(@NonNull String value) {
         return value

@@ -17,23 +17,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/**
- * REST controller for health data endpoints.
- * Supports dual authentication (HSID session + OAuth2 proxy).
- *
- * <p>Authorization:
- * <ul>
- *   <li>HSID: Uses ABAC session - individuals can view own data,
- *       parents can view dependents' data with DAA+RPR+ROI</li>
- *   <li>PROXY: Authorization delegated to consumer - BFF trusts proxy headers</li>
- * </ul>
- */
+/** REST controller for health data endpoints with dual authentication (HSID session + OAuth2 proxy). */
 @Slf4j
 @RestController
 @RequestMapping("/api/1.0.0/health")
@@ -46,17 +35,8 @@ public class HealthDataController {
     private static final String SESSION_COOKIE = "BFF_SESSION";
 
     private final HealthDataOrchestrator orchestrator;
-
-    @Nullable
     private final AbacAuthorizationService authorizationService;
 
-    /**
-     * Get immunization records for a member.
-     * GET /api/1.0.0/health/immunization?memberId={memberId}
-     *
-     * For HSID: memberId defaults to logged-in user, or can specify managed member
-     * For Proxy: memberId from X-Member-Id header
-     */
     @GetMapping("/immunization")
     public Mono<ResponseEntity<HealthDataApiResponse<ImmunizationResponse.ImmunizationDto>>> getImmunizations(
             @RequestParam(required = false)
@@ -70,10 +50,6 @@ public class HealthDataController {
                         .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Get allergy records for a member.
-     * GET /api/1.0.0/health/allergy?memberId={memberId}
-     */
     @GetMapping("/allergy")
     public Mono<ResponseEntity<HealthDataApiResponse<AllergyResponse.AllergyDto>>> getAllergies(
             @RequestParam(required = false)
@@ -87,10 +63,6 @@ public class HealthDataController {
                         .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Get condition records for a member.
-     * GET /api/1.0.0/health/condition?memberId={memberId}
-     */
     @GetMapping("/condition")
     public Mono<ResponseEntity<HealthDataApiResponse<ConditionResponse.ConditionDto>>> getConditions(
             @RequestParam(required = false)
@@ -104,10 +76,6 @@ public class HealthDataController {
                         .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Force refresh health data for a member (evict cache and re-fetch).
-     * POST /api/1.0.0/health/refresh?memberId={memberId}
-     */
     @PostMapping("/refresh")
     public Mono<ResponseEntity<Void>> refreshHealthData(
             @RequestParam(required = false)
@@ -119,16 +87,6 @@ public class HealthDataController {
                         .thenReturn(ResponseEntity.ok().<Void>build()));
     }
 
-    /**
-     * Authorize and execute a health data operation.
-     *
-     * <p>Authorization behavior:
-     * <ul>
-     *   <li>HSID: Validates access using ABAC policies (individual can view own data,
-     *       parent needs DAA+RPR+ROI for dependent's data)</li>
-     *   <li>PROXY: Skips ABAC - authorization is delegated to the consumer/partner</li>
-     * </ul>
-     */
     private <T> Mono<ResponseEntity<T>> authorizeAndExecute(
             ServerWebExchange exchange,
             String requestMemberId,
@@ -165,9 +123,6 @@ public class HealthDataController {
                 }));
     }
 
-    /**
-     * Authorize HSID user access to health data.
-     */
     private Mono<PolicyDecision> authorizeHsid(ServerWebExchange exchange, String memberId) {
         if (authorizationService == null) {
             log.debug("ABAC service not available - allowing request");
@@ -189,9 +144,6 @@ public class HealthDataController {
                 .switchIfEmpty(Mono.just(PolicyDecision.deny("NO_SUBJECT", "Could not build subject")));
     }
 
-    /**
-     * Resolve member ID and API context from auth context.
-     */
     private Mono<MemberContext> resolveMemberContext(
             ServerWebExchange exchange,
             String requestMemberId) {
@@ -241,9 +193,6 @@ public class HealthDataController {
         });
     }
 
-    /**
-     * Build a forbidden response with policy decision details.
-     */
     private <T> ResponseEntity<T> buildForbiddenResponse(PolicyDecision decision) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .header("X-Policy-Id", decision.policyId())
@@ -251,9 +200,6 @@ public class HealthDataController {
                 .build();
     }
 
-    /**
-     * Sanitize value for HTTP header.
-     */
     private String sanitizeHeader(String value) {
         if (value == null) {
             return "";
@@ -262,8 +208,5 @@ public class HealthDataController {
                 .substring(0, Math.min(value.length(), 200));
     }
 
-    /**
-     * Context holder for resolved member info.
-     */
     private record MemberContext(String effectiveMemberId, String apiIdentifier) {}
 }

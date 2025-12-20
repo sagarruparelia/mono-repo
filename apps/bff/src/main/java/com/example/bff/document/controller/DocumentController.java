@@ -24,10 +24,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST controller for document management.
- * Documents always belong to youth (member) - others act as delegates.
- */
+/** REST controller for document management. */
 @Slf4j
 @RestController
 @RequestMapping("/api/member/{memberId}/documents")
@@ -39,10 +36,6 @@ public class DocumentController {
     private final DocumentService documentService;
     private final AbacAuthorizationService authorizationService;
 
-    /**
-     * List all documents for a youth.
-     * GET /api/member/{memberId}/documents
-     */
     @GetMapping
     public Mono<ResponseEntity<List<DocumentDto>>> listDocuments(
             @PathVariable String memberId,
@@ -54,10 +47,6 @@ public class DocumentController {
                         .map(ResponseEntity::ok));
     }
 
-    /**
-     * Get a single document's metadata.
-     * GET /api/member/{memberId}/documents/{documentId}
-     */
     @GetMapping("/{documentId}")
     public Mono<ResponseEntity<DocumentDto>> getDocument(
             @PathVariable String memberId,
@@ -70,10 +59,6 @@ public class DocumentController {
                         .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Download a document's content.
-     * GET /api/member/{memberId}/documents/{documentId}/download
-     */
     @GetMapping("/{documentId}/download")
     public Mono<ResponseEntity<byte[]>> downloadDocument(
             @PathVariable String memberId,
@@ -93,10 +78,6 @@ public class DocumentController {
                         .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Upload a new document for a youth.
-     * POST /api/member/{memberId}/documents
-     */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<DocumentDto>> uploadDocument(
             @PathVariable String memberId,
@@ -113,10 +94,6 @@ public class DocumentController {
         return authorizeUpload(exchange, memberId, file, request);
     }
 
-    /**
-     * Delete a document.
-     * DELETE /api/member/{memberId}/documents/{documentId}
-     */
     @DeleteMapping("/{documentId}")
     public Mono<ResponseEntity<Void>> deleteDocument(
             @PathVariable String memberId,
@@ -130,9 +107,6 @@ public class DocumentController {
                                 e -> Mono.just(ResponseEntity.notFound().build())));
     }
 
-    /**
-     * Authorize and execute a document operation.
-     */
     private <T> Mono<ResponseEntity<T>> authorizeAndExecute(
             ServerWebExchange exchange,
             String memberId,
@@ -156,9 +130,6 @@ public class DocumentController {
                 .switchIfEmpty(Mono.defer(() -> Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<T>build())));
     }
 
-    /**
-     * Authorize upload operation with special handling for extracting uploader info.
-     */
     private Mono<ResponseEntity<DocumentDto>> authorizeUpload(
             ServerWebExchange exchange,
             String memberId,
@@ -186,9 +157,6 @@ public class DocumentController {
                 .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<DocumentDto>build()));
     }
 
-    /**
-     * Build subject attributes from exchange (handles both HSID and Proxy).
-     */
     private Mono<SubjectAttributes> buildSubjectFromExchange(ServerWebExchange exchange) {
         AuthType authType = authorizationService.determineAuthType(exchange.getRequest());
 
@@ -206,9 +174,6 @@ public class DocumentController {
         return authorizationService.buildHsidSubject(sessionCookie.getValue());
     }
 
-    /**
-     * Build a forbidden response with policy decision details.
-     */
     private <T> ResponseEntity<T> buildForbiddenResponse(PolicyDecision decision) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .header("X-Policy-Id", decision.policyId())
@@ -216,9 +181,6 @@ public class DocumentController {
                 .build();
     }
 
-    /**
-     * Parse document type from string.
-     */
     private DocumentType parseDocumentType(String documentType) {
         if (documentType == null || documentType.isBlank()) {
             return DocumentType.OTHER;
@@ -230,9 +192,6 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Sanitize filename for Content-Disposition header.
-     */
     private String sanitizeFilename(String filename) {
         if (filename == null) {
             return "download";
@@ -240,9 +199,6 @@ public class DocumentController {
         return filename.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 
-    /**
-     * Sanitize value for HTTP header.
-     */
     private String sanitizeHeader(String value) {
         if (value == null) {
             return "";

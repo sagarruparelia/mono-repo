@@ -17,8 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.regex.Pattern;
 
 /**
- * Service for managing documents (upload, download, delete).
- * Documents always belong to youth - others act as delegates.
+ * Manages document upload, download, and deletion for youth members.
  */
 @Slf4j
 @Service
@@ -31,41 +30,18 @@ public class DocumentService {
     private final S3StorageService storageService;
     private final DocumentProperties properties;
 
-    /**
-     * List all documents for a member (youth).
-     *
-     * @param memberId the youth's ID
-     * @return stream of document DTOs
-     */
     public Flux<DocumentDto> listDocuments(String memberId) {
         log.debug("Listing documents for member: {}", StringSanitizer.forLog(memberId));
         return repository.findByMemberIdOrderByCreatedAtDesc(memberId)
                 .map(DocumentDto::fromEntity);
     }
 
-    /**
-     * Get a specific document by ID.
-     *
-     * @param memberId   the youth's ID
-     * @param documentId the document ID
-     * @return document DTO or empty if not found
-     */
     public Mono<DocumentDto> getDocument(String memberId, String documentId) {
         log.debug("Getting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
                 .map(DocumentDto::fromEntity);
     }
 
-    /**
-     * Upload a new document for a youth.
-     *
-     * @param memberId          the youth's ID (document owner)
-     * @param file              the uploaded file
-     * @param request           upload metadata
-     * @param uploadedBy        user ID who uploaded
-     * @param uploadedByPersona persona of uploader
-     * @return the created document DTO
-     */
     public Mono<DocumentDto> uploadDocument(
             String memberId,
             FilePart file,
@@ -84,14 +60,12 @@ public class DocumentService {
                 StringSanitizer.forLog(contentType),
                 StringSanitizer.forLog(uploadedBy));
 
-        // Validate content type
         if (!properties.limits().allowedContentTypes().contains(contentType)) {
             return Mono.error(new IllegalArgumentException(
                     String.format("Content type '%s' is not allowed. Allowed types: %s",
                             contentType, properties.limits().allowedContentTypes())));
         }
 
-        // Check file count limit
         return repository.countByMemberId(memberId)
                 .flatMap(count -> {
                     if (count >= properties.limits().maxFilesPerMember()) {
@@ -115,7 +89,6 @@ public class DocumentService {
 
         String sanitizedFileName = sanitizeFileName(originalFileName);
 
-        // Collect file content
         return file.content()
                 .reduce(ByteBuffer.allocate(0), (acc, buffer) -> {
                     ByteBuffer combined = ByteBuffer.allocate(
@@ -130,7 +103,6 @@ public class DocumentService {
                 .flatMap(content -> {
                     long fileSize = content.remaining();
 
-                    // Validate file size
                     if (fileSize > properties.limits().maxFileSize()) {
                         return Mono.error(new IllegalArgumentException(
                                 String.format("File size (%d bytes) exceeds maximum allowed (%d bytes)",
@@ -141,7 +113,6 @@ public class DocumentService {
                         return Mono.error(new IllegalArgumentException("File is empty"));
                     }
 
-                    // Upload to S3 and save metadata
                     return storageService.uploadFile(memberId, sanitizedFileName, contentType, content)
                             .flatMap(s3Key -> {
                                 DocumentEntity entity = DocumentEntity.create(
@@ -162,13 +133,6 @@ public class DocumentService {
                 });
     }
 
-    /**
-     * Download a document's content.
-     *
-     * @param memberId   the youth's ID
-     * @param documentId the document ID
-     * @return the file content as byte array
-     */
     public Mono<byte[]> downloadDocument(String memberId, String documentId) {
         log.debug("Downloading document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
@@ -177,12 +141,6 @@ public class DocumentService {
                 .flatMap(doc -> storageService.downloadFile(doc.s3Key()));
     }
 
-    /**
-     * Delete a document.
-     *
-     * @param memberId   the youth's ID
-     * @param documentId the document ID
-     */
     public Mono<Void> deleteDocument(String memberId, String documentId) {
         log.info("Deleting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
@@ -194,9 +152,6 @@ public class DocumentService {
                 );
     }
 
-    /**
-     * Sanitize filename for S3 storage.
-     */
     private String sanitizeFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return "unnamed";

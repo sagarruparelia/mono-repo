@@ -28,10 +28,7 @@ import java.util.concurrent.TimeoutException;
 
 import static com.example.bff.config.EcdhApiWebClientConfig.ECDH_API_WEBCLIENT;
 
-/**
- * Service for fetching health data from ECDH GraphQL API.
- * Handles pagination, retries, and error handling.
- */
+/** Service for fetching health data from ECDH GraphQL API. */
 @Slf4j
 @Service
 public class EcdhApiClientService {
@@ -51,9 +48,6 @@ public class EcdhApiClientService {
         this.queryLoader = queryLoader;
     }
 
-    /**
-     * Fetch all immunizations for a member, handling pagination.
-     */
     @NonNull
     public Mono<List<ImmunizationEntity.ImmunizationRecord>> fetchImmunizations(
             @NonNull String memberEid,
@@ -78,9 +72,6 @@ public class EcdhApiClientService {
         });
     }
 
-    /**
-     * Fetch all allergies for a member, handling pagination.
-     */
     @NonNull
     public Mono<List<AllergyEntity.AllergyRecord>> fetchAllergies(
             @NonNull String memberEid,
@@ -105,9 +96,6 @@ public class EcdhApiClientService {
         });
     }
 
-    /**
-     * Fetch all conditions for a member, handling pagination.
-     */
     @NonNull
     public Mono<List<ConditionEntity.ConditionRecord>> fetchConditions(
             @NonNull String memberEid,
@@ -132,13 +120,10 @@ public class EcdhApiClientService {
         });
     }
 
-    /**
-     * Fetch all pages using expand() operator.
-     */
     private <T> Mono<List<T>> fetchAllPages(
             String query,
             String memberEid,
-            @Nullable String apiIdentifier,
+            String apiIdentifier,
             Class<T> responseType) {
 
         return fetchPage(query, memberEid, apiIdentifier, null, responseType)
@@ -152,14 +137,11 @@ public class EcdhApiClientService {
                 .collectList();
     }
 
-    /**
-     * Fetch a single page from the API.
-     */
     private <T> Mono<T> fetchPage(
             String query,
             String memberEid,
-            @Nullable String apiIdentifier,
-            @Nullable String continuationToken,
+            String apiIdentifier,
+            String continuationToken,
             Class<T> responseType) {
 
         Map<String, Object> variables = new HashMap<>();
@@ -203,10 +185,6 @@ public class EcdhApiClientService {
                                 signal.totalRetries() + 1, signal.failure().getMessage())));
     }
 
-    /**
-     * Extract continuation token from response.
-     */
-    @Nullable
     private String getContinuationToken(Object response) {
         if (response instanceof ImmunizationResponse r) {
             return r.getContinuationToken();
@@ -218,9 +196,6 @@ public class EcdhApiClientService {
         return null;
     }
 
-    /**
-     * Check if error is retryable (5xx errors and timeouts).
-     */
     private boolean isRetryable(Throwable throwable) {
         if (throwable instanceof WebClientResponseException ex) {
             return ex.getStatusCode().is5xxServerError();
@@ -230,8 +205,6 @@ public class EcdhApiClientService {
         }
         return throwable instanceof TimeoutException;
     }
-
-    // Mapping methods
 
     private ImmunizationEntity.ImmunizationRecord mapToImmunizationRecord(
             ImmunizationResponse.ImmunizationDto dto) {

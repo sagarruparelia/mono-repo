@@ -17,10 +17,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Orchestrates health data operations including cache-first fetching
- * and proactive background loading.
- */
+/** Orchestrates health data operations including cache-first fetching and proactive background loading. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,58 +29,32 @@ public class HealthDataOrchestrator {
     private final HealthDataCacheService cacheService;
     private final HealthDataCacheProperties cacheProperties;
 
-    // ========== Synchronous Fetch (for API requests) ==========
-
-    /**
-     * Get immunizations for a member (cache-first, fallback to ECDH).
-     */
     @NonNull
-    public Mono<ImmunizationEntity> getImmunizations(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<ImmunizationEntity> getImmunizations(@NonNull String memberEid, @Nullable String apiIdentifier) {
         Mono<ImmunizationEntity> loader = ecdhApiClient.fetchImmunizations(memberEid, apiIdentifier)
                 .map(records -> ImmunizationEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadImmunizations(memberEid, loader);
     }
 
-    /**
-     * Get allergies for a member (cache-first, fallback to ECDH).
-     */
     @NonNull
-    public Mono<AllergyEntity> getAllergies(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<AllergyEntity> getAllergies(@NonNull String memberEid, @Nullable String apiIdentifier) {
         Mono<AllergyEntity> loader = ecdhApiClient.fetchAllergies(memberEid, apiIdentifier)
                 .map(records -> AllergyEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadAllergies(memberEid, loader);
     }
 
-    /**
-     * Get conditions for a member (cache-first, fallback to ECDH).
-     */
     @NonNull
-    public Mono<ConditionEntity> getConditions(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<ConditionEntity> getConditions(@NonNull String memberEid, @Nullable String apiIdentifier) {
         Mono<ConditionEntity> loader = ecdhApiClient.fetchConditions(memberEid, apiIdentifier)
                 .map(records -> ConditionEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadConditions(memberEid, loader);
     }
 
-    /**
-     * Force refresh all health data for a member (evict cache and re-fetch).
-     */
     @NonNull
-    public Mono<Void> refreshAllHealthData(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<Void> refreshAllHealthData(@NonNull String memberEid, @Nullable String apiIdentifier) {
         log.info("Refreshing all health data for member: {}", memberEid);
 
         return cacheService.evictAllForMember(memberEid)
@@ -91,15 +62,9 @@ public class HealthDataOrchestrator {
                 .doOnSuccess(v -> log.info("Health data refresh completed for: {}", memberEid));
     }
 
-    // ========== Background/Proactive Fetch ==========
-
     /**
      * Proactively fetch health data for the logged-in user and their managed members.
      * Called after HSID session creation (fire-and-forget).
-     *
-     * @param userEid        User's Enterprise ID
-     * @param apiIdentifier  API identifier header value
-     * @param managedMembers List of members the user manages (for parents)
      */
     public void triggerBackgroundFetchForSession(
             @NonNull String userEid,
@@ -111,7 +76,6 @@ public class HealthDataOrchestrator {
             return;
         }
 
-        // Collect all EIDs to fetch (user + managed members)
         List<String> eidsToFetch = new ArrayList<>();
         eidsToFetch.add(userEid);
 
@@ -124,7 +88,6 @@ public class HealthDataOrchestrator {
 
         log.info("Triggering background health data fetch for {} member(s)", eidsToFetch.size());
 
-        // Fire-and-forget with bounded parallelism
         Flux.fromIterable(eidsToFetch)
                 .delayElements(cacheProperties.proactiveFetch().delayAfterLogin())
                 .flatMap(eid -> fetchAllHealthDataForMember(eid, apiIdentifier)
@@ -144,14 +107,8 @@ public class HealthDataOrchestrator {
     /**
      * Proactively fetch health data for a single member.
      * Called after OAuth2 proxy connection (fire-and-forget).
-     *
-     * @param memberEid     Member's Enterprise ID (from X-Member-Id header)
-     * @param apiIdentifier API identifier
      */
-    public void triggerBackgroundFetchForMember(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public void triggerBackgroundFetchForMember(@NonNull String memberEid, @Nullable String apiIdentifier) {
         if (!cacheProperties.proactiveFetch().enabled()) {
             log.debug("Proactive fetch disabled, skipping for member: {}", memberEid);
             return;
@@ -168,13 +125,7 @@ public class HealthDataOrchestrator {
                 );
     }
 
-    /**
-     * Fetch all health data types for a member in parallel.
-     */
-    private Mono<Void> fetchAllHealthDataForMember(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    private Mono<Void> fetchAllHealthDataForMember(String memberEid, String apiIdentifier) {
         return Mono.when(
                 getImmunizations(memberEid, apiIdentifier),
                 getAllergies(memberEid, apiIdentifier),

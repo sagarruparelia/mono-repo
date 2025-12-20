@@ -17,7 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.UUID;
 
 /**
- * Service for storing and retrieving documents from S3.
+ * Handles document storage and retrieval from S3.
  */
 @Slf4j
 @Service
@@ -29,15 +29,6 @@ public class S3StorageService {
     private final S3AsyncClient s3Client;
     private final DocumentProperties properties;
 
-    /**
-     * Upload a file to S3.
-     *
-     * @param memberId    the youth/member ID (document owner)
-     * @param fileName    sanitized filename
-     * @param contentType MIME type
-     * @param content     file content as ByteBuffer
-     * @return the S3 key where the file was stored
-     */
     public Mono<String> uploadFile(String memberId, String fileName, String contentType, ByteBuffer content) {
         String s3Key = generateS3Key(memberId, fileName);
 
@@ -58,12 +49,6 @@ public class S3StorageService {
                         StringSanitizer.forLog(e.getMessage())));
     }
 
-    /**
-     * Download a file from S3.
-     *
-     * @param s3Key the S3 object key
-     * @return the file content as byte array
-     */
     public Mono<byte[]> downloadFile(String s3Key) {
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(properties.s3().bucketName())
@@ -80,11 +65,6 @@ public class S3StorageService {
                         StringSanitizer.forLog(s3Key), StringSanitizer.forLog(e.getMessage())));
     }
 
-    /**
-     * Delete a file from S3.
-     *
-     * @param s3Key the S3 object key
-     */
     public Mono<Void> deleteFile(String s3Key) {
         DeleteObjectRequest request = DeleteObjectRequest.builder()
                 .bucket(properties.s3().bucketName())
@@ -98,10 +78,6 @@ public class S3StorageService {
                         StringSanitizer.forLog(s3Key), StringSanitizer.forLog(e.getMessage())));
     }
 
-    /**
-     * Generate a unique S3 key for a document.
-     * Format: documents/{memberId}/{uuid}/{fileName}
-     */
     private String generateS3Key(String memberId, String fileName) {
         String uuid = UUID.randomUUID().toString();
         return String.format("%s/%s/%s/%s", KEY_PREFIX, memberId, uuid, fileName);

@@ -25,14 +25,6 @@ import static com.example.bff.identity.model.EligibilityResult.GRACE_PERIOD_MONT
 
 /**
  * Service for checking member eligibility via the Graph API.
- * Endpoint: /graph/1.0.0
- *
- * Returns eligibility status:
- * - ACTIVE: Currently eligible (full self-access)
- * - INACTIVE: Expired within 18-month grace period (limited self-access)
- * - EXPIRED: Expired beyond grace period (no self-access)
- * - NOT_ELIGIBLE: 404 from API (no eligibility record)
- * - UNKNOWN: API error (treated as NOT_ELIGIBLE for security)
  */
 @Slf4j
 @Service
@@ -54,19 +46,8 @@ public class EligibilityService {
         this.cacheService = cacheService;
     }
 
-    /**
-     * Check eligibility for a member.
-     * Results are cached in Redis.
-     *
-     * @param memberEid     Member's Enterprise ID
-     * @param apiIdentifier API identifier for the x-identifier header
-     * @return Eligibility result with status and term date
-     */
     @NonNull
-    public Mono<EligibilityResult>  checkEligibility(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<EligibilityResult> checkEligibility(@NonNull String memberEid, @Nullable String apiIdentifier) {
         log.debug("Checking eligibility for memberEid: {}", memberEid);
 
         Mono<EligibilityResult> loader = fetchFromApi(memberEid, apiIdentifier)
@@ -75,10 +56,7 @@ public class EligibilityService {
         return cacheService.getOrLoadEligibility(memberEid, loader, EligibilityResult.class);
     }
 
-    /**
-     * Fetch eligibility directly from API.
-     */
-    private Mono<EligibilityResponse> fetchFromApi(String memberEid, @Nullable String apiIdentifier) {
+    private Mono<EligibilityResponse> fetchFromApi(String memberEid, String apiIdentifier) {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.eligibility().timeout();
 
@@ -139,9 +117,6 @@ public class EligibilityService {
                 });
     }
 
-    /**
-     * Convert API response to eligibility result with business logic.
-     */
     private EligibilityResult toEligibilityResult(EligibilityResponse response) {
         String status = response.getStatus();
         LocalDate termDate = response.getTermDate();
@@ -170,9 +145,6 @@ public class EligibilityService {
         return EligibilityResult.notEligible();
     }
 
-    /**
-     * Check if error is retryable (5xx errors and timeouts).
-     */
     private boolean isRetryable(Throwable throwable) {
         if (throwable instanceof WebClientResponseException ex) {
             return ex.getStatusCode().is5xxServerError();

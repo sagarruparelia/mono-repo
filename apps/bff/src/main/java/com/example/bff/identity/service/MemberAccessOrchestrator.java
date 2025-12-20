@@ -23,16 +23,6 @@ import static com.example.bff.identity.model.MemberAccess.MINIMUM_ACCESS_AGE;
 
 /**
  * Orchestrates the member access enrichment flow after HSID login.
- *
- * Flow:
- * 1. Get user info from User Service API
- * 2. Extract EID, birthdate, memberType (PR)
- * 3. Check age (reject if < 13)
- * 4. Parallel calls:
- *    - Eligibility API (all users >= 13)
- *    - Permission API (only if age >= 18 && memberType = PR)
- * 5. Validate access (must have eligibility OR managed members)
- * 6. Return consolidated MemberAccess
  */
 @Slf4j
 @Service
@@ -43,15 +33,6 @@ public class MemberAccessOrchestrator {
     private final EligibilityService eligibilityService;
     private final ManagedMemberService managedMemberService;
 
-    /**
-     * Resolve member access for a user after HSID login.
-     *
-     * @param hsidUuid User's HSID UUID (from token sub claim)
-     * @return MemberAccess with all resolved information
-     * @throws AgeRestrictionException if user is under 13
-     * @throws NoAccessException       if user has no eligibility and no managed members
-     * @throws IdentityServiceException if User Service API fails
-     */
     @NonNull
     public Mono<MemberAccess> resolveMemberAccess(@NonNull String hsidUuid) {
         log.info("Resolving member access for hsidUuid: {}", hsidUuid);
@@ -65,9 +46,6 @@ public class MemberAccessOrchestrator {
                         "Failed to resolve member access for hsidUuid {}: {}", hsidUuid, e.getMessage()));
     }
 
-    /**
-     * Process user info and fetch eligibility/permissions.
-     */
     private Mono<MemberAccess> processUserInfo(String hsidUuid, UserInfoResponse userInfo) {
         // Extract required fields
         String eid = userInfo.getEnterpriseId();
@@ -98,9 +76,6 @@ public class MemberAccessOrchestrator {
         return fetchEligibilityAndPermissions(hsidUuid, eid, apiIdentifier, age, isResponsibleParty, birthdate);
     }
 
-    /**
-     * Fetch eligibility and permissions (if applicable) in parallel.
-     */
     private Mono<MemberAccess> fetchEligibilityAndPermissions(
             String hsidUuid,
             String eid,
@@ -151,10 +126,6 @@ public class MemberAccessOrchestrator {
                 });
     }
 
-    /**
-     * Parse birthdate string to LocalDate.
-     * Expects ISO format (yyyy-MM-dd).
-     */
     private LocalDate parseBirthdate(String birthdate) {
         if (birthdate == null || birthdate.isBlank()) {
             return null;

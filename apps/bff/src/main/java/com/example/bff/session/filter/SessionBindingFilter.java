@@ -27,13 +27,7 @@ import java.net.InetSocketAddress;
 import java.util.regex.Pattern;
 
 /**
- * Session binding validation filter.
- *
- * <p>Validates that session attributes (IP, User-Agent) match the current request
- * to prevent session hijacking attacks. Implements sliding session expiration.
- *
- * @see SessionService
- * @see SessionProperties
+ * Validates session binding (IP, User-Agent) to prevent session hijacking.
  */
 @Slf4j
 @Component
@@ -94,12 +88,6 @@ public class SessionBindingFilter implements WebFilter {
                 });
     }
 
-    /**
-     * Checks if the path is a public path that doesn't require session validation.
-     *
-     * @param path the request path
-     * @return true if the path is public
-     */
     private boolean isPublicPath(@NonNull String path) {
         return "/".equals(path) ||
                path.startsWith("/api/auth/") ||
@@ -107,12 +95,6 @@ public class SessionBindingFilter implements WebFilter {
                path.startsWith("/api/mfe/");  // MFE uses different auth
     }
 
-    /**
-     * Extracts client info from the request with security validation.
-     *
-     * @param exchange the server web exchange
-     * @return the extracted client info
-     */
     @NonNull
     private ClientInfo extractClientInfo(@NonNull ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
@@ -123,14 +105,6 @@ public class SessionBindingFilter implements WebFilter {
         return ClientInfo.of(ipAddress, userAgent);
     }
 
-    /**
-     * Extracts and validates client IP address.
-     *
-     * <p>Security note: X-Forwarded-For is validated to prevent IP spoofing.
-     *
-     * @param request the HTTP request
-     * @return validated client IP or "unknown"
-     */
     @NonNull
     private String extractClientIp(@NonNull ServerHttpRequest request) {
         String forwardedFor = request.getHeaders().getFirst("X-Forwarded-For");
@@ -156,12 +130,6 @@ public class SessionBindingFilter implements WebFilter {
         return "unknown";
     }
 
-    /**
-     * Validates IP address format (IPv4 or IPv6).
-     *
-     * @param ip the IP address to validate
-     * @return true if valid format
-     */
     private boolean isValidIpAddress(@Nullable String ip) {
         if (ip == null || ip.isBlank()) {
             return false;
@@ -169,12 +137,6 @@ public class SessionBindingFilter implements WebFilter {
         return IP_ADDRESS_PATTERN.matcher(ip).matches();
     }
 
-    /**
-     * Extracts and sanitizes User-Agent header.
-     *
-     * @param request the HTTP request
-     * @return sanitized User-Agent or "unknown"
-     */
     @NonNull
     private String extractUserAgent(@NonNull ServerHttpRequest request) {
         String userAgent = request.getHeaders().getFirst("User-Agent");
@@ -196,12 +158,6 @@ public class SessionBindingFilter implements WebFilter {
         return sanitized;
     }
 
-    /**
-     * Invalidates the session and returns unauthorized response.
-     *
-     * @param exchange the server web exchange
-     * @return Mono completing the response
-     */
     @NonNull
     private Mono<Void> invalidateAndRedirect(@NonNull ServerWebExchange exchange) {
         // Clear session cookie

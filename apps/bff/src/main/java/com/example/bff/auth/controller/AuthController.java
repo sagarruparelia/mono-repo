@@ -7,7 +7,6 @@ import com.example.bff.session.service.SessionService;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,32 +16,23 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import lombok.RequiredArgsConstructor;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** REST controller for authentication endpoints. */
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
-    @Nullable
     private final SessionService sessionService;
-
-    @Nullable
     private final TokenService tokenService;
 
-    public AuthController(
-            @Nullable SessionService sessionService,
-            @Nullable TokenService tokenService) {
-        this.sessionService = sessionService;
-        this.tokenService = tokenService;
-    }
-
-    /**
-     * Returns current user information from OIDC token
-     */
     @GetMapping("/user-info")
     public Mono<ResponseEntity<Map<String, Object>>> getCurrentUser(
             @AuthenticationPrincipal OidcUser user) {
@@ -59,9 +49,6 @@ public class AuthController {
         )));
     }
 
-    /**
-     * Returns session information from Redis
-     */
     @GetMapping("/session")
     public Mono<ResponseEntity<Map<String, Object>>> getSessionInfo(ServerWebExchange exchange) {
         if (sessionService == null) {
@@ -105,10 +92,6 @@ public class AuthController {
                 )));
     }
 
-    /**
-     * Returns dependent metadata for parent persona
-     * Used by the global child selector in the frontend
-     */
     @GetMapping("/dependents")
     public Mono<ResponseEntity<List<DependentDto>>> getDependents(ServerWebExchange exchange) {
         if (sessionService == null) {
@@ -149,9 +132,6 @@ public class AuthController {
                 .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
-    /**
-     * Refreshes the session TTL
-     */
     @PostMapping("/refresh")
     public Mono<ResponseEntity<Map<String, Object>>> refreshSession(ServerWebExchange exchange) {
         if (sessionService == null) {
@@ -178,15 +158,6 @@ public class AuthController {
                 )));
     }
 
-    /**
-     * Gets a fresh access token for micro-products.
-     * Refreshes the token if expired or about to expire.
-     *
-     * <p>Use this endpoint when launching micro-products that require
-     * a valid HSID access token.
-     *
-     * @return fresh access token or error if re-authentication required
-     */
     @PostMapping("/token")
     public Mono<ResponseEntity<Map<String, Object>>> getFreshToken(ServerWebExchange exchange) {
         if (tokenService == null) {
@@ -222,10 +193,6 @@ public class AuthController {
                         )));
     }
 
-    /**
-     * Login endpoint - redirects to OAuth2 authorization (HSID with PKCE)
-     * UI calls this endpoint to initiate the OIDC login flow
-     */
     @GetMapping("/login")
     public Mono<Void> login(ServerWebExchange exchange) {
         // Redirect to Spring Security's OAuth2 authorization endpoint
@@ -236,20 +203,12 @@ public class AuthController {
         return exchange.getResponse().setComplete();
     }
 
-    /**
-     * Callback endpoint - handles HSID response
-     * This is handled by Spring Security OAuth2 callback
-     */
     @GetMapping("/callback")
     public Mono<Void> callback() {
         // Spring Security will handle the callback
         return Mono.empty();
     }
 
-    /**
-     * Logout endpoint
-     * This is handled by Spring Security logout
-     */
     @PostMapping("/logout")
     public Mono<Void> logout() {
         // Spring Security will handle logout

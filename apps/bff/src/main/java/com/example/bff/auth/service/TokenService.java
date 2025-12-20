@@ -9,8 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.http.MediaType;
-import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
+import org.springframework.lang.NonNull;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
@@ -20,11 +20,7 @@ import reactor.core.publisher.Mono;
 import java.time.Instant;
 
 /**
- * Service for managing HSID OAuth2 tokens.
- *
- * <p>Provides on-demand token refresh for micro-products that require
- * fresh HSID tokens. Tokens are stored in Redis session and refreshed
- * using the refresh_token when needed.
+ * Manages HSID OAuth2 tokens with on-demand refresh for micro-products.
  */
 @Slf4j
 @Service
@@ -32,7 +28,7 @@ public class TokenService {
 
     private static final String SESSION_KEY = "bff:session:";
     private static final String TOKEN_FIELD = "tokenData";
-    private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 60; // Refresh 60s before expiry
+    private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 60;
 
     private final ReactiveRedisOperations<String, String> redisOps;
     private final ObjectMapper objectMapper;
@@ -45,21 +41,14 @@ public class TokenService {
     private String clientId;
 
     public TokenService(
-            ReactiveRedisOperations<String, String> redisOps,
-            ObjectMapper objectMapper,
-            WebClient.Builder webClientBuilder) {
+            @NonNull ReactiveRedisOperations<String, String> redisOps,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull WebClient.Builder webClientBuilder) {
         this.redisOps = redisOps;
         this.objectMapper = objectMapper;
         this.webClient = webClientBuilder.build();
     }
 
-    /**
-     * Stores token data in the session.
-     *
-     * @param sessionId the session ID
-     * @param tokenData the token data to store
-     * @return Mono completing when stored
-     */
     @NonNull
     public Mono<Void> storeTokens(@NonNull String sessionId, @NonNull TokenData tokenData) {
         if (!StringSanitizer.isValidSessionId(sessionId)) {
@@ -80,12 +69,6 @@ public class TokenService {
         }
     }
 
-    /**
-     * Retrieves token data from the session.
-     *
-     * @param sessionId the session ID
-     * @return Mono emitting token data if found
-     */
     @NonNull
     public Mono<TokenData> getTokens(@NonNull String sessionId) {
         if (!StringSanitizer.isValidSessionId(sessionId)) {
@@ -108,42 +91,25 @@ public class TokenService {
                 });
     }
 
-    /**
-     * Gets a fresh access token for micro-products.
-     * Refreshes the token if expired or about to expire.
-     *
-     * @param sessionId the session ID
-     * @return Mono emitting fresh access token, or empty if unavailable
-     */
     @NonNull
     public Mono<String> getFreshAccessToken(@NonNull String sessionId) {
         return getTokens(sessionId)
                 .flatMap(tokenData -> {
                     if (!tokenData.isAccessTokenExpired(TOKEN_EXPIRY_BUFFER_SECONDS)) {
-                        // Token still valid
                         log.debug("Access token still valid for session {}", StringSanitizer.forLog(sessionId));
                         return Mono.just(tokenData.accessToken());
                     }
 
                     if (!tokenData.canRefresh()) {
-                        // Cannot refresh - user needs to re-authenticate
                         log.warn("Refresh token expired for session {}, re-auth required", StringSanitizer.forLog(sessionId));
                         return Mono.empty();
                     }
 
-                    // Refresh the token
                     log.info("Refreshing access token for session {}", StringSanitizer.forLog(sessionId));
                     return refreshToken(sessionId, tokenData.refreshToken());
                 });
     }
 
-    /**
-     * Refreshes the access token using the refresh token.
-     *
-     * @param sessionId    the session ID
-     * @param refreshToken the refresh token
-     * @return Mono emitting new access token
-     */
     @NonNull
     private Mono<String> refreshToken(@NonNull String sessionId, @NonNull String refreshToken) {
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
@@ -162,9 +128,6 @@ public class TokenService {
                         StringSanitizer.forLog(sessionId), e.getMessage()));
     }
 
-    /**
-     * Parses token response and stores updated tokens.
-     */
     @NonNull
     private Mono<String> parseAndStoreTokens(@NonNull String sessionId, @NonNull String response) {
         try {
@@ -203,12 +166,6 @@ public class TokenService {
         }
     }
 
-    /**
-     * Removes token data from session (on logout).
-     *
-     * @param sessionId the session ID
-     * @return Mono completing when removed
-     */
     @NonNull
     public Mono<Void> removeTokens(@NonNull String sessionId) {
         if (!StringSanitizer.isValidSessionId(sessionId)) {

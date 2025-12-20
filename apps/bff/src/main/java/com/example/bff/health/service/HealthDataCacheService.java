@@ -9,15 +9,13 @@ import com.example.bff.health.repository.ConditionRepository;
 import com.example.bff.health.repository.ImmunizationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 
-/**
- * Service for MongoDB caching of health data.
- * Implements get-or-load pattern with configurable TTL.
- */
+/** Service for MongoDB caching of health data with configurable TTL. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,12 +26,10 @@ public class HealthDataCacheService {
     private final ConditionRepository conditionRepository;
     private final HealthDataCacheProperties cacheProperties;
 
-    /**
-     * Get immunizations from cache, or fetch from loader if not cached/expired.
-     */
+    @NonNull
     public Mono<ImmunizationEntity> getOrLoadImmunizations(
-            String memberEid,
-            Mono<ImmunizationEntity> loader) {
+            @NonNull String memberEid,
+            @NonNull Mono<ImmunizationEntity> loader) {
 
         if (!cacheProperties.enabled()) {
             log.debug("Cache disabled, fetching immunizations from API for: {}", memberEid);
@@ -55,12 +51,10 @@ public class HealthDataCacheService {
                 }));
     }
 
-    /**
-     * Get allergies from cache, or fetch from loader if not cached/expired.
-     */
+    @NonNull
     public Mono<AllergyEntity> getOrLoadAllergies(
-            String memberEid,
-            Mono<AllergyEntity> loader) {
+            @NonNull String memberEid,
+            @NonNull Mono<AllergyEntity> loader) {
 
         if (!cacheProperties.enabled()) {
             log.debug("Cache disabled, fetching allergies from API for: {}", memberEid);
@@ -82,12 +76,10 @@ public class HealthDataCacheService {
                 }));
     }
 
-    /**
-     * Get conditions from cache, or fetch from loader if not cached/expired.
-     */
+    @NonNull
     public Mono<ConditionEntity> getOrLoadConditions(
-            String memberEid,
-            Mono<ConditionEntity> loader) {
+            @NonNull String memberEid,
+            @NonNull Mono<ConditionEntity> loader) {
 
         if (!cacheProperties.enabled()) {
             log.debug("Cache disabled, fetching conditions from API for: {}", memberEid);
@@ -109,10 +101,8 @@ public class HealthDataCacheService {
                 }));
     }
 
-    /**
-     * Evict all health data cache for a member.
-     */
-    public Mono<Void> evictAllForMember(String memberEid) {
+    @NonNull
+    public Mono<Void> evictAllForMember(@NonNull String memberEid) {
         log.info("Evicting all health data cache for: {}", memberEid);
         return Mono.when(
                 immunizationRepository.deleteByMemberEid(memberEid),
@@ -121,35 +111,25 @@ public class HealthDataCacheService {
         ).doOnSuccess(v -> log.debug("Evicted health data cache for: {}", memberEid));
     }
 
-    /**
-     * Evict immunizations cache for a member.
-     */
-    public Mono<Void> evictImmunizations(String memberEid) {
+    @NonNull
+    public Mono<Void> evictImmunizations(@NonNull String memberEid) {
         return immunizationRepository.deleteByMemberEid(memberEid);
     }
 
-    /**
-     * Evict allergies cache for a member.
-     */
-    public Mono<Void> evictAllergies(String memberEid) {
+    @NonNull
+    public Mono<Void> evictAllergies(@NonNull String memberEid) {
         return allergyRepository.deleteByMemberEid(memberEid);
     }
 
-    /**
-     * Evict conditions cache for a member.
-     */
-    public Mono<Void> evictConditions(String memberEid) {
+    @NonNull
+    public Mono<Void> evictConditions(@NonNull String memberEid) {
         return conditionRepository.deleteByMemberEid(memberEid);
     }
 
-    /**
-     * Get the configured TTL.
-     */
+    @NonNull
     public Duration getTtl() {
         return cacheProperties.ttl();
     }
-
-    // Private helper methods
 
     private Mono<ImmunizationEntity> loadAndSave(
             String memberEid,

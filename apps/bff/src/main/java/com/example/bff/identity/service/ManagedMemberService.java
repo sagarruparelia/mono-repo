@@ -24,10 +24,6 @@ import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEB
 
 /**
  * Service for fetching managed members (permissions) via the Graph API.
- * Endpoint: /api/consumer/prefs/del-gr/1.0.0
- *
- * Returns list of members who have granted access to the logged-in user.
- * Only returns members with active permissions (startDate <= today <= endDate).
  */
 @Slf4j
 @Service
@@ -49,19 +45,8 @@ public class ManagedMemberService {
         this.cacheService = cacheService;
     }
 
-    /**
-     * Fetch managed members for a responsible party.
-     * Results are cached in Redis.
-     *
-     * @param memberEid     Member's Enterprise ID (the responsible party)
-     * @param apiIdentifier API identifier for the x-identifier header
-     * @return List of managed members with active permissions
-     */
     @NonNull
-    public Mono<List<ManagedMember>> getManagedMembers(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
-
+    public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid, @Nullable String apiIdentifier) {
         log.debug("Fetching managed members for memberEid: {}", memberEid);
 
         Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid, apiIdentifier);
@@ -70,10 +55,7 @@ public class ManagedMemberService {
                 .map(this::toManagedMembers);
     }
 
-    /**
-     * Fetch permissions directly from API.
-     */
-    private Mono<ManagedMemberResponse> fetchFromApi(String memberEid, @Nullable String apiIdentifier) {
+    private Mono<ManagedMemberResponse> fetchFromApi(String memberEid, String apiIdentifier) {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.permissions().timeout();
 
@@ -134,9 +116,6 @@ public class ManagedMemberService {
                 });
     }
 
-    /**
-     * Convert API response to list of managed members with active permissions only.
-     */
     private List<ManagedMember> toManagedMembers(ManagedMemberResponse response) {
         return response.getActivePermissions().stream()
                 .filter(permission -> permission.eid() != null)
@@ -144,9 +123,6 @@ public class ManagedMemberService {
                 .toList();
     }
 
-    /**
-     * Convert a single permission to ManagedMember model.
-     */
     private ManagedMember toManagedMember(MemberPermission permission) {
         return new ManagedMember(
                 permission.eid(),
@@ -157,9 +133,6 @@ public class ManagedMemberService {
         );
     }
 
-    /**
-     * Check if error is retryable (5xx errors and timeouts).
-     */
     private boolean isRetryable(Throwable throwable) {
         if (throwable instanceof WebClientResponseException ex) {
             return ex.getStatusCode().is5xxServerError();

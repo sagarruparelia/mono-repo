@@ -12,6 +12,7 @@ import com.example.bff.identity.model.MemberAccess;
 import com.example.bff.identity.service.MemberAccessOrchestrator;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.service.SessionService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
@@ -36,12 +37,10 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 
-/**
- * Handles successful HSID authentication.
- * Enriches the session with member access information from external APIs.
- */
+/** Handles successful HSID authentication by enriching sessions with member access. */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuccessHandler {
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
@@ -52,37 +51,15 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
 
     private final SessionService sessionService;
     private final MemberAccessOrchestrator memberAccessOrchestrator;
-
-    @Nullable
-    private final PermissionsFetchService permissionsFetchService;
-
-    @Nullable
-    private final TokenService tokenService;
-
-    @Nullable
-    private final ReactiveOAuth2AuthorizedClientService authorizedClientService;
-
-    @Nullable
-    private final HealthDataOrchestrator healthDataOrchestrator;
-
-    public HsidAuthenticationSuccessHandler(
-            @NonNull SessionService sessionService,
-            @NonNull MemberAccessOrchestrator memberAccessOrchestrator,
-            @Nullable PermissionsFetchService permissionsFetchService,
-            @Nullable TokenService tokenService,
-            @Nullable ReactiveOAuth2AuthorizedClientService authorizedClientService,
-            @Nullable HealthDataOrchestrator healthDataOrchestrator) {
-        this.sessionService = sessionService;
-        this.memberAccessOrchestrator = memberAccessOrchestrator;
-        this.permissionsFetchService = permissionsFetchService;
-        this.tokenService = tokenService;
-        this.authorizedClientService = authorizedClientService;
-        this.healthDataOrchestrator = healthDataOrchestrator;
-    }
+    @Nullable private final PermissionsFetchService permissionsFetchService;
+    @Nullable private final TokenService tokenService;
+    @Nullable private final ReactiveOAuth2AuthorizedClientService authorizedClientService;
+    @Nullable private final HealthDataOrchestrator healthDataOrchestrator;
 
     @Override
-    public Mono<Void> onAuthenticationSuccess(WebFilterExchange exchange,
-                                               Authentication authentication) {
+    @NonNull
+    public Mono<Void> onAuthenticationSuccess(@NonNull WebFilterExchange exchange,
+                                               @NonNull Authentication authentication) {
         if (!(authentication instanceof OAuth2AuthenticationToken token)) {
             log.warn("Unexpected authentication type: {}", authentication.getClass());
             return Mono.empty();
@@ -117,16 +94,14 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 });
     }
 
-    /**
-     * Creates session with member access and redirects to app.
-     */
+    @NonNull
     private Mono<Void> createSessionAndRedirect(
-            WebFilterExchange exchange,
-            String userId,
-            OidcUser oidcUser,
-            ClientInfo clientInfo,
-            MemberAccess memberAccess,
-            Mono<OAuth2AuthorizedClient> authorizedClientMono) {
+            @NonNull WebFilterExchange exchange,
+            @NonNull String userId,
+            @NonNull OidcUser oidcUser,
+            @NonNull ClientInfo clientInfo,
+            @NonNull MemberAccess memberAccess,
+            @NonNull Mono<OAuth2AuthorizedClient> authorizedClientMono) {
 
         log.info("Member access resolved for user {}: persona={}, eligibility={}",
                 userId, memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
@@ -150,10 +125,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 });
     }
 
-    /**
-     * Fetches permissions based on resolved member access.
-     */
-    private Mono<PermissionSet> fetchPermissions(String userId, MemberAccess memberAccess) {
+    @NonNull
+    private Mono<PermissionSet> fetchPermissions(@NonNull String userId, @NonNull MemberAccess memberAccess) {
         String persona = memberAccess.getEffectivePersona();
 
         if (permissionsFetchService == null) {
@@ -170,13 +143,15 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 });
     }
 
-    private Mono<Void> redirectToError(ServerWebExchange exchange, String errorPath) {
+    @NonNull
+    private Mono<Void> redirectToError(@NonNull ServerWebExchange exchange, @NonNull String errorPath) {
         exchange.getResponse().setStatusCode(HttpStatus.FOUND);
         exchange.getResponse().getHeaders().setLocation(URI.create(errorPath));
         return exchange.getResponse().setComplete();
     }
 
-    private Mono<OAuth2AuthorizedClient> getAuthorizedClient(OAuth2AuthenticationToken token) {
+    @NonNull
+    private Mono<OAuth2AuthorizedClient> getAuthorizedClient(@NonNull OAuth2AuthenticationToken token) {
         if (authorizedClientService == null) {
             log.debug("AuthorizedClientService not available, skipping token storage");
             return Mono.empty();
@@ -188,15 +163,17 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         );
     }
 
+    @Nullable
     private OAuth2AuthorizedClient createEmptyClient() {
         return null;
     }
 
+    @NonNull
     private Mono<Void> storeTokensAndRedirect(
-            ServerWebExchange exchange,
-            String sessionId,
+            @NonNull ServerWebExchange exchange,
+            @NonNull String sessionId,
             @Nullable OAuth2AuthorizedClient authorizedClient,
-            OidcUser oidcUser) {
+            @NonNull OidcUser oidcUser) {
 
         Mono<Void> storeTokensMono = Mono.empty();
 
@@ -216,7 +193,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     }
 
     @Nullable
-    private TokenData extractTokenData(OAuth2AuthorizedClient authorizedClient, OidcUser oidcUser) {
+    private TokenData extractTokenData(@NonNull OAuth2AuthorizedClient authorizedClient, @NonNull OidcUser oidcUser) {
         OAuth2AccessToken accessToken = authorizedClient.getAccessToken();
         OAuth2RefreshToken refreshToken = authorizedClient.getRefreshToken();
 
@@ -241,7 +218,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         );
     }
 
-    private ClientInfo extractClientInfo(ServerWebExchange exchange) {
+    @NonNull
+    private ClientInfo extractClientInfo(@NonNull ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
 
         String ipAddress = request.getHeaders().getFirst("X-Forwarded-For");
@@ -258,7 +236,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return ClientInfo.of(ipAddress, userAgent != null ? userAgent : "unknown");
     }
 
-    private Mono<Void> setSessionCookieAndRedirect(ServerWebExchange exchange, String sessionId) {
+    @NonNull
+    private Mono<Void> setSessionCookieAndRedirect(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
         ResponseCookie sessionCookie = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
                 .httpOnly(true)
                 .secure(true)
@@ -288,7 +267,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return exchange.getResponse().setComplete();
     }
 
-    private String getRedirectUri(ServerWebExchange exchange) {
+    @NonNull
+    private String getRedirectUri(@NonNull ServerWebExchange exchange) {
         HttpCookie redirectCookie = exchange.getRequest().getCookies().getFirst(REDIRECT_URI_COOKIE);
         if (redirectCookie != null && !redirectCookie.getValue().isBlank()) {
             String uri = redirectCookie.getValue();
@@ -300,11 +280,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return "/";
     }
 
-    /**
-     * Validates that a URI is a safe relative path to prevent open redirect attacks.
-     * Uses recursive URL decoding to catch multi-layer encoding attacks.
-     */
-    private boolean isValidRelativePath(String uri) {
+    /** Validates URI is a safe relative path to prevent open redirect attacks. */
+    private boolean isValidRelativePath(@Nullable String uri) {
         if (uri == null || uri.isBlank()) {
             return false;
         }
@@ -357,11 +334,9 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return true;
     }
 
-    /**
-     * Recursively decodes a URI until no more decoding is needed.
-     * Returns null if decoding fails (malformed input).
-     */
-    private String fullyDecodeUri(String uri) {
+    /** Recursively decodes URI to catch multi-layer encoding attacks. Returns null if malformed. */
+    @Nullable
+    private String fullyDecodeUri(@Nullable String uri) {
         if (uri == null) {
             return null;
         }
@@ -386,11 +361,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return null;
     }
 
-    /**
-     * Checks if the URI contains any protocol handler.
-     */
-    private boolean containsProtocolHandler(String uri) {
-        // Common dangerous protocol handlers
+    private boolean containsProtocolHandler(@NonNull String uri) {
         return uri.contains("://") ||
                 uri.startsWith("javascript:") ||
                 uri.startsWith("data:") ||
@@ -402,10 +373,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 uri.matches(".*\\s*data\\s*:.*");
     }
 
-    /**
-     * Checks if the string contains control characters or null bytes.
-     */
-    private boolean containsControlCharacters(String str) {
+    private boolean containsControlCharacters(@NonNull String str) {
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
             // Block ASCII control characters (0x00-0x1F) except tab, newline, carriage return
@@ -421,11 +389,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return false;
     }
 
-    /**
-     * Triggers background health data fetch for the logged-in user and their managed members.
-     * This is fire-and-forget - errors are logged but don't affect the login flow.
-     */
-    private void triggerHealthDataFetch(MemberAccess memberAccess) {
+    /** Fire-and-forget health data fetch - errors don't affect login flow. */
+    private void triggerHealthDataFetch(@NonNull MemberAccess memberAccess) {
         if (healthDataOrchestrator == null) {
             log.debug("HealthDataOrchestrator not available, skipping background fetch");
             return;

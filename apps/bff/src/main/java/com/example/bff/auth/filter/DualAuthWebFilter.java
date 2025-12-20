@@ -9,9 +9,9 @@ import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import com.example.bff.config.properties.IdpProperties;
 import com.example.bff.config.properties.SecurityPathsProperties;
-import com.example.bff.session.model.SessionData;
 import com.example.bff.session.service.SessionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -33,26 +33,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Unified authentication filter for both HSID (session) and PROXY (header-based) auth.
- *
- * <p>This filter builds an {@link AuthContext} from either:
- * <ul>
- *   <li><b>HSID</b>: BFF_SESSION cookie → Redis session lookup</li>
- *   <li><b>PROXY</b>: X-Persona, X-User-Id, X-IDP-Type headers (via mTLS ALB)</li>
- * </ul>
- *
- * <p>The filter validates:
- * <ul>
- *   <li>Path-based auth requirements (public, session-only, proxy-only, dual-auth)</li>
- *   <li>IDP-persona mapping for PROXY auth (strict validation)</li>
- *   <li>Stores {@link AuthContext} in exchange attributes for downstream use</li>
- * </ul>
- *
- * @see AuthContext
- * @see AuthContextResolver
+ * Unified authentication filter supporting HSID (session cookie) and PROXY (header-based via mTLS) auth.
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class DualAuthWebFilter implements WebFilter {
 
@@ -65,21 +50,7 @@ public class DualAuthWebFilter implements WebFilter {
     private final IdpProperties idpProperties;
     private final ExternalIntegrationProperties externalProperties;
     private final ObjectMapper objectMapper;
-    private final AntPathMatcher pathMatcher;
-
-    public DualAuthWebFilter(
-            @NonNull SessionService sessionService,
-            @NonNull SecurityPathsProperties securityPaths,
-            @NonNull IdpProperties idpProperties,
-            @NonNull ExternalIntegrationProperties externalProperties,
-            @NonNull ObjectMapper objectMapper) {
-        this.sessionService = sessionService;
-        this.securityPaths = securityPaths;
-        this.idpProperties = idpProperties;
-        this.externalProperties = externalProperties;
-        this.objectMapper = objectMapper;
-        this.pathMatcher = new AntPathMatcher();
-    }
+    private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     @Override
     @NonNull
@@ -127,9 +98,6 @@ public class DualAuthWebFilter implements WebFilter {
                 }));
     }
 
-    /**
-     * Resolves AuthContext from either session cookie or proxy headers.
-     */
     @NonNull
     private Mono<AuthContext> resolveAuthContext(@NonNull ServerWebExchange exchange) {
         // First try HSID (session cookie)
@@ -137,9 +105,6 @@ public class DualAuthWebFilter implements WebFilter {
                 .switchIfEmpty(Mono.defer(() -> resolveProxyContext(exchange)));
     }
 
-    /**
-     * Resolves HSID AuthContext from session cookie.
-     */
     @NonNull
     private Mono<AuthContext> resolveHsidContext(@NonNull ServerWebExchange exchange) {
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
@@ -179,9 +144,6 @@ public class DualAuthWebFilter implements WebFilter {
                         }));
     }
 
-    /**
-     * Resolves PROXY AuthContext from headers.
-     */
     @NonNull
     private Mono<AuthContext> resolveProxyContext(@NonNull ServerWebExchange exchange) {
         // Check if this is a proxy request (has X-Auth-Type: proxy or X-Client-Id)
@@ -264,9 +226,6 @@ public class DualAuthWebFilter implements WebFilter {
         return Mono.just(authContext);
     }
 
-    /**
-     * Determines the path category for auth requirements.
-     */
     @NonNull
     private PathCategory determinePathCategory(@NonNull String path) {
         // Check public paths
@@ -301,9 +260,6 @@ public class DualAuthWebFilter implements WebFilter {
         return PathCategory.DUAL_AUTH;
     }
 
-    /**
-     * Checks if the auth type is allowed for the path category.
-     */
     private boolean isAuthTypeAllowedForPath(@NonNull AuthContext auth, @NonNull PathCategory category) {
         return switch (category) {
             case PUBLIC -> true;
@@ -313,9 +269,6 @@ public class DualAuthWebFilter implements WebFilter {
         };
     }
 
-    /**
-     * Returns error response when auth type doesn't match path requirements.
-     */
     @NonNull
     private Mono<Void> authTypeMismatchResponse(
             @NonNull ServerWebExchange exchange,
@@ -335,8 +288,6 @@ public class DualAuthWebFilter implements WebFilter {
 
         return forbiddenResponse(exchange, correlationId, code, message);
     }
-
-    // ---- Response helpers ----
 
     @NonNull
     private Mono<Void> unauthorizedResponse(
@@ -401,8 +352,6 @@ public class DualAuthWebFilter implements WebFilter {
         }
     }
 
-    // ---- Helpers ----
-
     @NonNull
     private String getCorrelationId(@NonNull ServerWebExchange exchange) {
         String correlationId = exchange.getRequest().getHeaders().getFirst(CORRELATION_ID_HEADER);
@@ -412,16 +361,12 @@ public class DualAuthWebFilter implements WebFilter {
         return correlationId;
     }
 
-    // ---- Path category enum ----
-
     private enum PathCategory {
         PUBLIC,
         SESSION_ONLY,
         PROXY_ONLY,
         DUAL_AUTH
     }
-
-    // ---- Custom exception for proxy auth errors ----
 
     private static class ProxyAuthException extends RuntimeException {
         private final String code;

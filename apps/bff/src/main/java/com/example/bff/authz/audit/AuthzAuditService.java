@@ -4,8 +4,10 @@ import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
+import com.example.bff.common.util.StringSanitizer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,63 +21,30 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Service for publishing authorization audit events.
- *
- * <p>Events are logged in structured JSON format for security analysis,
- * compliance reporting, and debugging authorization decisions.
- *
- * <p>Features:
- * <ul>
- *   <li>Structured JSON audit logging</li>
- *   <li>Correlation ID tracking</li>
- *   <li>Client IP extraction with proxy support</li>
- *   <li>Log level based on decision outcome</li>
- * </ul>
- *
- * @see AuthzAuditEvent
+ * Service for publishing authorization audit events in structured JSON format.
  */
 @Service
+@RequiredArgsConstructor
 @ConditionalOnProperty(name = "app.authz.audit.enabled", havingValue = "true", matchIfMissing = true)
 public class AuthzAuditService {
 
     private static final Logger AUDIT_LOG = LoggerFactory.getLogger("AUTHZ_AUDIT");
 
-    // HTTP Header constants
     private static final String HEADER_CORRELATION_ID = "X-Correlation-Id";
     private static final String HEADER_FORWARDED_FOR = "X-Forwarded-For";
     private static final String HEADER_USER_AGENT = "User-Agent";
 
-    // Validation patterns
     private static final Pattern UUID_PATTERN = Pattern.compile(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile(
             "^([0-9]{1,3}\\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
 
-    // Limits for input sanitization
     private static final int MAX_CORRELATION_ID_LENGTH = 64;
     private static final int MAX_USER_AGENT_LENGTH = 500;
     private static final int MAX_PATH_LENGTH = 2000;
 
     private final ObjectMapper objectMapper;
 
-    /**
-     * Constructs a new AuthzAuditService.
-     *
-     * @param objectMapper the Jackson ObjectMapper for JSON serialization
-     */
-    public AuthzAuditService(@NonNull ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
-
-    /**
-     * Log an authorization decision.
-     *
-     * @param subject  the subject attributes (user context)
-     * @param resource the resource being accessed
-     * @param action   the action being performed
-     * @param decision the policy decision result
-     * @param request  the HTTP request (nullable for non-HTTP contexts)
-     */
     public void logDecision(
             @NonNull SubjectAttributes subject,
             @NonNull ResourceAttributes resource,
@@ -89,18 +58,9 @@ public class AuthzAuditService {
         logEvent(event);
     }
 
-    /**
-     * Log an authorization error.
-     *
-     * @param subject     the subject attributes (nullable if unavailable)
-     * @param resource    the resource being accessed (nullable if unavailable)
-     * @param action      the action being performed
-     * @param errorReason the reason for the error
-     * @param request     the HTTP request (nullable for non-HTTP contexts)
-     */
     public void logError(
-            @Nullable SubjectAttributes subject,
-            @Nullable ResourceAttributes resource,
+            @NonNull SubjectAttributes subject,
+            @NonNull ResourceAttributes resource,
             @NonNull Action action,
             @NonNull String errorReason,
             @Nullable ServerHttpRequest request) {
@@ -111,27 +71,16 @@ public class AuthzAuditService {
         logEvent(event);
     }
 
-    /**
-     * Logs the audit event in structured JSON format.
-     *
-     * @param event the audit event to log
-     */
     private void logEvent(@NonNull AuthzAuditEvent event) {
         try {
             String json = objectMapper.writeValueAsString(event.toStructuredLog());
             logByOutcome(event.outcome(), json);
         } catch (JsonProcessingException e) {
-            AUDIT_LOG.error("Failed to serialize audit event: {}", sanitizeLogMessage(e.getMessage()));
+            AUDIT_LOG.error("Failed to serialize audit event: {}", StringSanitizer.forLog(e.getMessage()));
             logFallback(event);
         }
     }
 
-    /**
-     * Routes the log message to appropriate log level based on outcome.
-     *
-     * @param outcome the authorization outcome
-     * @param json    the JSON message to log
-     */
     private void logByOutcome(@Nullable AuthzAuditEvent.Outcome outcome, String json) {
         if (outcome == null) {
             AUDIT_LOG.warn(json);
@@ -145,28 +94,17 @@ public class AuthzAuditService {
         }
     }
 
-    /**
-     * Fallback logging when JSON serialization fails.
-     *
-     * @param event the audit event to log
-     */
     private void logFallback(@NonNull AuthzAuditEvent event) {
         AUDIT_LOG.warn("AuthZ {} - user={}, resource={}/{}, action={}, policy={}, reason={}",
                 event.outcome(),
-                sanitizeLogMessage(event.userId()),
-                sanitizeLogMessage(event.resourceType()),
-                sanitizeLogMessage(event.resourceId()),
+                StringSanitizer.forLog(event.userId()),
+                StringSanitizer.forLog(event.resourceType()),
+                StringSanitizer.forLog(event.resourceId()),
                 event.action(),
-                sanitizeLogMessage(event.policyId()),
-                sanitizeLogMessage(event.reason()));
+                StringSanitizer.forLog(event.policyId()),
+                StringSanitizer.forLog(event.reason()));
     }
 
-    /**
-     * Extracts request context for audit logging.
-     *
-     * @param request the HTTP request (nullable)
-     * @return the extracted request context
-     */
     @NonNull
     private AuthzAuditEvent.RequestContext extractRequestContext(@Nullable ServerHttpRequest request) {
         if (request == null) {
@@ -190,9 +128,7 @@ public class AuthzAuditService {
 
     /**
      * Extracts and validates correlation ID from request headers.
-     *
-     * @param request the HTTP request
-     * @return a valid correlation ID (generated if not present or invalid)
+     * Generates a new UUID if the header is missing or invalid.
      */
     @NonNull
     private String extractCorrelationId(@NonNull ServerHttpRequest request) {
@@ -202,7 +138,6 @@ public class AuthzAuditService {
             return generateCorrelationId();
         }
 
-        // Validate correlation ID format and length
         String sanitized = correlationId.trim();
         if (sanitized.length() > MAX_CORRELATION_ID_LENGTH) {
             AUDIT_LOG.debug("Correlation ID exceeds max length, generating new one");
@@ -219,11 +154,6 @@ public class AuthzAuditService {
         return sanitized;
     }
 
-    /**
-     * Generates a new correlation ID.
-     *
-     * @return a new UUID-based correlation ID
-     */
     @NonNull
     private String generateCorrelationId() {
         return UUID.randomUUID().toString();
@@ -231,19 +161,12 @@ public class AuthzAuditService {
 
     /**
      * Extracts client IP address from request, handling proxy headers.
-     *
-     * <p>Security note: X-Forwarded-For header is validated to prevent
-     * IP spoofing attacks. Only valid IP addresses are accepted.
-     *
-     * @param request the HTTP request
-     * @return the client IP address or null if not determinable
+     * X-Forwarded-For header is validated to prevent IP spoofing attacks.
      */
     @Nullable
     private String extractClientIp(@NonNull ServerHttpRequest request) {
-        // First try X-Forwarded-For header (set by trusted proxies/load balancers)
         String forwardedFor = request.getHeaders().getFirst(HEADER_FORWARDED_FOR);
         if (forwardedFor != null && !forwardedFor.isBlank()) {
-            // Take the first IP (original client) from potentially comma-separated list
             String firstIp = forwardedFor.split(",")[0].trim();
             if (isValidIpAddress(firstIp)) {
                 return firstIp;
@@ -251,7 +174,6 @@ public class AuthzAuditService {
             AUDIT_LOG.debug("Invalid IP in X-Forwarded-For header, falling back to remote address");
         }
 
-        // Fall back to direct remote address
         InetSocketAddress remoteAddress = request.getRemoteAddress();
         if (remoteAddress != null && remoteAddress.getAddress() != null) {
             return remoteAddress.getAddress().getHostAddress();
@@ -260,12 +182,6 @@ public class AuthzAuditService {
         return null;
     }
 
-    /**
-     * Validates an IP address format (IPv4 or IPv6).
-     *
-     * @param ip the IP address string to validate
-     * @return true if the IP address format is valid
-     */
     private boolean isValidIpAddress(@Nullable String ip) {
         if (ip == null || ip.isBlank()) {
             return false;
@@ -273,12 +189,6 @@ public class AuthzAuditService {
         return IP_ADDRESS_PATTERN.matcher(ip).matches();
     }
 
-    /**
-     * Extracts and sanitizes user agent from request headers.
-     *
-     * @param request the HTTP request
-     * @return the sanitized user agent or null
-     */
     @Nullable
     private String extractUserAgent(@NonNull ServerHttpRequest request) {
         String userAgent = request.getHeaders().getFirst(HEADER_USER_AGENT);
@@ -288,12 +198,6 @@ public class AuthzAuditService {
         return sanitizeUserAgent(userAgent);
     }
 
-    /**
-     * Sanitizes user agent string to prevent log injection.
-     *
-     * @param userAgent the raw user agent string
-     * @return sanitized user agent
-     */
     @NonNull
     private String sanitizeUserAgent(@NonNull String userAgent) {
         String sanitized = userAgent
@@ -307,12 +211,6 @@ public class AuthzAuditService {
         return sanitized;
     }
 
-    /**
-     * Sanitizes request path to prevent log injection.
-     *
-     * @param path the raw path string
-     * @return sanitized path
-     */
     @NonNull
     private String sanitizePath(@Nullable String path) {
         if (path == null || path.isBlank()) {
@@ -328,22 +226,5 @@ public class AuthzAuditService {
             sanitized = sanitized.substring(0, MAX_PATH_LENGTH) + "...";
         }
         return sanitized;
-    }
-
-    /**
-     * Sanitizes a string for safe logging to prevent log injection attacks.
-     *
-     * @param value the value to sanitize (nullable)
-     * @return sanitized value safe for logging
-     */
-    @NonNull
-    private String sanitizeLogMessage(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 }

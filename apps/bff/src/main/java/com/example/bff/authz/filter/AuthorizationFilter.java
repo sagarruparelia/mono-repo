@@ -12,10 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -28,13 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * ABAC Authorization Filter - enforces attribute-based access control on protected paths.
- *
- * <p>Intercepts requests to /api/dependent/{id} and /api/member/{id} paths
- * and evaluates ABAC policies to determine access.
- *
- * @see AbacAuthorizationService
- * @see AuthzProperties
+ * ABAC authorization filter that enforces attribute-based access control on /api/dependent/{id} and /api/member/{id} paths.
  */
 @Slf4j
 @Component
@@ -44,25 +38,16 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final int MAX_RESOURCE_ID_LENGTH = 128;
 
-    @Nullable
     private final AbacAuthorizationService authorizationService;
-
     private final AuthzProperties authzProperties;
-
-    // Compiled patterns from configuration
     private final Pattern resourcePathPattern;
     private final Pattern sensitivePathPattern;
 
-    public AuthorizationFilter(
-            @Nullable AbacAuthorizationService authorizationService,
-            @NonNull AuthzProperties authzProperties) {
+    public AuthorizationFilter(@NonNull AbacAuthorizationService authorizationService, @NonNull AuthzProperties authzProperties) {
         this.authorizationService = authorizationService;
         this.authzProperties = authzProperties;
-
-        // Compile resource path pattern from config
         this.resourcePathPattern = Pattern.compile(authzProperties.pathPatterns().resourcePattern());
 
-        // Build sensitive path pattern from configured segments
         String sensitiveSegments = String.join("|", authzProperties.pathPatterns().sensitiveSegments());
         String sensitivePatternStr = String.format(
                 "^/api/(?:dependent|member)/[^/]+/(?:%s)(?:/.*)?$", sensitiveSegments);
@@ -87,7 +72,6 @@ public class AuthorizationFilter implements WebFilter, Ordered {
 
         String path = exchange.getRequest().getPath().value();
 
-        // Check if this is a protected resource path
         Matcher resourceMatcher = resourcePathPattern.matcher(path);
         if (!resourceMatcher.matches()) {
             return chain.filter(exchange);
@@ -102,12 +86,8 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         }
 
         boolean isSensitive = sensitivePathPattern.matcher(path).matches();
-
-        // Build resource attributes
         ResourceAttributes resource = buildResourceAttributes(resourceType, resourceId, isSensitive);
         Action action = isSensitive ? Action.VIEW_SENSITIVE : Action.VIEW;
-
-        // Determine auth type and build subject
         AuthType authType = authorizationService.determineAuthType(exchange.getRequest());
 
         return buildSubjectAttributes(exchange, authType)
@@ -120,11 +100,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     }
 
     @NonNull
-    private ResourceAttributes buildResourceAttributes(
-            @NonNull String type,
-            @NonNull String id,
-            boolean isSensitive) {
-
+    private ResourceAttributes buildResourceAttributes(@NonNull String type, @NonNull String id, boolean isSensitive) {
         ResourceAttributes.Sensitivity sensitivity = isSensitive
                 ? ResourceAttributes.Sensitivity.SENSITIVE
                 : ResourceAttributes.Sensitivity.NORMAL;
@@ -135,15 +111,11 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     }
 
     @NonNull
-    private Mono<SubjectAttributes> buildSubjectAttributes(
-            @NonNull ServerWebExchange exchange,
-            @NonNull AuthType authType) {
-
+    private Mono<SubjectAttributes> buildSubjectAttributes(@NonNull ServerWebExchange exchange, @NonNull AuthType authType) {
         if (authType == AuthType.PROXY) {
             return authorizationService.buildProxySubject(exchange.getRequest());
         }
 
-        // HSID - get session from cookie
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
             log.debug("No session cookie for HSID authorization");
@@ -151,7 +123,6 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         }
 
         String sessionId = sessionCookie.getValue();
-        // Validate session ID format (UUID)
         if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format");
             return Mono.empty();
@@ -180,12 +151,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         return forbiddenResponse(exchange, decision);
     }
 
-    /**
-     * Sanitizes and validates resource ID from URL path.
-     *
-     * @param resourceId the raw resource ID
-     * @return sanitized resource ID or null if invalid
-     */
+    /** Returns sanitized resource ID or null if invalid (non-alphanumeric or too long). */
     @Nullable
     private String sanitizeResourceId(@Nullable String resourceId) {
         if (resourceId == null || resourceId.isBlank()) {
@@ -197,7 +163,6 @@ public class AuthorizationFilter implements WebFilter, Ordered {
             return null;
         }
 
-        // Allow alphanumeric, dash, underscore
         if (!trimmed.matches("^[a-zA-Z0-9_-]+$")) {
             return null;
         }
@@ -206,10 +171,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     }
 
     @NonNull
-    private Mono<Void> unauthorizedResponse(
-            @NonNull ServerWebExchange exchange,
-            @NonNull String message) {
-
+    private Mono<Void> unauthorizedResponse(@NonNull ServerWebExchange exchange, @NonNull String message) {
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
@@ -224,10 +186,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
     }
 
     @NonNull
-    private Mono<Void> forbiddenResponse(
-            @NonNull ServerWebExchange exchange,
-            @NonNull PolicyDecision decision) {
-
+    private Mono<Void> forbiddenResponse(@NonNull ServerWebExchange exchange, @NonNull PolicyDecision decision) {
         exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 

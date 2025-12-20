@@ -3,6 +3,7 @@ package com.example.bff.common.filter;
 import com.example.bff.config.properties.RateLimitProperties;
 import com.example.bff.config.properties.RateLimitProperties.PersonaRule;
 import com.example.bff.config.properties.RateLimitProperties.RateLimitRule;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
@@ -26,28 +27,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Rate limiting filter that enforces request limits based on configuration.
- * Supports IP-based, partner-based, and persona-based rate limiting.
- *
- * Uses a token bucket algorithm for rate limiting.
+ * Enforces request rate limits using a token bucket algorithm.
  */
 @Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 @ConditionalOnProperty(name = "rate-limiting.enabled", havingValue = "true", matchIfMissing = true)
+@RequiredArgsConstructor
 public class RateLimitingFilter implements WebFilter {
 
     private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     private final RateLimitProperties rateLimitProperties;
     private final Map<String, TokenBucket> buckets = new ConcurrentHashMap<>();
-
-    public RateLimitingFilter(RateLimitProperties rateLimitProperties) {
-        this.rateLimitProperties = rateLimitProperties;
-        log.info("Rate limiting filter initialized with {} path rules and {} persona rules",
-                rateLimitProperties.rules().size(),
-                rateLimitProperties.personaRules().size());
-    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -100,10 +92,6 @@ public class RateLimitingFilter implements WebFilter {
                 }));
     }
 
-    /**
-     * Extract client IP with security considerations.
-     * Only trust X-Forwarded-For from trusted proxies (ALB/CloudFront).
-     */
     private String extractClientIp(ServerWebExchange exchange) {
         var remoteAddress = exchange.getRequest().getRemoteAddress();
         String directIp = remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
@@ -126,10 +114,6 @@ public class RateLimitingFilter implements WebFilter {
         return directIp;
     }
 
-    /**
-     * Check if IP is from a trusted proxy (ALB, CloudFront, internal network).
-     * Configure trusted ranges via rate-limiting.trusted-proxies in config.
-     */
     private boolean isTrustedProxy(String ip) {
         // Private network ranges and localhost are trusted (ALB, internal proxies)
         return ip.startsWith("10.") ||
@@ -193,9 +177,6 @@ public class RateLimitingFilter implements WebFilter {
         );
     }
 
-    /**
-     * Simple token bucket implementation for rate limiting.
-     */
     private static class TokenBucket {
         private final int tokensPerSecond;
         private final int maxTokens;

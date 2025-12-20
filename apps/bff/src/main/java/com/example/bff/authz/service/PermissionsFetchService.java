@@ -10,7 +10,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -25,24 +24,14 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Service to fetch permissions from the backend Permissions API.
- *
- * <p>Retrieves user permission sets including dependent access and
- * converts them to the internal domain model. Implements fail-closed
- * behavior on API errors.
- *
- * @see PermissionSet
- * @see AuthzProperties
+ * Fetches user permissions from the backend Permissions API with fail-closed behavior.
  */
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
 public class PermissionsFetchService {
 
-    // Validation patterns
     private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_@.-]{1,128}$");
-
-    // Limits
     private static final int MAX_LOG_VALUE_LENGTH = 64;
     private static final int DEFAULT_CACHE_TTL_SECONDS = 300;
 
@@ -50,8 +39,8 @@ public class PermissionsFetchService {
     private final AuthzProperties authzProperties;
 
     public PermissionsFetchService(
-            @NonNull WebClient.Builder webClientBuilder,
-            @NonNull AuthzProperties authzProperties) {
+            WebClient.Builder webClientBuilder,
+            AuthzProperties authzProperties) {
         this.authzProperties = authzProperties;
         this.webClient = webClientBuilder
                 .baseUrl(authzProperties.permissionsApi().url())
@@ -59,12 +48,6 @@ public class PermissionsFetchService {
                 .build();
     }
 
-    /**
-     * Fetch permissions for a user from the backend API.
-     *
-     * @param userId the user's ID
-     * @return Mono emitting the user's permission set
-     */
     @NonNull
     public Mono<PermissionSet> fetchPermissions(@NonNull String userId) {
         if (!isValidUserId(userId)) {
@@ -93,7 +76,6 @@ public class PermissionsFetchService {
                             sanitizeForLog(userId),
                             sanitizeForLog(e.getStatusCode() + " " + e.getStatusText()),
                             correlationId);
-                    // Return empty permissions on API error (fail closed)
                     return Mono.just(PermissionSet.empty(userId, "individual"));
                 })
                 .onErrorResume(Exception.class, e -> {
@@ -101,26 +83,17 @@ public class PermissionsFetchService {
                             sanitizeForLog(userId),
                             sanitizeForLog(e.getMessage()),
                             correlationId);
-                    // Return empty permissions on error (fail closed)
                     return Mono.just(PermissionSet.empty(userId, "individual"));
                 });
     }
 
-    /**
-     * Convert API response to internal PermissionSet model.
-     *
-     * @param response the API response
-     * @return the permission set
-     */
-    @NonNull
-    private PermissionSet toPermissionSet(@NonNull PermissionsApiResponse response) {
+    private PermissionSet toPermissionSet(PermissionsApiResponse response) {
         List<DependentAccess> dependents = response.dependents() != null
                 ? response.dependents().stream()
                     .map(this::toDependentAccess)
                     .collect(Collectors.toList())
                 : List.of();
 
-        // Calculate expiration based on cache TTL from API (default 5 minutes)
         int ttlSeconds = response.cacheTTL() != null ? response.cacheTTL() : DEFAULT_CACHE_TTL_SECONDS;
         Instant expiresAt = Instant.now().plusSeconds(ttlSeconds);
 
@@ -133,14 +106,7 @@ public class PermissionsFetchService {
         );
     }
 
-    /**
-     * Convert API dependent permission to internal DependentAccess model.
-     *
-     * @param dp the dependent permission from API
-     * @return the dependent access
-     */
-    @NonNull
-    private DependentAccess toDependentAccess(@NonNull PermissionsApiResponse.DependentPermission dp) {
+    private DependentAccess toDependentAccess(PermissionsApiResponse.DependentPermission dp) {
         Set<Permission> permissions = dp.permissions() != null
                 ? dp.permissions().stream()
                     .map(this::toPermission)
@@ -156,14 +122,7 @@ public class PermissionsFetchService {
         );
     }
 
-    /**
-     * Convert string permission to enum.
-     *
-     * @param permission the permission string
-     * @return Optional containing the permission if valid
-     */
-    @NonNull
-    private Optional<Permission> toPermission(@Nullable String permission) {
+    private Optional<Permission> toPermission(String permission) {
         if (permission == null || permission.isBlank()) {
             return Optional.empty();
         }
@@ -176,27 +135,14 @@ public class PermissionsFetchService {
         }
     }
 
-    /**
-     * Validates user ID format.
-     *
-     * @param userId the user ID to validate
-     * @return true if valid format
-     */
-    private boolean isValidUserId(@Nullable String userId) {
+    private boolean isValidUserId(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
         return SAFE_ID_PATTERN.matcher(userId).matches();
     }
 
-    /**
-     * Sanitizes a value for safe logging.
-     *
-     * @param value the value to sanitize
-     * @return sanitized value
-     */
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
+    private String sanitizeForLog(String value) {
         if (value == null) {
             return "null";
         }
