@@ -4,7 +4,7 @@
 security:
   paths:
     # Public endpoints (no authentication required)
-    public:
+    public-paths:
       - pattern: "/"
         description: "Landing page"
       - pattern: "/api/auth/**"

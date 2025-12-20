@@ -8,14 +8,13 @@ abac:
     # Documents are always SENSITIVE in MVP (post-MVP: per-document flag)
     document:
       default-sensitivity: SENSITIVE
-    # Health resources are NON-SENSITIVE by default
+    # Health resources are SENSITIVE by default (immunizations, allergies, conditions)
     # Business can override per subcategory via subcategory-overrides
-    health_summary:
-      default-sensitivity: NORMAL
-      # Example: uncomment to mark specific subcategories as sensitive
+    HEALTH_DATA:
+      default-sensitivity: SENSITIVE
+      # Example: uncomment to mark specific subcategories as non-sensitive
       # subcategory-overrides:
-      #   lab_reports: SENSITIVE
-      #   medication: SENSITIVE
+      #   basic_info: NORMAL
     profile:
       default-sensitivity: NORMAL
 
@@ -107,68 +106,47 @@ abac:
         require-assignment: true
 
     # ============================================
-    # Health Summary Policies (Dual Auth)
+    # Health Data Policies (Dual Auth)
     # ============================================
 
-    # Member (individual) viewing own health summary
+    # Member (individual) viewing own health data
     - id: HSID_INDIVIDUAL_HEALTH
-      description: "Member can view own health summary"
+      description: "Member can view own health data (immunizations, allergies, conditions)"
       priority: 150
       conditions:
         auth-type: HSID
         persona: individual
-        resource-type: health_summary
+        resource-type: HEALTH_DATA
         action: VIEW
       owner-check: true
 
-    # ResponsibleParty (parent) viewing dependent's non-sensitive health data
+    # ResponsibleParty (parent) viewing dependent's health data
+    # Since health data is always SENSITIVE, requires DAA + RPR + ROI
     - id: HSID_PARENT_HEALTH
-      description: "Parent can view dependent's health summary with DAA + RPR"
+      description: "Parent can view dependent's health data with DAA + RPR + ROI"
       priority: 100
       conditions:
         auth-type: HSID
         persona: parent
-        resource-type: health_summary
+        resource-type: HEALTH_DATA
         action: VIEW
-        sensitive: false
-      required-permissions: [DAA, RPR]
-
-    # ResponsibleParty (parent) viewing dependent's sensitive health data
-    - id: HSID_PARENT_HEALTH_SENSITIVE
-      description: "Parent can view dependent's sensitive health data with DAA + RPR + ROI"
-      priority: 100
-      conditions:
-        auth-type: HSID
-        persona: parent
-        resource-type: health_summary
-        action: VIEW
-        sensitive: true
       required-permissions: [DAA, RPR, ROI]
 
-    # Proxy users viewing non-sensitive health data
-    - id: PROXY_HEALTH_SUMMARY
-      description: "Proxy users can view assigned member's health summary"
-      priority: 100
-      conditions:
-        auth-type: PROXY
-        resource-type: health_summary
-        action: VIEW
-        sensitive: false
-      proxy-rules:
-        config-full-access: true
-        require-assignment: true
+    # Note: PROXY auth type skips ABAC - authorization delegated to consumer
+    # The following policies are kept for future use if proxy ABAC is enabled
 
-    # Only config can view sensitive health data via proxy
-    - id: PROXY_HEALTH_SENSITIVE
-      description: "Only config persona can view sensitive health data via proxy"
-      priority: 100
-      conditions:
-        auth-type: PROXY
-        resource-type: health_summary
-        action: VIEW
-        sensitive: true
-      proxy-rules:
-        config-only: true
+    # Proxy users viewing health data (currently disabled - authZ delegated to consumer)
+    # Uncomment if proxy ABAC enforcement is needed
+    # - id: PROXY_HEALTH_DATA
+    #   description: "Proxy users can view assigned member's health data"
+    #   priority: 100
+    #   conditions:
+    #     auth-type: PROXY
+    #     resource-type: HEALTH_DATA
+    #     action: VIEW
+    #   proxy-rules:
+    #     config-full-access: true
+    #     require-assignment: true
 
     # ============================================
     # Profile Policies (Dual Auth)
