@@ -1,7 +1,5 @@
 package com.example.bff.authz.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.util.Set;
 
 /**
@@ -22,27 +20,10 @@ public record DependentAccess(
     /**
      * Check if user can view this dependent (requires DAA AND RPR).
      */
-    @JsonIgnore
     public boolean canView() {
         return permissions != null
                 && permissions.contains(Permission.DAA)
                 && permissions.contains(Permission.RPR);
-    }
-
-    /**
-     * Check if user has ROI (Release of Information) for sensitive data.
-     */
-    @JsonIgnore
-    public boolean hasROI() {
-        return permissions != null && permissions.contains(Permission.ROI);
-    }
-
-    /**
-     * Check if user can view sensitive data (requires DAA AND RPR AND ROI).
-     */
-    @JsonIgnore
-    public boolean canViewSensitive() {
-        return canView() && hasROI();
     }
 
     /**

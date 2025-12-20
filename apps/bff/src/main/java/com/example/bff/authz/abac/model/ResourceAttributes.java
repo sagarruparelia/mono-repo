@@ -31,19 +31,6 @@ public record ResourceAttributes(
     }
 
     /**
-     * Create resource attributes for a dependent.
-     */
-    public static ResourceAttributes dependent(String dependentId) {
-        return new ResourceAttributes(
-                ResourceType.DEPENDENT,
-                dependentId,
-                Sensitivity.NORMAL,
-                null,
-                null
-        );
-    }
-
-    /**
      * Create resource attributes for a dependent with sensitivity.
      */
     public static ResourceAttributes dependent(String dependentId, Sensitivity sensitivity) {
@@ -51,19 +38,6 @@ public record ResourceAttributes(
                 ResourceType.DEPENDENT,
                 dependentId,
                 sensitivity,
-                null,
-                null
-        );
-    }
-
-    /**
-     * Create resource attributes for a member.
-     */
-    public static ResourceAttributes member(String memberId) {
-        return new ResourceAttributes(
-                ResourceType.MEMBER,
-                memberId,
-                Sensitivity.NORMAL,
                 null,
                 null
         );
@@ -79,19 +53,6 @@ public record ResourceAttributes(
                 sensitivity,
                 null,
                 null
-        );
-    }
-
-    /**
-     * Create resource attributes for a member with partner context.
-     */
-    public static ResourceAttributes member(String memberId, String partnerId, Sensitivity sensitivity) {
-        return new ResourceAttributes(
-                ResourceType.MEMBER,
-                memberId,
-                sensitivity,
-                null,
-                partnerId
         );
     }
 
@@ -154,28 +115,5 @@ public record ResourceAttributes(
                 memberId,
                 null
         );
-    }
-
-    /**
-     * Create resource attributes for health data with partner context.
-     *
-     * @param memberId the member whose health data is being accessed
-     * @param partnerId the partner organization ID (for proxy context)
-     */
-    public static ResourceAttributes healthData(String memberId, String partnerId) {
-        return new ResourceAttributes(
-                ResourceType.HEALTH_DATA,
-                memberId,
-                Sensitivity.SENSITIVE,
-                memberId,
-                partnerId
-        );
-    }
-
-    /**
-     * Check if resource is health data type.
-     */
-    public boolean isHealthData() {
-        return type == ResourceType.HEALTH_DATA;
     }
 }

@@ -59,24 +59,6 @@ public record PermissionSet(
     }
 
     /**
-     * Check if user can view a specific dependent (requires DAA AND RPR).
-     */
-    public boolean canView(String dependentId) {
-        return getAccessFor(dependentId)
-                .map(DependentAccess::canView)
-                .orElse(false);
-    }
-
-    /**
-     * Check if user can view sensitive data for a dependent (requires DAA, RPR, AND ROI).
-     */
-    public boolean canViewSensitive(String dependentId) {
-        return getAccessFor(dependentId)
-                .map(DependentAccess::canViewSensitive)
-                .orElse(false);
-    }
-
-    /**
      * Check if user has a specific permission for a dependent.
      */
     public boolean hasPermission(String dependentId, Permission permission) {
