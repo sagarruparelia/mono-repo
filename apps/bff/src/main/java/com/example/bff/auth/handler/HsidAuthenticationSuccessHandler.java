@@ -5,6 +5,7 @@ import com.example.bff.auth.service.TokenService;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
 import com.example.bff.common.util.StringSanitizer;
+import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.health.service.HealthDataOrchestrator;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.NoAccessException;
@@ -50,6 +51,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     private static final String ERROR_PATH = "/error";
 
     private final SessionService sessionService;
+    private final SessionProperties sessionProperties;
     private final MemberAccessOrchestrator memberAccessOrchestrator;
     @Nullable private final PermissionsFetchService permissionsFetchService;
     @Nullable private final TokenService tokenService;
@@ -238,15 +240,20 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
 
     @NonNull
     private Mono<Void> setSessionCookieAndRedirect(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
-        ResponseCookie sessionCookie = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
                 .httpOnly(true)
                 .secure(true)
                 .path("/")
-                .maxAge(Duration.ofMinutes(30))
-                .sameSite("Lax")
-                .build();
+                .maxAge(sessionProperties.timeout())
+                .sameSite(sessionProperties.cookie().sameSite());
 
-        exchange.getResponse().addCookie(sessionCookie);
+        // Set domain if configured (prevents subdomain takeover attacks)
+        String domain = sessionProperties.cookie().domain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+
+        exchange.getResponse().addCookie(builder.build());
 
         String redirectUri = getRedirectUri(exchange);
 

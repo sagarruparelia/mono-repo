@@ -178,6 +178,13 @@ app:
       channel: bff:session:events
     audit:
       enabled: ${SESSION_AUDIT_ENABLED:true}
+    cookie:
+      # Domain for session cookies (required in production to prevent subdomain attacks)
+      # Set to your application's domain, e.g., "app.example.com"
+      # Leave empty for localhost/development
+      domain: ${SESSION_COOKIE_DOMAIN:}
+      # SameSite attribute (Lax, Strict, or None)
+      same-site: ${SESSION_COOKIE_SAME_SITE:Lax}
 
   persona:
     hsid:

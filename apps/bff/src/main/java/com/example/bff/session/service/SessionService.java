@@ -44,8 +44,10 @@ public class SessionService {
 
     private static final String USER_SESSION_KEY = "bff:user_session:";
     private static final String SESSION_KEY = "bff:session:";
+    private static final String ROTATION_LOCK_KEY = "bff:rotation_lock:";
     private static final String PERMISSIONS_FIELD = "permissions";
     private static final String TOKEN_DATA_FIELD = "tokenData";
+    private static final Duration ROTATION_LOCK_TTL = Duration.ofSeconds(10);
 
     private final ReactiveRedisOperations<String, String> redisOps;
     private final SessionProperties sessionProperties;
@@ -250,11 +252,12 @@ public class SessionService {
 
     /**
      * Rotates session ID while preserving session data.
+     * Uses distributed locking to prevent race conditions from concurrent requests.
      * Old session is kept alive for grace period to handle in-flight requests.
      *
      * @param oldSessionId Current session ID
      * @param clientInfo Current client information for updated fingerprint
-     * @return New session ID
+     * @return New session ID, or existing session ID if rotation already in progress
      */
     @NonNull
     public Mono<String> rotateSession(@NonNull String oldSessionId, @NonNull ClientInfo clientInfo) {
@@ -262,15 +265,48 @@ public class SessionService {
             return Mono.error(new IllegalArgumentException("Invalid session ID"));
         }
 
-        return getSession(oldSessionId)
-                .switchIfEmpty(Mono.error(new IllegalStateException("Session not found for rotation")))
-                .flatMap(session -> performRotation(oldSessionId, session, clientInfo));
+        String lockKey = ROTATION_LOCK_KEY + oldSessionId;
+
+        // Try to acquire distributed lock (SETNX with TTL)
+        return redisOps.opsForValue()
+                .setIfAbsent(lockKey, "locked", ROTATION_LOCK_TTL)
+                .flatMap(lockAcquired -> {
+                    if (Boolean.TRUE.equals(lockAcquired)) {
+                        // Lock acquired - proceed with rotation
+                        return getSession(oldSessionId)
+                                .switchIfEmpty(Mono.defer(() -> {
+                                    // Session not found, release lock and error
+                                    return redisOps.delete(lockKey)
+                                            .then(Mono.error(new IllegalStateException("Session not found for rotation")));
+                                }))
+                                .flatMap(session -> performRotation(oldSessionId, session, clientInfo, lockKey));
+                    } else {
+                        // Lock not acquired - rotation already in progress by another request
+                        // Return the current session ID from user mapping (may already be rotated)
+                        log.debug("Rotation lock not acquired for session {}, checking for already rotated session",
+                                StringSanitizer.forLog(oldSessionId));
+                        return getSession(oldSessionId)
+                                .flatMap(session -> {
+                                    // Check if recently rotated by another request
+                                    if (!needsRotation(session)) {
+                                        // Already rotated by concurrent request, get new session ID
+                                        return redisOps.opsForValue().get(USER_SESSION_KEY + session.userId())
+                                                .defaultIfEmpty(oldSessionId);
+                                    }
+                                    // Still needs rotation but lock held - return old session ID
+                                    // The holding request will complete rotation
+                                    return Mono.just(oldSessionId);
+                                })
+                                .defaultIfEmpty(oldSessionId);
+                    }
+                });
     }
 
     private Mono<String> performRotation(
             @NonNull String oldSessionId,
             @NonNull SessionData session,
-            @NonNull ClientInfo clientInfo) {
+            @NonNull ClientInfo clientInfo,
+            @NonNull String lockKey) {
 
         String newSessionId = UUID.randomUUID().toString();
         String newSessionKey = SESSION_KEY + newSessionId;
@@ -293,11 +329,12 @@ public class SessionService {
                 StringSanitizer.forLog(oldSessionId),
                 StringSanitizer.forLog(newSessionId));
 
-        // Atomic rotation:
+        // Atomic rotation with lock:
         // 1. Create new session with full TTL
         // 2. Update user mapping to point to new session
         // 3. Copy tokens and permissions to new session
         // 4. Set old session TTL to grace period (allows in-flight requests)
+        // 5. Release lock
         return redisOps.opsForHash().putAll(newSessionKey, sessionData)
                 .then(redisOps.expire(newSessionKey, ttl))
                 .then(redisOps.opsForValue().set(userSessionKey, newSessionId, ttl))
@@ -310,6 +347,10 @@ public class SessionService {
                     // Publish rotation event for other instances (cache invalidation)
                     eventPublisher.ifPresent(publisher ->
                             publisher.publishRotation(oldSessionId, newSessionId, session.userId()).subscribe());
+                })
+                .doFinally(signal -> {
+                    // Always release lock after rotation attempt
+                    redisOps.delete(lockKey).subscribe();
                 })
                 .thenReturn(newSessionId);
     }

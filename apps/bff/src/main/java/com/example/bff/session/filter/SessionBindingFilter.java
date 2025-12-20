@@ -226,31 +226,42 @@ public class SessionBindingFilter implements WebFilter {
     }
 
     /**
-     * Sets session cookie with secure attributes.
+     * Sets session cookie with secure attributes including domain for subdomain protection.
      */
     private void setSessionCookie(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
         Duration timeout = sessionProperties.timeout();
-        ResponseCookie sessionCookie = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
                 .httpOnly(true)
                 .secure(true)
                 .path("/")
                 .maxAge(timeout)
-                .sameSite("Lax")
-                .build();
-        exchange.getResponse().addCookie(sessionCookie);
+                .sameSite(sessionProperties.cookie().sameSite());
+
+        // Set domain if configured (prevents subdomain takeover attacks)
+        String domain = sessionProperties.cookie().domain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+
+        exchange.getResponse().addCookie(builder.build());
     }
 
     @NonNull
     private Mono<Void> invalidateAndRespond(@NonNull ServerWebExchange exchange) {
-        // Clear session cookie
-        ResponseCookie clearCookie = ResponseCookie.from(SESSION_COOKIE_NAME, "")
+        // Clear session cookie with same attributes for proper deletion
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, "")
                 .httpOnly(true)
                 .secure(true)
                 .path("/")
-                .maxAge(0)
-                .build();
+                .maxAge(0);
 
-        exchange.getResponse().addCookie(clearCookie);
+        // Set domain if configured (must match the set cookie for proper deletion)
+        String domain = sessionProperties.cookie().domain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+
+        exchange.getResponse().addCookie(builder.build());
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
 
         return exchange.getResponse().setComplete();

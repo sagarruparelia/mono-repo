@@ -13,7 +13,8 @@ public record SessionProperties(
         BindingProperties binding,
         RotationProperties rotation,
         FingerprintProperties fingerprint,
-        PubSubProperties pubsub
+        PubSubProperties pubsub,
+        CookieProperties cookie
 ) {
     /**
      * Session binding configuration for IP and User-Agent validation.
@@ -74,6 +75,21 @@ public record SessionProperties(
     }
 
     /**
+     * Session cookie security configuration.
+     */
+    public record CookieProperties(
+            String domain,
+            String sameSite
+    ) {
+        public CookieProperties {
+            // domain can be null for default browser behavior (current host only)
+            if (sameSite == null || sameSite.isBlank()) {
+                sameSite = "Lax";
+            }
+        }
+    }
+
+    /**
      * Provides defaults for all configuration properties.
      */
     public SessionProperties {
@@ -91,6 +107,9 @@ public record SessionProperties(
         }
         if (pubsub == null) {
             pubsub = new PubSubProperties(true, "bff:session:events");
+        }
+        if (cookie == null) {
+            cookie = new CookieProperties(null, "Lax");
         }
     }
 }
