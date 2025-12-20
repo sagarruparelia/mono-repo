@@ -289,21 +289,125 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return "/";
     }
 
+    /**
+     * Validates that a URI is a safe relative path to prevent open redirect attacks.
+     * Uses recursive URL decoding to catch multi-layer encoding attacks.
+     */
     private boolean isValidRelativePath(String uri) {
         if (uri == null || uri.isBlank()) {
             return false;
         }
-        if (!uri.startsWith("/") || uri.startsWith("//")) {
+
+        // Length limit to prevent DoS via extremely long URIs
+        if (uri.length() > 2048) {
             return false;
         }
+
+        // Recursively decode to catch multi-layer encoding attacks
+        String decoded = fullyDecodeUri(uri);
+        if (decoded == null) {
+            return false; // Decoding failed (malformed encoding)
+        }
+
+        // Must start with single forward slash (not //)
+        if (!decoded.startsWith("/") || decoded.startsWith("//")) {
+            return false;
+        }
+
+        // Check both original and decoded versions
+        String lowerDecoded = decoded.toLowerCase();
         String lowerUri = uri.toLowerCase();
-        if (lowerUri.contains("://") || lowerUri.startsWith("javascript:") || lowerUri.startsWith("data:")) {
+
+        // Block protocol handlers (including encoded variants)
+        if (containsProtocolHandler(lowerDecoded) || containsProtocolHandler(lowerUri)) {
             return false;
         }
-        if (uri.contains("%2f%2f") || uri.contains("%2F%2F")) {
+
+        // Block backslash variations (can be interpreted as // on some systems)
+        if (decoded.contains("\\") || uri.contains("\\")) {
             return false;
         }
+
+        // Block control characters and null bytes
+        if (containsControlCharacters(decoded) || containsControlCharacters(uri)) {
+            return false;
+        }
+
+        // Block double slashes anywhere in the decoded path
+        if (decoded.contains("//")) {
+            return false;
+        }
+
+        // Block parent directory traversal
+        if (decoded.contains("/../") || decoded.endsWith("/..")) {
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * Recursively decodes a URI until no more decoding is needed.
+     * Returns null if decoding fails (malformed input).
+     */
+    private String fullyDecodeUri(String uri) {
+        if (uri == null) {
+            return null;
+        }
+
+        String current = uri;
+        int maxIterations = 10; // Prevent infinite loops on malicious input
+
+        for (int i = 0; i < maxIterations; i++) {
+            try {
+                String decoded = java.net.URLDecoder.decode(current, java.nio.charset.StandardCharsets.UTF_8);
+                if (decoded.equals(current)) {
+                    return current; // No more decoding needed
+                }
+                current = decoded;
+            } catch (IllegalArgumentException e) {
+                // Malformed encoding
+                return null;
+            }
+        }
+
+        // Too many decoding iterations - likely malicious
+        return null;
+    }
+
+    /**
+     * Checks if the URI contains any protocol handler.
+     */
+    private boolean containsProtocolHandler(String uri) {
+        // Common dangerous protocol handlers
+        return uri.contains("://") ||
+                uri.startsWith("javascript:") ||
+                uri.startsWith("data:") ||
+                uri.startsWith("vbscript:") ||
+                uri.startsWith("file:") ||
+                uri.startsWith("blob:") ||
+                // Also check with whitespace variations (browser quirk)
+                uri.matches(".*\\s*javascript\\s*:.*") ||
+                uri.matches(".*\\s*data\\s*:.*");
+    }
+
+    /**
+     * Checks if the string contains control characters or null bytes.
+     */
+    private boolean containsControlCharacters(String str) {
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            // Block ASCII control characters (0x00-0x1F) except tab, newline, carriage return
+            // which are already filtered by other checks
+            if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
+                return true;
+            }
+            // Block DEL character
+            if (c == 0x7F) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String sanitizeForLog(String value) {
