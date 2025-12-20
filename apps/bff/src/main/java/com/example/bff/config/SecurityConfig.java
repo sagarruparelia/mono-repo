@@ -16,17 +16,15 @@ import org.springframework.security.web.server.authentication.logout.ServerLogou
 import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
 import org.springframework.security.web.server.csrf.ServerCsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
+import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableWebFluxSecurity
 @org.springframework.context.annotation.Profile("!e2e")
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final SecurityPathsProperties pathsConfig;
-
-    public SecurityConfig(SecurityPathsProperties pathsConfig) {
-        this.pathsConfig = pathsConfig;
-    }
 
     @Bean
     public SecurityWebFilterChain securityFilterChain(

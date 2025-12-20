@@ -6,28 +6,16 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import lombok.RequiredArgsConstructor;
 
-/**
- * Security configuration for E2E testing without OAuth2.
- *
- * <p>This config is activated when app.security.oauth2.enabled=false,
- * which allows testing the application without a real IDP.
- *
- * <p>It provides:
- * - Permit all for public paths
- * - Basic security without OAuth2 client integration
- * - External integration filter still works for mTLS ALB testing
- */
+/** E2E security config without OAuth2. Activated with spring.profiles.active=e2e. */
 @Configuration
 @EnableWebFluxSecurity
 @org.springframework.context.annotation.Profile("e2e")
+@RequiredArgsConstructor
 public class E2ESecurityConfig {
 
     private final SecurityPathsProperties pathsConfig;
-
-    public E2ESecurityConfig(SecurityPathsProperties pathsConfig) {
-        this.pathsConfig = pathsConfig;
-    }
 
     @Bean
     public SecurityWebFilterChain e2eSecurityFilterChain(ServerHttpSecurity http) {

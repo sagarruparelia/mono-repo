@@ -1,6 +1,5 @@
 package com.example.bff.config;
 
-import com.example.bff.config.properties.SessionProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,12 +11,6 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class SessionConfig {
-
-    private final SessionProperties sessionProperties;
-
-    public SessionConfig(SessionProperties sessionProperties) {
-        this.sessionProperties = sessionProperties;
-    }
 
     @Bean
     @ConditionalOnProperty(name = "spring.session.store-type", havingValue = "redis")
