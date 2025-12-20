@@ -4,6 +4,7 @@ import com.example.bff.auth.model.TokenData;
 import com.example.bff.auth.service.TokenService;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.health.service.HealthDataOrchestrator;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.NoAccessException;
@@ -294,7 +295,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
             if (isValidRelativePath(uri)) {
                 return uri;
             }
-            log.warn("Rejected potentially malicious redirect URI: {}", sanitizeForLog(uri));
+            log.warn("Rejected potentially malicious redirect URI: {}", StringSanitizer.forLog(uri));
         }
         return "/";
     }
@@ -418,13 +419,6 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
             }
         }
         return false;
-    }
-
-    private String sanitizeForLog(String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value.replaceAll("[\\r\\n\\t]", "").substring(0, Math.min(value.length(), 64));
     }
 
     /**

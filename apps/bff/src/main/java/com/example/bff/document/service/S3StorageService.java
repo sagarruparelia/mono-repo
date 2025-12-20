@@ -1,5 +1,6 @@
 package com.example.bff.document.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.DocumentProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,9 +53,9 @@ public class S3StorageService {
                 )
                 .map(response -> s3Key)
                 .doOnSuccess(key -> log.info("Uploaded document to S3: bucket={}, key={}",
-                        sanitizeForLog(properties.s3().bucketName()), sanitizeForLog(key)))
+                        StringSanitizer.forLog(properties.s3().bucketName()), StringSanitizer.forLog(key)))
                 .doOnError(e -> log.error("Failed to upload document to S3: {}",
-                        sanitizeForLog(e.getMessage())));
+                        StringSanitizer.forLog(e.getMessage())));
     }
 
     /**
@@ -74,9 +75,9 @@ public class S3StorageService {
                 )
                 .map(response -> response.asByteArray())
                 .doOnSuccess(bytes -> log.debug("Downloaded document from S3: key={}, size={}",
-                        sanitizeForLog(s3Key), bytes.length))
+                        StringSanitizer.forLog(s3Key), bytes.length))
                 .doOnError(e -> log.error("Failed to download document from S3: key={}, error={}",
-                        sanitizeForLog(s3Key), sanitizeForLog(e.getMessage())));
+                        StringSanitizer.forLog(s3Key), StringSanitizer.forLog(e.getMessage())));
     }
 
     /**
@@ -92,9 +93,9 @@ public class S3StorageService {
 
         return Mono.fromFuture(() -> s3Client.deleteObject(request))
                 .then()
-                .doOnSuccess(v -> log.info("Deleted document from S3: key={}", sanitizeForLog(s3Key)))
+                .doOnSuccess(v -> log.info("Deleted document from S3: key={}", StringSanitizer.forLog(s3Key)))
                 .doOnError(e -> log.error("Failed to delete document from S3: key={}, error={}",
-                        sanitizeForLog(s3Key), sanitizeForLog(e.getMessage())));
+                        StringSanitizer.forLog(s3Key), StringSanitizer.forLog(e.getMessage())));
     }
 
     /**
@@ -104,16 +105,5 @@ public class S3StorageService {
     private String generateS3Key(String memberId, String fileName) {
         String uuid = UUID.randomUUID().toString();
         return String.format("%s/%s/%s/%s", KEY_PREFIX, memberId, uuid, fileName);
-    }
-
-    /**
-     * Sanitize a value for logging to prevent log injection.
-     */
-    private String sanitizeForLog(String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value.replace("\n", "").replace("\r", "").replace("\t", "")
-                .substring(0, Math.min(value.length(), 200));
     }
 }

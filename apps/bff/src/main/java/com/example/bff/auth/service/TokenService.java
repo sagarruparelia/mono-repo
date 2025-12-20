@@ -1,6 +1,7 @@
 package com.example.bff.auth.service;
 
 import com.example.bff.auth.model.TokenData;
+import com.example.bff.common.util.StringSanitizer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +18,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
-import java.util.regex.Pattern;
 
 /**
  * Service for managing HSID OAuth2 tokens.
@@ -33,9 +33,6 @@ public class TokenService {
     private static final String SESSION_KEY = "bff:session:";
     private static final String TOKEN_FIELD = "tokenData";
     private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 60; // Refresh 60s before expiry
-
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final ReactiveRedisOperations<String, String> redisOps;
     private final ObjectMapper objectMapper;
@@ -65,7 +62,7 @@ public class TokenService {
      */
     @NonNull
     public Mono<Void> storeTokens(@NonNull String sessionId, @NonNull TokenData tokenData) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in storeTokens");
             return Mono.error(new IllegalArgumentException("Invalid session ID format"));
         }
@@ -91,7 +88,7 @@ public class TokenService {
      */
     @NonNull
     public Mono<TokenData> getTokens(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.empty();
         }
 
@@ -124,18 +121,18 @@ public class TokenService {
                 .flatMap(tokenData -> {
                     if (!tokenData.isAccessTokenExpired(TOKEN_EXPIRY_BUFFER_SECONDS)) {
                         // Token still valid
-                        log.debug("Access token still valid for session {}", sanitize(sessionId));
+                        log.debug("Access token still valid for session {}", StringSanitizer.forLog(sessionId));
                         return Mono.just(tokenData.accessToken());
                     }
 
                     if (!tokenData.canRefresh()) {
                         // Cannot refresh - user needs to re-authenticate
-                        log.warn("Refresh token expired for session {}, re-auth required", sanitize(sessionId));
+                        log.warn("Refresh token expired for session {}, re-auth required", StringSanitizer.forLog(sessionId));
                         return Mono.empty();
                     }
 
                     // Refresh the token
-                    log.info("Refreshing access token for session {}", sanitize(sessionId));
+                    log.info("Refreshing access token for session {}", StringSanitizer.forLog(sessionId));
                     return refreshToken(sessionId, tokenData.refreshToken());
                 });
     }
@@ -162,7 +159,7 @@ public class TokenService {
                 .bodyToMono(String.class)
                 .flatMap(response -> parseAndStoreTokens(sessionId, response))
                 .doOnError(e -> log.error("Token refresh failed for session {}: {}",
-                        sanitize(sessionId), e.getMessage()));
+                        StringSanitizer.forLog(sessionId), e.getMessage()));
     }
 
     /**
@@ -180,7 +177,7 @@ public class TokenService {
             int refreshExpiresIn = json.path("refresh_expires_in").asInt(0);
 
             if (accessToken == null) {
-                log.error("No access_token in refresh response for session {}", sanitize(sessionId));
+                log.error("No access_token in refresh response for session {}", StringSanitizer.forLog(sessionId));
                 return Mono.empty();
             }
 
@@ -214,7 +211,7 @@ public class TokenService {
      */
     @NonNull
     public Mono<Void> removeTokens(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.empty();
         }
 
@@ -222,14 +219,5 @@ public class TokenService {
         return redisOps.opsForHash()
                 .remove(sessionKey, TOKEN_FIELD)
                 .then();
-    }
-
-    private boolean isValidSessionId(String sessionId) {
-        return sessionId != null && UUID_PATTERN.matcher(sessionId).matches();
-    }
-
-    private String sanitize(String value) {
-        if (value == null) return "null";
-        return value.replaceAll("[\r\n\t]", "").substring(0, Math.min(value.length(), 64));
     }
 }

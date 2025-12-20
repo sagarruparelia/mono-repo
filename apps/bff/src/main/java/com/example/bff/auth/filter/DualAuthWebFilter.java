@@ -5,6 +5,7 @@ import com.example.bff.auth.util.AuthContextResolver;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.dto.ErrorResponse;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import com.example.bff.config.properties.IdpProperties;
 import com.example.bff.config.properties.SecurityPathsProperties;
@@ -30,7 +31,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Unified authentication filter for both HSID (session) and PROXY (header-based) auth.
@@ -59,11 +59,6 @@ public class DualAuthWebFilter implements WebFilter {
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     private static final String AUTH_TYPE_HEADER = "X-Auth-Type";
-
-    // Validation patterns
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_@.-]{1,128}$");
 
     private final SessionService sessionService;
     private final SecurityPathsProperties securityPaths;
@@ -114,8 +109,8 @@ public class DualAuthWebFilter implements WebFilter {
 
                     log.info("Auth resolved: type={}, userId={}, persona={}, path={}",
                             authContext.authType(),
-                            sanitizeForLog(authContext.userId()),
-                            sanitizeForLog(authContext.persona()),
+                            StringSanitizer.forLog(authContext.userId()),
+                            StringSanitizer.forLog(authContext.persona()),
                             path);
 
                     return chain.filter(exchange);
@@ -154,7 +149,7 @@ public class DualAuthWebFilter implements WebFilter {
         }
 
         String sessionId = sessionCookie.getValue();
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.debug("Invalid session ID format");
             return Mono.empty();
         }
@@ -201,13 +196,13 @@ public class DualAuthWebFilter implements WebFilter {
         String correlationId = getCorrelationId(exchange);
 
         // Extract required headers
-        String persona = sanitizeHeaderValue(exchange.getRequest().getHeaders()
+        String persona = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().persona()));
-        String userId = sanitizeHeaderValue(exchange.getRequest().getHeaders()
+        String userId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().userId()));
-        String idpType = sanitizeHeaderValue(exchange.getRequest().getHeaders()
+        String idpType = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().idpType()));
-        String partnerId = sanitizeHeaderValue(exchange.getRequest().getHeaders()
+        String partnerId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().partnerId()));
 
         // Validate required headers
@@ -228,7 +223,7 @@ public class DualAuthWebFilter implements WebFilter {
         // Validate IDP-persona mapping
         if (idpType != null && !idpType.isBlank()) {
             if (!idpProperties.isValidIdpType(idpType)) {
-                log.warn("Invalid IDP type: {}", sanitizeForLog(idpType));
+                log.warn("Invalid IDP type: {}", StringSanitizer.forLog(idpType));
                 return Mono.error(new ProxyAuthException(
                         ErrorResponse.Codes.INVALID_IDP_TYPE,
                         "Unrecognized IDP type: " + idpType));
@@ -237,7 +232,7 @@ public class DualAuthWebFilter implements WebFilter {
             if (!idpProperties.isPersonaAllowed(idpType, persona)) {
                 Set<String> allowed = idpProperties.getAllowedPersonas(idpType);
                 log.warn("IDP-persona mismatch: idp={}, persona={}, allowed={}",
-                        sanitizeForLog(idpType), sanitizeForLog(persona), allowed);
+                        StringSanitizer.forLog(idpType), StringSanitizer.forLog(persona), allowed);
                 return Mono.error(new ProxyAuthException(
                         ErrorResponse.Codes.IDP_PERSONA_MISMATCH,
                         "Persona '" + persona + "' is not allowed for IDP '" + idpType + "'"));
@@ -398,7 +393,7 @@ public class DualAuthWebFilter implements WebFilter {
             // Fallback to simple JSON
             String fallback = String.format(
                     "{\"error\":\"%s\",\"code\":\"%s\",\"message\":\"%s\"}",
-                    error, code, escapeJson(message));
+                    error, code, StringSanitizer.escapeJson(message));
             return exchange.getResponse()
                     .writeWith(Mono.just(exchange.getResponse()
                             .bufferFactory()
@@ -406,7 +401,7 @@ public class DualAuthWebFilter implements WebFilter {
         }
     }
 
-    // ---- Validation helpers ----
+    // ---- Helpers ----
 
     @NonNull
     private String getCorrelationId(@NonNull ServerWebExchange exchange) {
@@ -415,44 +410,6 @@ public class DualAuthWebFilter implements WebFilter {
             correlationId = exchange.getLogPrefix();
         }
         return correlationId;
-    }
-
-    private boolean isValidSessionId(@Nullable String sessionId) {
-        return sessionId != null && UUID_PATTERN.matcher(sessionId).matches();
-    }
-
-    @Nullable
-    private String sanitizeHeaderValue(@Nullable String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        if (trimmed.length() > 256) {
-            return trimmed.substring(0, 256);
-        }
-        return trimmed;
-    }
-
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), 64));
-    }
-
-    @NonNull
-    private String escapeJson(@NonNull String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     // ---- Path category enum ----

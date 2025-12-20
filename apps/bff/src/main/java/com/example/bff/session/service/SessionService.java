@@ -1,6 +1,7 @@
 package com.example.bff.session.service;
 
 import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.identity.model.ManagedMember;
 import com.example.bff.identity.model.MemberAccess;
@@ -23,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * Session management service for Redis-backed sessions.
@@ -49,14 +49,6 @@ public class SessionService {
     private static final String SESSION_KEY = "bff:session:";
     private static final String PERMISSIONS_FIELD = "permissions";
 
-    // Validation patterns
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_@.-]{1,128}$");
-
-    // Limits
-    private static final int MAX_LOG_VALUE_LENGTH = 64;
-
     private final ReactiveRedisOperations<String, String> redisOps;
     private final SessionProperties sessionProperties;
     private final ObjectMapper objectMapper;
@@ -78,7 +70,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Void> invalidateExistingSessions(@NonNull String userId) {
-        if (!isValidUserId(userId)) {
+        if (!StringSanitizer.isValidUserId(userId)) {
             log.warn("Invalid user ID format in invalidateExistingSessions");
             return Mono.empty();
         }
@@ -88,7 +80,7 @@ public class SessionService {
         return redisOps.opsForValue().get(userSessionKey)
                 .flatMap(existingSessionId -> {
                     log.info("Invalidating existing session for user {}: {}",
-                            sanitizeForLog(userId), sanitizeForLog(existingSessionId));
+                            StringSanitizer.forLog(userId), StringSanitizer.forLog(existingSessionId));
                     return redisOps.delete(SESSION_KEY + existingSessionId)
                             .then(redisOps.delete(userSessionKey));
                 })
@@ -113,7 +105,7 @@ public class SessionService {
             @Nullable List<String> dependents,
             @NonNull ClientInfo clientInfo) {
 
-        if (!isValidUserId(userId)) {
+        if (!StringSanitizer.isValidUserId(userId)) {
             log.warn("Invalid user ID format in createSession");
             return Mono.error(new IllegalArgumentException("Invalid user ID format"));
         }
@@ -136,7 +128,7 @@ public class SessionService {
         Duration ttl = sessionProperties.timeout();
 
         log.info("Creating session for user {}: sessionId={}, persona={}",
-                sanitizeForLog(userId), sanitizeForLog(sessionId), sanitizeForLog(persona));
+                StringSanitizer.forLog(userId), StringSanitizer.forLog(sessionId), StringSanitizer.forLog(persona));
 
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
                 .then(redisOps.expire(sessionKey, ttl))
@@ -152,7 +144,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<SessionData> getSession(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.debug("Invalid session ID format in getSession");
             return Mono.empty();
         }
@@ -181,7 +173,7 @@ public class SessionService {
             return Mono.just(true);
         }
 
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.just(false);
         }
 
@@ -192,14 +184,14 @@ public class SessionService {
                     if (sessionProperties.binding().ipAddress()) {
                         valid = session.ipAddress().equals(clientInfo.ipAddress());
                         if (!valid) {
-                            log.warn("Session IP mismatch for session {}", sanitizeForLog(sessionId));
+                            log.warn("Session IP mismatch for session {}", StringSanitizer.forLog(sessionId));
                         }
                     }
 
                     if (valid && sessionProperties.binding().userAgent()) {
                         valid = session.userAgentHash().equals(clientInfo.userAgentHash());
                         if (!valid) {
-                            log.warn("Session User-Agent mismatch for session {}", sanitizeForLog(sessionId));
+                            log.warn("Session User-Agent mismatch for session {}", StringSanitizer.forLog(sessionId));
                         }
                     }
 
@@ -216,7 +208,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Boolean> refreshSession(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.just(false);
         }
 
@@ -242,7 +234,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Void> invalidateSession(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in invalidateSession");
             return Mono.empty();
         }
@@ -252,7 +244,7 @@ public class SessionService {
         return getSession(sessionId)
                 .flatMap(session -> {
                     String userSessionKey = USER_SESSION_KEY + session.userId();
-                    log.info("Invalidating session {}", sanitizeForLog(sessionId));
+                    log.info("Invalidating session {}", StringSanitizer.forLog(sessionId));
                     return redisOps.delete(sessionKey)
                             .then(redisOps.delete(userSessionKey));
                 })
@@ -267,7 +259,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<String> getSessionIdForUser(@NonNull String userId) {
-        if (!isValidUserId(userId)) {
+        if (!StringSanitizer.isValidUserId(userId)) {
             return Mono.empty();
         }
 
@@ -284,7 +276,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Void> storePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in storePermissions");
             return Mono.error(new IllegalArgumentException("Invalid session ID format"));
         }
@@ -298,7 +290,7 @@ public class SessionService {
                     .then();
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize permissions for session {}: {}",
-                    sanitizeForLog(sessionId), sanitizeForLog(e.getMessage()));
+                    StringSanitizer.forLog(sessionId), StringSanitizer.forLog(e.getMessage()));
             return Mono.error(e);
         }
     }
@@ -311,7 +303,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<PermissionSet> getPermissions(@NonNull String sessionId) {
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.empty();
         }
 
@@ -326,7 +318,7 @@ public class SessionService {
                         return Mono.just(permissions);
                     } catch (JsonProcessingException e) {
                         log.error("Failed to deserialize permissions for session {}: {}",
-                                sanitizeForLog(sessionId), sanitizeForLog(e.getMessage()));
+                                StringSanitizer.forLog(sessionId), StringSanitizer.forLog(e.getMessage()));
                         return Mono.empty();
                     }
                 });
@@ -341,7 +333,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Void> updatePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
-        log.debug("Updating permissions for session {}", sanitizeForLog(sessionId));
+        log.debug("Updating permissions for session {}", StringSanitizer.forLog(sessionId));
         return storePermissions(sessionId, permissions);
     }
 
@@ -390,7 +382,7 @@ public class SessionService {
             @NonNull MemberAccess memberAccess,
             @NonNull PermissionSet permissions) {
 
-        if (!isValidUserId(userId)) {
+        if (!StringSanitizer.isValidUserId(userId)) {
             log.warn("Invalid user ID format in createSessionWithMemberAccess");
             return Mono.error(new IllegalArgumentException("Invalid user ID format"));
         }
@@ -432,7 +424,7 @@ public class SessionService {
         Duration ttl = sessionProperties.timeout();
 
         log.info("Creating session with member access for user {}: sessionId={}, persona={}, eligibility={}",
-                sanitizeForLog(userId), sanitizeForLog(sessionId),
+                StringSanitizer.forLog(userId), StringSanitizer.forLog(sessionId),
                 memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
 
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
@@ -465,49 +457,5 @@ public class SessionService {
             log.warn("Failed to serialize managed members: {}", e.getMessage());
             return "[]";
         }
-    }
-
-    /**
-     * Validates session ID format (UUID).
-     *
-     * @param sessionId the session ID to validate
-     * @return true if valid UUID format
-     */
-    private boolean isValidSessionId(@Nullable String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) {
-            return false;
-        }
-        return UUID_PATTERN.matcher(sessionId).matches();
-    }
-
-    /**
-     * Validates user ID format.
-     *
-     * @param userId the user ID to validate
-     * @return true if valid format
-     */
-    private boolean isValidUserId(@Nullable String userId) {
-        if (userId == null || userId.isBlank()) {
-            return false;
-        }
-        return SAFE_ID_PATTERN.matcher(userId).matches();
-    }
-
-    /**
-     * Sanitizes a value for safe logging.
-     *
-     * @param value the value to sanitize
-     * @return sanitized value
-     */
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), MAX_LOG_VALUE_LENGTH));
     }
 }

@@ -1,6 +1,7 @@
 package com.example.bff.session.filter;
 
 import com.example.bff.common.exception.SessionBindingException;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.service.SessionService;
@@ -42,14 +43,8 @@ import java.util.regex.Pattern;
 public class SessionBindingFilter implements WebFilter {
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
-
-    // Validation patterns
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile(
             "^([0-9]{1,3}\\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
-
-    // Limits
     private static final int MAX_USER_AGENT_LENGTH = 500;
 
     private final SessionService sessionService;
@@ -75,7 +70,7 @@ public class SessionBindingFilter implements WebFilter {
         String sessionId = sessionCookie.getValue();
 
         // Validate session ID format
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in request");
             return invalidateAndRedirect(exchange);
         }
@@ -86,7 +81,7 @@ public class SessionBindingFilter implements WebFilter {
                 .flatMap(valid -> {
                     if (!valid) {
                         log.warn("Session binding validation failed for session {}",
-                                sanitizeForLog(sessionId));
+                                StringSanitizer.forLog(sessionId));
                         return invalidateAndRedirect(exchange);
                     }
                     // Refresh session TTL on valid request (sliding expiration)
@@ -94,7 +89,7 @@ public class SessionBindingFilter implements WebFilter {
                             .then(chain.filter(exchange));
                 })
                 .onErrorResume(SessionBindingException.class, e -> {
-                    log.warn("Session binding error: {}", sanitizeForLog(e.getMessage()));
+                    log.warn("Session binding error: {}", StringSanitizer.forLog(e.getMessage()));
                     return invalidateAndRedirect(exchange);
                 });
     }
@@ -110,19 +105,6 @@ public class SessionBindingFilter implements WebFilter {
                path.startsWith("/api/auth/") ||
                path.startsWith("/actuator/") ||
                path.startsWith("/api/mfe/");  // MFE uses different auth
-    }
-
-    /**
-     * Validates session ID format (UUID).
-     *
-     * @param sessionId the session ID to validate
-     * @return true if valid UUID format
-     */
-    private boolean isValidSessionId(@Nullable String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) {
-            return false;
-        }
-        return UUID_PATTERN.matcher(sessionId).matches();
     }
 
     /**
@@ -234,23 +216,5 @@ public class SessionBindingFilter implements WebFilter {
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
 
         return exchange.getResponse().setComplete();
-    }
-
-    /**
-     * Sanitizes a value for safe logging.
-     *
-     * @param value the value to sanitize
-     * @return sanitized value
-     */
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), 64));
     }
 }

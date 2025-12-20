@@ -1,5 +1,6 @@
 package com.example.bff.document.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.DocumentProperties;
 import com.example.bff.document.dto.DocumentDto;
 import com.example.bff.document.dto.DocumentUploadRequest;
@@ -37,7 +38,7 @@ public class DocumentService {
      * @return stream of document DTOs
      */
     public Flux<DocumentDto> listDocuments(String memberId) {
-        log.debug("Listing documents for member: {}", sanitizeForLog(memberId));
+        log.debug("Listing documents for member: {}", StringSanitizer.forLog(memberId));
         return repository.findByMemberIdOrderByCreatedAtDesc(memberId)
                 .map(DocumentDto::fromEntity);
     }
@@ -50,7 +51,7 @@ public class DocumentService {
      * @return document DTO or empty if not found
      */
     public Mono<DocumentDto> getDocument(String memberId, String documentId) {
-        log.debug("Getting document {} for member {}", sanitizeForLog(documentId), sanitizeForLog(memberId));
+        log.debug("Getting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
                 .map(DocumentDto::fromEntity);
     }
@@ -78,10 +79,10 @@ public class DocumentService {
                 : "application/octet-stream";
 
         log.info("Uploading document for member {}: filename={}, contentType={}, uploadedBy={}",
-                sanitizeForLog(memberId),
-                sanitizeForLog(originalFileName),
-                sanitizeForLog(contentType),
-                sanitizeForLog(uploadedBy));
+                StringSanitizer.forLog(memberId),
+                StringSanitizer.forLog(originalFileName),
+                StringSanitizer.forLog(contentType),
+                StringSanitizer.forLog(uploadedBy));
 
         // Validate content type
         if (!properties.limits().allowedContentTypes().contains(contentType)) {
@@ -169,7 +170,7 @@ public class DocumentService {
      * @return the file content as byte array
      */
     public Mono<byte[]> downloadDocument(String memberId, String documentId) {
-        log.debug("Downloading document {} for member {}", sanitizeForLog(documentId), sanitizeForLog(memberId));
+        log.debug("Downloading document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException(
                         String.format("Document %s not found for member %s", documentId, memberId))))
@@ -183,7 +184,7 @@ public class DocumentService {
      * @param documentId the document ID
      */
     public Mono<Void> deleteDocument(String memberId, String documentId) {
-        log.info("Deleting document {} for member {}", sanitizeForLog(documentId), sanitizeForLog(memberId));
+        log.info("Deleting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
         return repository.findByIdAndMemberId(documentId, memberId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException(
                         String.format("Document %s not found for member %s", documentId, memberId))))
@@ -201,16 +202,5 @@ public class DocumentService {
             return "unnamed";
         }
         return SAFE_FILENAME_PATTERN.matcher(fileName).replaceAll("_");
-    }
-
-    /**
-     * Sanitize value for logging to prevent log injection.
-     */
-    private String sanitizeForLog(String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value.replace("\n", "").replace("\r", "").replace("\t", "")
-                .substring(0, Math.min(value.length(), 100));
     }
 }

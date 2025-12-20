@@ -6,6 +6,7 @@ import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.service.AbacAuthorizationService;
 import com.example.bff.authz.model.AuthType;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.AuthzProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -151,7 +152,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
 
         String sessionId = sessionCookie.getValue();
         // Validate session ID format (UUID)
-        if (!isValidSessionId(sessionId)) {
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format");
             return Mono.empty();
         }
@@ -168,14 +169,14 @@ public class AuthorizationFilter implements WebFilter, Ordered {
 
         if (decision.isAllowed()) {
             log.debug("ABAC: Access ALLOWED - policy={}, resource={}",
-                    sanitizeForLog(decision.policyId()), sanitizeForLog(resourceId));
+                    StringSanitizer.forLog(decision.policyId()), StringSanitizer.forLog(resourceId));
             return chain.filter(exchange);
         }
 
         log.warn("ABAC: Access DENIED - policy={}, reason={}, resource={}",
-                sanitizeForLog(decision.policyId()),
-                sanitizeForLog(decision.reason()),
-                sanitizeForLog(resourceId));
+                StringSanitizer.forLog(decision.policyId()),
+                StringSanitizer.forLog(decision.reason()),
+                StringSanitizer.forLog(resourceId));
         return forbiddenResponse(exchange, decision);
     }
 
@@ -204,31 +205,6 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         return trimmed;
     }
 
-    /**
-     * Validates session ID format (UUID).
-     */
-    private boolean isValidSessionId(@Nullable String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) {
-            return false;
-        }
-        return sessionId.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-    }
-
-    /**
-     * Sanitizes a value for safe logging.
-     */
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), 64));
-    }
-
     @NonNull
     private Mono<Void> unauthorizedResponse(
             @NonNull ServerWebExchange exchange,
@@ -239,7 +215,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
 
         String body = String.format(
                 "{\"error\":\"unauthorized\",\"code\":\"AUTH_REQUIRED\",\"message\":\"%s\"}",
-                escapeJson(message));
+                StringSanitizer.escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
@@ -259,34 +235,21 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         if (decision.missingAttributes() != null && !decision.missingAttributes().isEmpty()) {
             missingAttrs = ",\"missing\":[" +
                     decision.missingAttributes().stream()
-                            .map(s -> "\"" + escapeJson(s) + "\"")
+                            .map(s -> "\"" + StringSanitizer.escapeJson(s) + "\"")
                             .collect(Collectors.joining(",")) +
                     "]";
         }
 
         String body = String.format(
                 "{\"error\":\"access_denied\",\"code\":\"%s\",\"policy\":\"%s\",\"message\":\"%s\"%s}",
-                escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
-                escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
-                escapeJson(decision.reason() != null ? decision.reason() : "Access denied"),
+                StringSanitizer.escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
+                StringSanitizer.escapeJson(decision.policyId() != null ? decision.policyId() : "UNKNOWN"),
+                StringSanitizer.escapeJson(decision.reason() != null ? decision.reason() : "Access denied"),
                 missingAttrs);
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
                         .wrap(body.getBytes(StandardCharsets.UTF_8))));
-    }
-
-    /**
-     * Escapes special characters for JSON string values.
-     */
-    @NonNull
-    private String escapeJson(@NonNull String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 }
