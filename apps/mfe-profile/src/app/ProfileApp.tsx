@@ -6,12 +6,12 @@ import styles from './app.module.css';
 
 export type ProfileAppProps = MfeProps;
 
-export function ProfileApp({ memberId, persona, operatorId, operatorName }: ProfileAppProps) {
+export function ProfileApp({ memberEid, persona, operatorId, operatorName }: ProfileAppProps) {
   // Fetch user info on first load - uses ApiClient from context (supports serviceBaseUrl for web components)
   useUserInfo();
 
-  const { data: profile, isLoading, error } = useProfile(memberId);
-  const updateProfile = useUpdateProfile(memberId);
+  const { data: profile, isLoading, error } = useProfile(memberEid);
+  const updateProfile = useUpdateProfile(memberEid);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<ProfileUpdatePayload>({});
 
@@ -216,7 +216,7 @@ export function ProfileApp({ memberId, persona, operatorId, operatorName }: Prof
 
       {/* Documents Section */}
       <DocumentsSection
-        memberId={memberId}
+        memberEid={memberEid}
         persona={persona}
         canUpload={canUploadDocuments(persona)}
         canDelete={canDeleteDocuments(persona)}

@@ -56,7 +56,7 @@ describe('HealthSummaryApp', () => {
 
   it('should render the Health Summary header', () => {
     render(
-      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -65,7 +65,7 @@ describe('HealthSummaryApp', () => {
 
   it('should render all three tabs', () => {
     render(
-      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -77,7 +77,7 @@ describe('HealthSummaryApp', () => {
   it('should display operator info for proxy personas', () => {
     render(
       <HealthSummaryApp
-        memberId="test-123"
+        memberEid="test-123"
         persona="agent"
         operatorId="op-456"
         operatorName="Jane Smith"
@@ -91,7 +91,7 @@ describe('HealthSummaryApp', () => {
 
   it('should not display operator info for individual personas', () => {
     render(
-      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -100,7 +100,7 @@ describe('HealthSummaryApp', () => {
 
   it('should switch to Allergies tab when clicked', () => {
     render(
-      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -113,7 +113,7 @@ describe('HealthSummaryApp', () => {
 
   it('should switch to Medications tab when clicked', () => {
     render(
-      <HealthSummaryApp memberId="test-123" persona="individual" />,
+      <HealthSummaryApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -124,9 +124,9 @@ describe('HealthSummaryApp', () => {
     expect(medicationsTab.className).toContain('activeTab');
   });
 
-  it('should call useImmunizations with correct memberId', () => {
+  it('should call useImmunizations with correct memberEid', () => {
     render(
-      <HealthSummaryApp memberId="member-xyz" persona="individual" />,
+      <HealthSummaryApp memberEid="member-xyz" persona="individual" />,
       { wrapper: createWrapper() }
     );
 

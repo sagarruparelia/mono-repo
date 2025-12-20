@@ -12,7 +12,7 @@ import {
 import styles from './DocumentsSection.module.css';
 
 interface DocumentsSectionProps {
-  memberId: string;
+  memberEid: string;
   persona: Persona;
   canUpload: boolean;
   canDelete: boolean;
@@ -28,14 +28,14 @@ const DOCUMENT_TYPES: { value: DocumentType; label: string }[] = [
 ];
 
 export function DocumentsSection({
-  memberId,
+  memberEid,
   persona,
   canUpload,
   canDelete,
 }: DocumentsSectionProps) {
-  const { data: documents, isLoading, error, refetch } = useDocuments(memberId);
-  const uploadMutation = useUploadDocument(memberId);
-  const deleteMutation = useDeleteDocument(memberId);
+  const { data: documents, isLoading, error, refetch } = useDocuments(memberEid);
+  const uploadMutation = useUploadDocument(memberEid);
+  const deleteMutation = useDeleteDocument(memberEid);
 
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -235,7 +235,7 @@ export function DocumentsSection({
               </div>
               <div className={styles.documentActions}>
                 <a
-                  href={getDocumentDownloadUrl(memberId, doc.id)}
+                  href={getDocumentDownloadUrl(memberEid, doc.id)}
                   className={styles.downloadButton}
                   download
                 >

@@ -12,7 +12,7 @@ interface Medication {
 }
 
 interface MedicationSectionProps {
-  memberId: string;
+  memberEid: string;
 }
 
 const columns: Column<Medication>[] = [
@@ -23,8 +23,8 @@ const columns: Column<Medication>[] = [
   { key: 'prescriber', header: 'Prescriber', render: (m) => m.prescriber || '-' },
 ];
 
-export function MedicationSection({ memberId }: MedicationSectionProps) {
-  const { data, isLoading, error } = useMedications(memberId);
+export function MedicationSection({ memberEid }: MedicationSectionProps) {
+  const { data, isLoading, error } = useMedications(memberEid);
 
   return (
     <DataSection<Medication>

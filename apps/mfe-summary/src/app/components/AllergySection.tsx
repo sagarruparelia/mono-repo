@@ -11,7 +11,7 @@ interface Allergy {
 }
 
 interface AllergySectionProps {
-  memberId: string;
+  memberEid: string;
 }
 
 const getSeverityClass = (severity: string) => {
@@ -38,8 +38,8 @@ const columns: Column<Allergy>[] = [
   { key: 'onsetDate', header: 'Onset Date', render: (a) => a.onsetDate ? new Date(a.onsetDate).toLocaleDateString() : '-' },
 ];
 
-export function AllergySection({ memberId }: AllergySectionProps) {
-  const { data, isLoading, error } = useAllergies(memberId);
+export function AllergySection({ memberEid }: AllergySectionProps) {
+  const { data, isLoading, error } = useAllergies(memberEid);
 
   return (
     <DataSection<Allergy>

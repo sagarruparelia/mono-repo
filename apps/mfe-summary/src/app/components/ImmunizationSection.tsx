@@ -11,7 +11,7 @@ interface Immunization {
 }
 
 interface ImmunizationSectionProps {
-  memberId: string;
+  memberEid: string;
 }
 
 const columns: Column<Immunization>[] = [
@@ -21,8 +21,8 @@ const columns: Column<Immunization>[] = [
   { key: 'lotNumber', header: 'Lot Number', className: styles.monoCell, render: (imm) => imm.lotNumber || '-' },
 ];
 
-export function ImmunizationSection({ memberId }: ImmunizationSectionProps) {
-  const { data, isLoading, error } = useImmunizations(memberId);
+export function ImmunizationSection({ memberEid }: ImmunizationSectionProps) {
+  const { data, isLoading, error } = useImmunizations(memberEid);
 
   return (
     <DataSection<Immunization>

@@ -9,6 +9,7 @@ public record SecurityPathsProperties(
         List<PathConfig> publicPaths,
         List<PathConfig> proxyAuth,
         List<PathConfig> sessionAuth,
+        List<PathConfig> dualAuth,
         List<PathConfig> admin
 ) {
     public record PathConfig(
@@ -44,6 +45,16 @@ public record SecurityPathsProperties(
             return List.of();
         }
         return sessionAuth.stream()
+                .map(PathConfig::pattern)
+                .toList();
+    }
+
+    // Convenience method for getting all dual auth patterns
+    public List<String> getDualAuthPatterns() {
+        if (dualAuth == null) {
+            return List.of();
+        }
+        return dualAuth.stream()
                 .map(PathConfig::pattern)
                 .toList();
     }

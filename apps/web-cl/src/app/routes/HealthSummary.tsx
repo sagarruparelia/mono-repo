@@ -1,17 +1,17 @@
-import { useEffectiveMemberId, usePersona, useOperatorInfo } from '@mono-repo/shared-state';
+import { useEffectiveMemberEid, usePersona, useOperatorInfo } from '@mono-repo/shared-state';
 import { HealthSummaryApp } from '@mono-repo/mfe-summary';
 import styles from './routes.module.css';
 
 /**
  * Health Summary page route
- * Uses the effective memberId which respects the global child selector
+ * Uses the effective memberEid which respects the global child selector
  */
 export function HealthSummary() {
-  const memberId = useEffectiveMemberId();
+  const memberEid = useEffectiveMemberEid();
   const persona = usePersona();
   const { operatorId, operatorName } = useOperatorInfo();
 
-  if (!memberId) {
+  if (!memberEid) {
     return (
       <div className={styles.page}>
         <div className={styles.error}>Session not available. Please log in.</div>
@@ -23,7 +23,7 @@ export function HealthSummary() {
     <div className={styles.page}>
       <div className={styles.mfeContainer}>
         <HealthSummaryApp
-          memberId={memberId}
+          memberEid={memberEid}
           persona={persona || 'individual'}
           operatorId={operatorId}
           operatorName={operatorName}

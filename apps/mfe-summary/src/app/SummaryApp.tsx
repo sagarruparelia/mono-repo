@@ -14,7 +14,7 @@ export type HealthSummaryAppProps = MfeProps;
  * Health Summary MFE with tabbed navigation
  * Displays immunization, allergy, and medication records
  */
-export function HealthSummaryApp({ memberId, persona, operatorId, operatorName }: HealthSummaryAppProps) {
+export function HealthSummaryApp({ memberEid, persona, operatorId, operatorName }: HealthSummaryAppProps) {
   // Fetch user info on first load - uses ApiClient from context (supports serviceBaseUrl for web components)
   useUserInfo();
 
@@ -53,9 +53,9 @@ export function HealthSummaryApp({ memberId, persona, operatorId, operatorName }
       </nav>
 
       <div className={styles.tabContent}>
-        {activeTab === 'immunizations' && <ImmunizationSection memberId={memberId} />}
-        {activeTab === 'allergies' && <AllergySection memberId={memberId} />}
-        {activeTab === 'medications' && <MedicationSection memberId={memberId} />}
+        {activeTab === 'immunizations' && <ImmunizationSection memberEid={memberEid} />}
+        {activeTab === 'allergies' && <AllergySection memberEid={memberEid} />}
+        {activeTab === 'medications' && <MedicationSection memberEid={memberEid} />}
       </div>
     </div>
   );

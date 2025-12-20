@@ -17,7 +17,7 @@ interface AuthActions {
 
   /** Set authentication context for proxy (partner portal) access */
   setProxyContext: (
-    memberId: string,
+    memberEid: string,
     persona: Persona,
     operatorId: string,
     operatorName: string
@@ -60,15 +60,15 @@ export const useAuthStore = create<AuthStore>()(
           sessionExpiry: expiry,
           dependents,
           // Clear proxy fields
-          memberId: undefined,
+          memberEid: undefined,
           operatorId: undefined,
           operatorName: undefined,
         }),
 
-      setProxyContext: (memberId, persona, operatorId, operatorName) =>
+      setProxyContext: (memberEid, persona, operatorId, operatorName) =>
         set({
           isAuthenticated: true,
-          memberId,
+          memberEid,
           persona,
           operatorId,
           operatorName,
@@ -93,7 +93,7 @@ export const useAuthStore = create<AuthStore>()(
         user: state.user,
         dependents: state.dependents,
         sessionExpiry: state.sessionExpiry,
-        memberId: state.memberId,
+        memberEid: state.memberEid,
         operatorId: state.operatorId,
         operatorName: state.operatorName,
         selectedChildId: state.selectedChildId,
@@ -118,15 +118,15 @@ export const useIsHsidUser = () =>
   useAuthStore((state) => state.user !== undefined);
 
 export const useIsProxyUser = () =>
-  useAuthStore((state) => state.memberId !== undefined);
+  useAuthStore((state) => state.memberEid !== undefined);
 
 /**
- * Get the effective memberId from session
- * - HSID users: memberId comes from user.sub
- * - Proxy users: memberId is explicit in context
+ * Get the effective memberEid from session
+ * - HSID users: memberEid comes from user.sub
+ * - Proxy users: memberEid is explicit in context
  */
-export const useMemberId = () =>
-  useAuthStore((state) => state.memberId ?? state.user?.sub);
+export const useMemberEid = () =>
+  useAuthStore((state) => state.memberEid ?? state.user?.sub);
 
 /**
  * Get operator info for proxy users
@@ -148,15 +148,15 @@ export const useSelectedChildId = () =>
   useAuthStore((state) => state.selectedChildId);
 
 /**
- * Get the effective memberId for API calls
+ * Get the effective memberEid for API calls
  * - Parent with child selected: returns selectedChildId
- * - Parent with no selection: returns parent's memberId (user.sub)
- * - Individual/other: returns their own memberId
+ * - Parent with no selection: returns parent's memberEid (user.sub)
+ * - Individual/other: returns their own memberEid
  */
-export const useEffectiveMemberId = () =>
+export const useEffectiveMemberEid = () =>
   useAuthStore((state) => {
     if (state.persona === 'parent' && state.selectedChildId) {
       return state.selectedChildId;
     }
-    return state.memberId ?? state.user?.sub;
+    return state.memberEid ?? state.user?.sub;
   });

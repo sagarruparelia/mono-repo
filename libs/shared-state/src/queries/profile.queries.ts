@@ -6,14 +6,14 @@ import { useApiClient } from '../api/ApiClientContext';
  */
 export const profileKeys = {
   all: ['profile'] as const,
-  detail: (memberId: string) => [...profileKeys.all, memberId] as const,
+  detail: (memberEid: string) => [...profileKeys.all, memberEid] as const,
 };
 
 /**
  * Profile data response type
  */
 export interface ProfileData {
-  memberId: string;
+  memberEid: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -40,28 +40,28 @@ export interface ProfileUpdatePayload {
  * Hook to fetch member profile
  * Uses API client from context (supports isolated web components)
  */
-export const useProfile = (memberId: string, enabled = true) => {
+export const useProfile = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: profileKeys.detail(memberId),
-    queryFn: () => api.get<ProfileData>(`/api/mfe/profile/${memberId}`),
-    enabled: !!memberId && enabled,
+    queryKey: profileKeys.detail(memberEid),
+    queryFn: () => api.get<ProfileData>(`/api/mfe/profile/${memberEid}`),
+    enabled: !!memberEid && enabled,
   });
 };
 
 /**
  * Hook to update member profile
  */
-export const useUpdateProfile = (memberId: string) => {
+export const useUpdateProfile = (memberEid: string) => {
   const api = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: ProfileUpdatePayload) =>
-      api.put<ProfileData>(`/api/mfe/profile/${memberId}`, payload),
+      api.put<ProfileData>(`/api/mfe/profile/${memberEid}`, payload),
     onSuccess: (data) => {
-      queryClient.setQueryData(profileKeys.detail(memberId), data);
+      queryClient.setQueryData(profileKeys.detail(memberEid), data);
     },
   });
 };

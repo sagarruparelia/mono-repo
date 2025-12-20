@@ -6,7 +6,7 @@ import styles from './Dashboard.module.css';
 interface ResponsiblePartyDashboardProps {
   user: User | undefined;
   dependents: DependentMetadata[];
-  selectedMemberId: string | undefined;
+  selectedMemberEid: string | undefined;
 }
 
 /**
@@ -16,15 +16,15 @@ interface ResponsiblePartyDashboardProps {
 export function ResponsiblePartyDashboard({
   user,
   dependents,
-  selectedMemberId
+  selectedMemberEid
 }: ResponsiblePartyDashboardProps) {
   const setSelectedChild = useAuthStore((state) => state.setSelectedChild);
 
-  const handleMemberSelect = (memberId: string | null) => {
-    setSelectedChild(memberId);
+  const handleMemberSelect = (memberEid: string | null) => {
+    setSelectedChild(memberEid);
   };
 
-  const isViewingSelf = !selectedMemberId || selectedMemberId === user?.sub;
+  const isViewingSelf = !selectedMemberEid || selectedMemberEid === user?.sub;
 
   return (
     <div className={styles.dashboard}>
@@ -41,7 +41,7 @@ export function ResponsiblePartyDashboard({
           <span className={styles.viewingName}>
             {isViewingSelf
               ? 'Your own records'
-              : dependents.find(d => d.id === selectedMemberId)?.name || 'Member'}
+              : dependents.find(d => d.id === selectedMemberEid)?.name || 'Member'}
           </span>
         </div>
       </section>
@@ -114,7 +114,7 @@ export function ResponsiblePartyDashboard({
           {dependents.map((member) => (
             <div
               key={member.id}
-              className={`${styles.familyCard} ${selectedMemberId === member.id ? styles.selectedCard : ''}`}
+              className={`${styles.familyCard} ${selectedMemberEid === member.id ? styles.selectedCard : ''}`}
               onClick={() => handleMemberSelect(member.id)}
               role="button"
               tabIndex={0}
@@ -132,7 +132,7 @@ export function ResponsiblePartyDashboard({
                   </span>
                 )}
               </div>
-              {selectedMemberId === member.id && (
+              {selectedMemberEid === member.id && (
                 <span className={styles.selectedBadge}>Viewing</span>
               )}
             </div>

@@ -6,9 +6,9 @@ import { useApiClient } from '../api/ApiClientContext';
  */
 export const healthKeys = {
   all: ['health'] as const,
-  immunizations: (memberId: string) => [...healthKeys.all, 'immunizations', memberId] as const,
-  allergies: (memberId: string) => [...healthKeys.all, 'allergies', memberId] as const,
-  medications: (memberId: string) => [...healthKeys.all, 'medications', memberId] as const,
+  immunizations: (memberEid: string) => [...healthKeys.all, 'immunizations', memberEid] as const,
+  allergies: (memberEid: string) => [...healthKeys.all, 'allergies', memberEid] as const,
+  medications: (memberEid: string) => [...healthKeys.all, 'medications', memberEid] as const,
 };
 
 /**
@@ -49,13 +49,13 @@ export interface Medication {
  * Hook to fetch immunization records for a member
  * Uses API client from context (supports web components with serviceBaseUrl)
  */
-export const useImmunizations = (memberId: string, enabled = true) => {
+export const useImmunizations = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: healthKeys.immunizations(memberId),
-    queryFn: () => api.get<Immunization[]>(`/api/mfe/immunizations/${memberId}`),
-    enabled: !!memberId && enabled,
+    queryKey: healthKeys.immunizations(memberEid),
+    queryFn: () => api.get<Immunization[]>(`/api/mfe/immunizations/${memberEid}`),
+    enabled: !!memberEid && enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
@@ -64,13 +64,13 @@ export const useImmunizations = (memberId: string, enabled = true) => {
  * Hook to fetch allergy records for a member
  * Uses API client from context (supports web components with serviceBaseUrl)
  */
-export const useAllergies = (memberId: string, enabled = true) => {
+export const useAllergies = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: healthKeys.allergies(memberId),
-    queryFn: () => api.get<Allergy[]>(`/api/mfe/allergies/${memberId}`),
-    enabled: !!memberId && enabled,
+    queryKey: healthKeys.allergies(memberEid),
+    queryFn: () => api.get<Allergy[]>(`/api/mfe/allergies/${memberEid}`),
+    enabled: !!memberEid && enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
@@ -79,13 +79,13 @@ export const useAllergies = (memberId: string, enabled = true) => {
  * Hook to fetch medication records for a member
  * Uses API client from context (supports web components with serviceBaseUrl)
  */
-export const useMedications = (memberId: string, enabled = true) => {
+export const useMedications = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: healthKeys.medications(memberId),
-    queryFn: () => api.get<Medication[]>(`/api/mfe/medications/${memberId}`),
-    enabled: !!memberId && enabled,
+    queryKey: healthKeys.medications(memberEid),
+    queryFn: () => api.get<Medication[]>(`/api/mfe/medications/${memberEid}`),
+    enabled: !!memberEid && enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };

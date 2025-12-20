@@ -6,9 +6,9 @@ import { useApiClient } from '../api/ApiClientContext';
  */
 export const documentKeys = {
   all: ['documents'] as const,
-  list: (memberId: string) => [...documentKeys.all, 'list', memberId] as const,
-  detail: (memberId: string, documentId: string) =>
-    [...documentKeys.all, 'detail', memberId, documentId] as const,
+  list: (memberEid: string) => [...documentKeys.all, 'list', memberEid] as const,
+  detail: (memberEid: string, documentId: string) =>
+    [...documentKeys.all, 'detail', memberEid, documentId] as const,
 };
 
 /**
@@ -27,7 +27,7 @@ export type DocumentType =
  */
 export interface DocumentData {
   id: string;
-  memberId: string;
+  memberEid: string;
   fileName: string;
   contentType: string;
   fileSize: number;
@@ -51,46 +51,46 @@ export interface DocumentUploadRequest {
 /**
  * Hook to list all documents for a member (youth)
  */
-export const useDocuments = (memberId: string, enabled = true) => {
+export const useDocuments = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: documentKeys.list(memberId),
-    queryFn: () => api.get<DocumentData[]>(`/api/member/${memberId}/documents`),
-    enabled: !!memberId && enabled,
+    queryKey: documentKeys.list(memberEid),
+    queryFn: () => api.get<DocumentData[]>(`/api/member/${memberEid}/documents`),
+    enabled: !!memberEid && enabled,
   });
 };
 
 /**
  * Hook to get a single document's metadata
  */
-export const useDocument = (memberId: string, documentId: string, enabled = true) => {
+export const useDocument = (memberEid: string, documentId: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: documentKeys.detail(memberId, documentId),
+    queryKey: documentKeys.detail(memberEid, documentId),
     queryFn: () =>
-      api.get<DocumentData>(`/api/member/${memberId}/documents/${documentId}`),
-    enabled: !!memberId && !!documentId && enabled,
+      api.get<DocumentData>(`/api/member/${memberEid}/documents/${documentId}`),
+    enabled: !!memberEid && !!documentId && enabled,
   });
 };
 
 /**
  * Hook to upload a document for a member (youth)
  */
-export const useUploadDocument = (memberId: string) => {
+export const useUploadDocument = (memberEid: string) => {
   const api = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ file, description, documentType }: DocumentUploadRequest) =>
-      api.uploadFile<DocumentData>(`/api/member/${memberId}/documents`, file, {
+      api.uploadFile<DocumentData>(`/api/member/${memberEid}/documents`, file, {
         ...(description && { description }),
         ...(documentType && { documentType }),
       }),
     onSuccess: () => {
       // Invalidate document list to refetch
-      queryClient.invalidateQueries({ queryKey: documentKeys.list(memberId) });
+      queryClient.invalidateQueries({ queryKey: documentKeys.list(memberEid) });
     },
   });
 };
@@ -98,16 +98,16 @@ export const useUploadDocument = (memberId: string) => {
 /**
  * Hook to delete a document
  */
-export const useDeleteDocument = (memberId: string) => {
+export const useDeleteDocument = (memberEid: string) => {
   const api = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (documentId: string) =>
-      api.delete(`/api/member/${memberId}/documents/${documentId}`),
+      api.delete(`/api/member/${memberEid}/documents/${documentId}`),
     onSuccess: () => {
       // Invalidate document list to refetch
-      queryClient.invalidateQueries({ queryKey: documentKeys.list(memberId) });
+      queryClient.invalidateQueries({ queryKey: documentKeys.list(memberEid) });
     },
   });
 };
@@ -115,8 +115,8 @@ export const useDeleteDocument = (memberId: string) => {
 /**
  * Get download URL for a document
  */
-export const getDocumentDownloadUrl = (memberId: string, documentId: string): string =>
-  `/api/member/${memberId}/documents/${documentId}/download`;
+export const getDocumentDownloadUrl = (memberEid: string, documentId: string): string =>
+  `/api/member/${memberEid}/documents/${documentId}/download`;
 
 /**
  * Format file size for display

@@ -32,7 +32,8 @@ public record ExternalIntegrationProperties(
             String persona,
             String userId,
             String idpType,
-            String clientId
+            String clientId,
+            String partnerId
     ) {}
 
     public ExternalIntegrationProperties {
@@ -41,7 +42,8 @@ public record ExternalIntegrationProperties(
                     "X-Persona",
                     "X-User-Id",
                     "X-IDP-Type",
-                    "X-Client-Id"
+                    "X-Client-Id",
+                    "X-Partner-Id"
             );
         }
         if (allowedPersonas == null) {

@@ -6,14 +6,14 @@ import { useApiClient } from '../api/ApiClientContext';
  */
 export const summaryKeys = {
   all: ['summary'] as const,
-  detail: (memberId: string) => [...summaryKeys.all, memberId] as const,
+  detail: (memberEid: string) => [...summaryKeys.all, memberEid] as const,
 };
 
 /**
  * Summary data response type
  */
 export interface SummaryData {
-  memberId: string;
+  memberEid: string;
   name: string;
   status: string;
   lastUpdated: string;
@@ -28,12 +28,12 @@ export interface SummaryData {
  * Hook to fetch member summary
  * Uses API client from context (supports isolated web components)
  */
-export const useSummary = (memberId: string, enabled = true) => {
+export const useSummary = (memberEid: string, enabled = true) => {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: summaryKeys.detail(memberId),
-    queryFn: () => api.get<SummaryData>(`/api/mfe/summary/${memberId}`),
-    enabled: !!memberId && enabled,
+    queryKey: summaryKeys.detail(memberEid),
+    queryFn: () => api.get<SummaryData>(`/api/mfe/summary/${memberEid}`),
+    enabled: !!memberEid && enabled,
   });
 };

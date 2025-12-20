@@ -17,10 +17,10 @@ export {
   useDependents,
   useIsHsidUser,
   useIsProxyUser,
-  useMemberId,
+  useMemberEid,
   useOperatorInfo,
   useSelectedChildId,
-  useEffectiveMemberId,
+  useEffectiveMemberEid,
 } from './stores/auth.store';
 
 // API Client

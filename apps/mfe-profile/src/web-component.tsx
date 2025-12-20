@@ -44,14 +44,15 @@ class MfeProfileElement extends HTMLElement {
   }
 
   private render() {
-    const memberId = this.getAttribute('member-id') || '';
+    // HTML attribute remains 'member-id' for backward compatibility, but maps to memberEid internally
+    const memberEid = this.getAttribute('member-id') || '';
     const persona = (this.getAttribute('persona') || 'individual') as Persona;
     const operatorId = this.getAttribute('operator-id') || undefined;
     const operatorName = this.getAttribute('operator-name') || undefined;
     const serviceBaseUrl = this.getAttribute('service-base-url') || '';
 
     // Validate required attributes
-    if (!memberId) {
+    if (!memberEid) {
       console.error('mfe-profile: member-id attribute is required');
       return;
     }
@@ -74,7 +75,7 @@ class MfeProfileElement extends HTMLElement {
       <QueryClientProvider client={this.queryClient}>
         <ApiClientProvider serviceBaseUrl={serviceBaseUrl}>
           <ProfileApp
-            memberId={memberId}
+            memberEid={memberEid}
             persona={persona}
             operatorId={operatorId}
             operatorName={operatorName}

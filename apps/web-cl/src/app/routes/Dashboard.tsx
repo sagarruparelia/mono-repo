@@ -1,4 +1,4 @@
-import { useUser, usePersona, useEffectiveMemberId, useDependentsMetadata, useUserInfo } from '@mono-repo/shared-state';
+import { useUser, usePersona, useEffectiveMemberEid, useDependentsMetadata, useUserInfo } from '@mono-repo/shared-state';
 import { MemberDashboard } from '../components/MemberDashboard';
 import { ResponsiblePartyDashboard } from '../components/ResponsiblePartyDashboard';
 
@@ -11,7 +11,7 @@ import { ResponsiblePartyDashboard } from '../components/ResponsiblePartyDashboa
 export function Dashboard() {
   const user = useUser();
   const persona = usePersona();
-  const effectiveMemberId = useEffectiveMemberId();
+  const effectiveMemberEid = useEffectiveMemberEid();
   const { data: dependents } = useDependentsMetadata();
 
   // Fetch user info on first load - data is cached by React Query
@@ -23,13 +23,13 @@ export function Dashboard() {
       <ResponsiblePartyDashboard
         user={user}
         dependents={dependents || []}
-        selectedMemberId={effectiveMemberId}
+        selectedMemberEid={effectiveMemberEid}
       />
     );
   }
 
   // Member persona (individual in HSID terms)
-  return <MemberDashboard user={user} memberId={effectiveMemberId} />;
+  return <MemberDashboard user={user} memberEid={effectiveMemberEid} />;
 }
 
 export default Dashboard;

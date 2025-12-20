@@ -21,7 +21,7 @@ vi.mock('@mono-repo/shared-state', () => ({
   useUserInfo: vi.fn(),
   useProfile: () => ({
     data: {
-      memberId: 'test-123',
+      memberEid: 'test-123',
       firstName: 'John',
       lastName: 'Doe',
       email: 'john@example.com',

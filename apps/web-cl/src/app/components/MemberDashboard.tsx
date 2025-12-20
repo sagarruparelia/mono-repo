@@ -4,14 +4,14 @@ import styles from './Dashboard.module.css';
 
 interface MemberDashboardProps {
   user: User | undefined;
-  memberId: string | undefined;
+  memberEid: string | undefined;
 }
 
 /**
  * Dashboard view for member (individual) persona
  * Shows personal health summary cards with links to health records and profile
  */
-export function MemberDashboard({ user, memberId }: MemberDashboardProps) {
+export function MemberDashboard({ user, memberEid }: MemberDashboardProps) {
   return (
     <div className={styles.dashboard}>
       <div className={styles.welcome}>

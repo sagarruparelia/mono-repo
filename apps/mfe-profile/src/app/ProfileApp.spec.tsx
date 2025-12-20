@@ -54,7 +54,7 @@ const createWrapper = () => {
 };
 
 const mockProfileData = {
-  memberId: 'test-123',
+  memberEid: 'test-123',
   firstName: 'John',
   lastName: 'Doe',
   email: 'john@example.com',
@@ -86,7 +86,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -101,7 +101,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -116,7 +116,7 @@ describe('ProfileApp', () => {
     } as unknown as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -131,7 +131,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -150,7 +150,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -167,7 +167,7 @@ describe('ProfileApp', () => {
 
     render(
       <ProfileApp
-        memberId="test-123"
+        memberEid="test-123"
         persona="agent"
         operatorId="op-456"
         operatorName="Jane Smith"
@@ -187,7 +187,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -202,7 +202,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -224,7 +224,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -255,7 +255,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="test-123" persona="individual" />,
+      <ProfileApp memberEid="test-123" persona="individual" />,
       { wrapper: createWrapper() }
     );
 
@@ -278,7 +278,7 @@ describe('ProfileApp', () => {
     });
   });
 
-  it('should call useProfile with correct memberId', () => {
+  it('should call useProfile with correct memberEid', () => {
     mockUseProfile.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -286,7 +286,7 @@ describe('ProfileApp', () => {
     } as ReturnType<typeof useProfile>);
 
     render(
-      <ProfileApp memberId="member-xyz" persona="individual" />,
+      <ProfileApp memberEid="member-xyz" persona="individual" />,
       { wrapper: createWrapper() }
     );
 

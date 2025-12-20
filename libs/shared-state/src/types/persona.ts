@@ -41,8 +41,8 @@ export interface AuthContext {
   /** Session expiry timestamp (HSID context only) */
   sessionExpiry?: number;
 
-  /** Target member ID (proxy context only) */
-  memberId?: string;
+  /** Target member EID - Enterprise ID (proxy context only) */
+  memberEid?: string;
 
   /** Portal operator ID (proxy context only) */
   operatorId?: string;
@@ -55,7 +55,7 @@ export interface AuthContext {
  * Props passed to MFE web components
  */
 export interface MfeProps {
-  memberId: string;
+  memberEid: string;
   persona: Persona;
   operatorId?: string;
   operatorName?: string;

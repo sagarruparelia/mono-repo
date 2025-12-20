@@ -200,11 +200,24 @@ app:
       user-id: X-User-Id
       idp-type: X-IDP-Type
       client-id: X-Client-Id
+      partner-id: X-Partner-Id
     allowed-personas:
       - agent
-      - config
+      - config_specialist
       - case_worker
     trusted-idp-types: ${EXTERNAL_TRUSTED_IDP_TYPES:}
+
+# Identity Provider Configuration
+# Maps IDP types to allowed personas for PROXY authentication
+idp:
+  persona-mapping:
+    # Ohio Health ID - case workers only
+    ohid:
+      - case_worker
+    # Member Services ID - agents and config specialists
+    msid:
+      - agent
+      - config_specialist
 
   # Document Management Configuration
   documents:
