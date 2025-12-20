@@ -1,11 +1,13 @@
 package com.example.bff.config;
 
 import com.example.bff.config.properties.ExternalApiProperties;
+import io.netty.channel.ChannelOption;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.security.oauth2.client.AuthorizedClientServiceReactiveOAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.InMemoryReactiveOAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
@@ -13,6 +15,8 @@ import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClient
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.reactive.function.client.ServerOAuth2AuthorizedClientExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 
 import java.time.Duration;
 
@@ -68,16 +72,10 @@ public class ExternalApiWebClientConfig {
      * WebClient configured with OAuth2 client credentials for external API calls.
      * Automatically includes Bearer token in Authorization header.
      *
-     * Usage:
-     * {@code
-     * @Autowired @Qualifier(EXTERNAL_API_WEBCLIENT)
-     * private WebClient externalApiWebClient;
-     *
-     * webClient.get()
-     *     .uri("/api/identity/user/...")
-     *     .retrieve()
-     *     .bodyToMono(UserInfoResponse.class);
-     * }
+     * Includes production-ready configuration:
+     * - Connection pool with limits
+     * - Connection and response timeouts
+     * - Keep-alive and idle timeout settings
      */
     @Bean
     @Qualifier(EXTERNAL_API_WEBCLIENT)
@@ -86,11 +84,28 @@ public class ExternalApiWebClientConfig {
             ReactiveOAuth2AuthorizedClientManager authorizedClientManager,
             ExternalApiProperties externalApiProperties) {
 
+        // Configure connection pool for production use
+        ConnectionProvider connectionProvider = ConnectionProvider.builder("external-api-pool")
+                .maxConnections(100)
+                .pendingAcquireMaxCount(500)
+                .pendingAcquireTimeout(Duration.ofSeconds(10))
+                .maxIdleTime(Duration.ofSeconds(30))
+                .maxLifeTime(Duration.ofMinutes(5))
+                .evictInBackground(Duration.ofSeconds(30))
+                .build();
+
+        // Configure HTTP client with timeouts
+        HttpClient httpClient = HttpClient.create(connectionProvider)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofSeconds(10))
+                .keepAlive(true);
+
         // Configure OAuth2 filter for automatic token management
         var oauth2Filter = new ServerOAuth2AuthorizedClientExchangeFilterFunction(authorizedClientManager);
         oauth2Filter.setDefaultClientRegistrationId(EXTERNAL_API_CLIENT_REGISTRATION_ID);
 
         return webClientBuilder
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .baseUrl(externalApiProperties.baseUrl())
                 .filter(oauth2Filter)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

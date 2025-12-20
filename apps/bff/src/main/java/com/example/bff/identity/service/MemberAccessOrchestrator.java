@@ -171,7 +171,8 @@ public class MemberAccessOrchestrator {
         try {
             return LocalDate.parse(birthdate);
         } catch (DateTimeParseException e) {
-            LOG.warn("Failed to parse birthdate '{}': {}", birthdate, e.getMessage());
+            // Do not log actual birthdate (PII) - only log the error type
+            LOG.warn("Failed to parse birthdate: invalid format");
             return null;
         }
     }

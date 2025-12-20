@@ -79,6 +79,7 @@ public class IdentityCacheService {
 
     /**
      * Generic get-or-load implementation for reactive caching.
+     * Includes graceful degradation when cache is unavailable.
      */
     private <T> Mono<T> getOrLoad(
             @NonNull String cacheName,
@@ -87,7 +88,9 @@ public class IdentityCacheService {
             @NonNull Class<T> type,
             @NonNull Duration ttl) {
 
-        String fullKey = cacheName + ":" + key;
+        // Validate and sanitize cache key to prevent cache poisoning
+        String sanitizedKey = sanitizeKey(key);
+        String fullKey = cacheName + ":" + sanitizedKey;
 
         return redisTemplate.opsForValue().get(fullKey)
                 .flatMap(cached -> {
@@ -97,8 +100,9 @@ public class IdentityCacheService {
                         LOG.debug("Cache hit for key: {}", fullKey);
                         return Mono.just(value);
                     } catch (Exception e) {
-                        LOG.warn("Failed to deserialize cached value for key {}: {}", fullKey, e.getMessage());
-                        return Mono.empty();
+                        LOG.warn("Failed to deserialize cached value for key {}, evicting corrupted entry", fullKey);
+                        // Delete corrupted cache entry and return empty to trigger loader
+                        return redisTemplate.delete(fullKey).then(Mono.empty());
                     }
                 })
                 .switchIfEmpty(
@@ -106,10 +110,31 @@ public class IdentityCacheService {
                             LOG.debug("Cache miss for key: {}, loading and caching with TTL: {}", fullKey, ttl);
                             return redisTemplate.opsForValue()
                                     .set(fullKey, value, ttl)
-                                    .thenReturn(value);
+                                    .thenReturn(value)
+                                    .onErrorResume(cacheWriteError -> {
+                                        // If cache write fails, still return the loaded value
+                                        LOG.warn("Failed to write to cache for key {}: {}", fullKey, cacheWriteError.getMessage());
+                                        return Mono.just(value);
+                                    });
                         })
                 )
-                .doOnError(e -> LOG.error("Cache operation failed for key {}: {}", fullKey, e.getMessage()));
+                .onErrorResume(cacheError -> {
+                    // Graceful degradation: fall back to loader if cache is unavailable
+                    LOG.warn("Cache unavailable for key {}, falling back to loader: {}", fullKey, cacheError.getMessage());
+                    return loader;
+                });
+    }
+
+    /**
+     * Sanitizes cache key to prevent cache key collision/poisoning.
+     * Removes colons and special characters that could cause key collisions.
+     */
+    private String sanitizeKey(String key) {
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("Cache key cannot be null or blank");
+        }
+        // Replace potentially dangerous characters that could cause key collisions
+        return key.replaceAll("[:\\s\\n\\r\\t]", "_");
     }
 
     /**

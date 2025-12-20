@@ -83,19 +83,24 @@ public class EligibilityService {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.eligibility().timeout();
 
-        // GraphQL query for eligibility
+        // GraphQL query with variables to prevent injection
         String query = """
-                query {
-                    eligibility(memberEid: "%s") {
+                query CheckEligibility($memberEid: String!) {
+                    eligibility(memberEid: $memberEid) {
                         status
                         termDate
                     }
                 }
-                """.formatted(memberEid);
+                """;
+
+        Map<String, Object> requestBody = Map.of(
+                "query", query,
+                "variables", Map.of("memberEid", memberEid)
+        );
 
         var requestBuilder = webClient.post()
                 .uri(apiProperties.eligibility().path())
-                .body(BodyInserters.fromValue(Map.of("query", query)));
+                .body(BodyInserters.fromValue(requestBody));
 
         // Add x-identifier header if available
         if (apiIdentifier != null && !apiIdentifier.isBlank()) {

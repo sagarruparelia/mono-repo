@@ -78,10 +78,10 @@ public class ManagedMemberService {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.permissions().timeout();
 
-        // GraphQL query for permissions
+        // GraphQL query with variables to prevent injection
         String query = """
-                query {
-                    permissions(memberEid: "%s") {
+                query GetPermissions($memberEid: String!) {
+                    permissions(memberEid: $memberEid) {
                         eid
                         firstName
                         lastName
@@ -92,11 +92,16 @@ public class ManagedMemberService {
                         endDate
                     }
                 }
-                """.formatted(memberEid);
+                """;
+
+        Map<String, Object> requestBody = Map.of(
+                "query", query,
+                "variables", Map.of("memberEid", memberEid)
+        );
 
         var requestBuilder = webClient.post()
                 .uri(apiProperties.permissions().path())
-                .body(BodyInserters.fromValue(Map.of("query", query)));
+                .body(BodyInserters.fromValue(requestBody));
 
         // Add x-identifier header if available
         if (apiIdentifier != null && !apiIdentifier.isBlank()) {
