@@ -341,6 +341,8 @@ public class DualAuthWebFilter implements WebFilter {
                             .bufferFactory()
                             .wrap(body.getBytes(StandardCharsets.UTF_8))));
         } catch (Exception e) {
+            // Log the serialization failure for debugging
+            log.warn("Failed to serialize error response: {}", e.getMessage());
             // Fallback to simple JSON
             String fallback = String.format(
                     "{\"error\":\"%s\",\"code\":\"%s\",\"message\":\"%s\"}",

@@ -13,7 +13,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.nio.ByteBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+
 import java.util.regex.Pattern;
 
 /**
@@ -89,19 +90,16 @@ public class DocumentService {
 
         String sanitizedFileName = sanitizeFileName(originalFileName);
 
-        return file.content()
-                .reduce(ByteBuffer.allocate(0), (acc, buffer) -> {
-                    ByteBuffer combined = ByteBuffer.allocate(
-                            acc.remaining() + buffer.readableByteCount());
-                    combined.put(acc);
-                    byte[] bytes = new byte[buffer.readableByteCount()];
-                    buffer.read(bytes);
-                    combined.put(bytes);
-                    combined.flip();
-                    return combined;
+        // Use DataBufferUtils.join for efficient buffer aggregation (avoids O(n²) allocations)
+        return DataBufferUtils.join(file.content())
+                .map(dataBuffer -> {
+                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(bytes);
+                    DataBufferUtils.release(dataBuffer);  // Release pooled buffer
+                    return bytes;
                 })
                 .flatMap(content -> {
-                    long fileSize = content.remaining();
+                    long fileSize = content.length;
 
                     if (fileSize > properties.limits().maxFileSize()) {
                         return Mono.error(new IllegalArgumentException(

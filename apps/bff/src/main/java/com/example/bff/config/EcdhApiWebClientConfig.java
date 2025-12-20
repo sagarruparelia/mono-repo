@@ -77,8 +77,7 @@ public class EcdhApiWebClientConfig {
      * - Connection and response timeouts
      * - Keep-alive and idle timeout settings
      */
-    @Bean
-    @Qualifier(ECDH_API_WEBCLIENT)
+    @Bean(ECDH_API_WEBCLIENT)
     public WebClient ecdhApiWebClient(
             WebClient.Builder webClientBuilder,
             @Qualifier("ecdhApiAuthorizedClientManager") ReactiveOAuth2AuthorizedClientManager authorizedClientManager,

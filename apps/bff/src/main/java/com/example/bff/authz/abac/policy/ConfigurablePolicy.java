@@ -97,12 +97,15 @@ public class ConfigurablePolicy implements Policy {
 
         // Owner check (for youth document access)
         if (definition.ownerCheck()) {
-            if (subject.userId().equals(resource.ownerId())) {
+            String userId = subject.userId();
+            String ownerId = resource.ownerId();
+            // Use Objects.equals for null-safe comparison
+            if (userId != null && userId.equals(ownerId)) {
                 return PolicyDecision.allow(getPolicyId(),
-                        String.format("User %s owns resource %s", subject.userId(), resource.id()));
+                        String.format("User %s owns resource %s", userId, resource.id()));
             }
             return PolicyDecision.deny(getPolicyId(),
-                    String.format("User %s does not own resource %s", subject.userId(), resource.id()));
+                    String.format("User %s does not own resource %s", userId, resource.id()));
         }
 
         // Proxy rules

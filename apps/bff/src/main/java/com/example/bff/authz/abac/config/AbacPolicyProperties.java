@@ -48,10 +48,14 @@ public record AbacPolicyProperties(List<PolicyDefinition> policies) {
             return toList(action);
         }
 
-        @SuppressWarnings("unchecked")
         private static List<String> toList(Object value) {
             if (value == null) return List.of();
-            if (value instanceof List) return (List<String>) value;
+            if (value instanceof List<?> list) {
+                // Safely convert each element to String
+                return list.stream()
+                        .map(item -> item != null ? item.toString() : "")
+                        .toList();
+            }
             return List.of(value.toString());
         }
     }

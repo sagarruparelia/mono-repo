@@ -13,7 +13,6 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
-import java.nio.ByteBuffer;
 import java.util.UUID;
 
 /**
@@ -29,18 +28,18 @@ public class S3StorageService {
     private final S3AsyncClient s3Client;
     private final DocumentProperties properties;
 
-    public Mono<String> uploadFile(String memberId, String fileName, String contentType, ByteBuffer content) {
+    public Mono<String> uploadFile(String memberId, String fileName, String contentType, byte[] content) {
         String s3Key = generateS3Key(memberId, fileName);
 
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(properties.s3().bucketName())
                 .key(s3Key)
                 .contentType(contentType)
-                .contentLength((long) content.remaining())
+                .contentLength((long) content.length)
                 .build();
 
         return Mono.fromFuture(() ->
-                        s3Client.putObject(request, AsyncRequestBody.fromByteBuffer(content.duplicate()))
+                        s3Client.putObject(request, AsyncRequestBody.fromBytes(content))
                 )
                 .map(response -> s3Key)
                 .doOnSuccess(key -> log.info("Uploaded document to S3: bucket={}, key={}",

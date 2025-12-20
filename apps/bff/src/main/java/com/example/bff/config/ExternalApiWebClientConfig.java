@@ -2,7 +2,6 @@ package com.example.bff.config;
 
 import com.example.bff.config.properties.ExternalApiProperties;
 import io.netty.channel.ChannelOption;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -77,8 +76,7 @@ public class ExternalApiWebClientConfig {
      * - Connection and response timeouts
      * - Keep-alive and idle timeout settings
      */
-    @Bean
-    @Qualifier(EXTERNAL_API_WEBCLIENT)
+    @Bean(EXTERNAL_API_WEBCLIENT)
     public WebClient externalApiWebClient(
             WebClient.Builder webClientBuilder,
             ReactiveOAuth2AuthorizedClientManager authorizedClientManager,

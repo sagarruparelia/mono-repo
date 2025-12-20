@@ -118,12 +118,27 @@ public class RateLimitingFilter implements WebFilter {
 
     private boolean isTrustedProxy(String ip) {
         // Private network ranges and localhost are trusted (ALB, internal proxies)
-        return ip.startsWith("10.") ||
-               ip.startsWith("172.16.") || ip.startsWith("172.17.") ||
-               ip.startsWith("172.18.") || ip.startsWith("172.19.") ||
-               ip.startsWith("172.2") || ip.startsWith("172.30.") || ip.startsWith("172.31.") ||
-               ip.startsWith("192.168.") ||
-               ip.equals("127.0.0.1") || ip.equals("::1");
+        // IPv4 private ranges: 10.0.0.0/8, 172.16.0.0/12 (172.16-31.x.x), 192.168.0.0/16
+        if (ip.startsWith("10.") || ip.startsWith("192.168.") ||
+                ip.equals("127.0.0.1") || ip.equals("::1")) {
+            return true;
+        }
+
+        // Check 172.16.0.0/12 range (172.16.x.x - 172.31.x.x)
+        if (ip.startsWith("172.")) {
+            String[] octets = ip.split("\\.");
+            if (octets.length >= 2) {
+                try {
+                    int secondOctet = Integer.parseInt(octets[1]);
+                    return secondOctet >= 16 && secondOctet <= 31;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            }
+        }
+
+        // IPv6 private ranges (link-local and unique local)
+        return ip.startsWith("fe80:") || ip.startsWith("fc") || ip.startsWith("fd");
     }
 
     private String createBucketKey(RateLimitRule rule, String clientIp, ServerWebExchange exchange) {
@@ -194,11 +209,9 @@ public class RateLimitingFilter implements WebFilter {
 
         synchronized boolean tryConsume() {
             refill();
-            if (tokens.get() > 0) {
-                tokens.decrementAndGet();
-                return true;
-            }
-            return false;
+            // Use atomic update to prevent race condition between check and decrement
+            int previousValue = tokens.getAndUpdate(t -> t > 0 ? t - 1 : t);
+            return previousValue > 0;
         }
 
         private void refill() {
