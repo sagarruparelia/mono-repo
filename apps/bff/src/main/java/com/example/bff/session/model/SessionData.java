@@ -1,27 +1,29 @@
 package com.example.bff.session.model;
 
+import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Session data stored in Redis.
- * Contains user identity, eligibility, and managed member information.
+ * Contains user identity, eligibility, managed member information, and Zero Trust metadata.
  */
 public record SessionData(
-        String userId,
-        String email,
-        String name,
-        String persona,
-        List<String> dependents,
-        String ipAddress,
-        String userAgentHash,
-        Instant createdAt,
-        Instant lastAccessedAt,
+        @NonNull String userId,
+        @NonNull String email,
+        @NonNull String name,
+        @NonNull String persona,
+        @NonNull List<String> dependents,
+        @NonNull String ipAddress,
+        @NonNull String userAgentHash,
+        @NonNull Instant createdAt,
+        @NonNull Instant lastAccessedAt,
         // Member access fields
         @Nullable String eid,
         @Nullable String birthdate,
@@ -30,7 +32,10 @@ public record SessionData(
         @Nullable String eligibilityStatus,
         @Nullable String termDate,
         @Nullable String managedMembersJson,
-        @Nullable String earliestPermissionEndDate
+        @Nullable String earliestPermissionEndDate,
+        // Zero Trust fields
+        @Nullable String deviceFingerprint,
+        @Nullable Instant rotatedAt
 ) {
     public static SessionData fromMap(Map<String, String> map) {
         return new SessionData(
@@ -51,8 +56,43 @@ public record SessionData(
                 map.get("eligibilityStatus"),
                 map.get("termDate"),
                 map.get("managedMembersJson"),
-                map.get("earliestPermissionEndDate")
+                map.get("earliestPermissionEndDate"),
+                // Zero Trust fields (null-safe for existing sessions)
+                map.get("deviceFingerprint"),
+                parseInstantNullable(map.get("rotatedAt"))
         );
+    }
+
+    /**
+     * Converts this SessionData to a map for Redis storage.
+     */
+    @NonNull
+    public Map<String, String> toMap() {
+        Map<String, String> map = new HashMap<>();
+        map.put("userId", userId);
+        map.put("email", email);
+        map.put("name", name);
+        map.put("persona", persona);
+        if (dependents != null && !dependents.isEmpty()) {
+            map.put("dependents", String.join(",", dependents));
+        }
+        map.put("ipAddress", ipAddress);
+        map.put("userAgentHash", userAgentHash);
+        map.put("createdAt", String.valueOf(createdAt.toEpochMilli()));
+        map.put("lastAccessedAt", String.valueOf(lastAccessedAt.toEpochMilli()));
+        // Member access fields
+        if (eid != null) map.put("eid", eid);
+        if (birthdate != null) map.put("birthdate", birthdate);
+        map.put("isResponsibleParty", String.valueOf(isResponsibleParty));
+        if (apiIdentifier != null) map.put("apiIdentifier", apiIdentifier);
+        if (eligibilityStatus != null) map.put("eligibilityStatus", eligibilityStatus);
+        if (termDate != null) map.put("termDate", termDate);
+        if (managedMembersJson != null) map.put("managedMembersJson", managedMembersJson);
+        if (earliestPermissionEndDate != null) map.put("earliestPermissionEndDate", earliestPermissionEndDate);
+        // Zero Trust fields
+        if (deviceFingerprint != null) map.put("deviceFingerprint", deviceFingerprint);
+        if (rotatedAt != null) map.put("rotatedAt", String.valueOf(rotatedAt.toEpochMilli()));
+        return map;
     }
 
     /**
@@ -71,7 +111,8 @@ public record SessionData(
                 userId, email, name, persona, dependents,
                 ipAddress, userAgentHash,
                 Instant.now(), Instant.now(),
-                null, null, false, null, null, null, null, null
+                null, null, false, null, null, null, null, null,
+                null, null  // Zero Trust fields
         );
     }
 
@@ -90,6 +131,18 @@ public record SessionData(
             return Instant.ofEpochMilli(Long.parseLong(value));
         } catch (NumberFormatException e) {
             return Instant.now();
+        }
+    }
+
+    @Nullable
+    private static Instant parseInstantNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(value));
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -142,5 +195,21 @@ public record SessionData(
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * Returns the effective rotation timestamp.
+     * Falls back to createdAt if session has never been rotated.
+     */
+    @NonNull
+    public Instant getEffectiveRotatedAt() {
+        return rotatedAt != null ? rotatedAt : createdAt;
+    }
+
+    /**
+     * Check if device fingerprint is available for Zero Trust validation.
+     */
+    public boolean hasDeviceFingerprint() {
+        return deviceFingerprint != null && !deviceFingerprint.isBlank();
     }
 }

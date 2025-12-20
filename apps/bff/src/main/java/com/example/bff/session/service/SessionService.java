@@ -5,8 +5,10 @@ import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.identity.model.ManagedMember;
 import com.example.bff.identity.model.MemberAccess;
+import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
+import com.example.bff.session.pubsub.SessionEventPublisher;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,11 +26,15 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Redis-backed session management with single-session enforcement,
- * binding validation (IP/User-Agent), and sliding expiration.
+ * Redis-backed session management with Zero Trust features:
+ * - Single-session enforcement
+ * - Device fingerprint binding (IP, User-Agent, Accept headers)
+ * - Session ID rotation (every 15 minutes by default)
+ * - Sliding expiration
  */
 @Slf4j
 @Service
@@ -39,10 +45,15 @@ public class SessionService {
     private static final String USER_SESSION_KEY = "bff:user_session:";
     private static final String SESSION_KEY = "bff:session:";
     private static final String PERMISSIONS_FIELD = "permissions";
+    private static final String TOKEN_DATA_FIELD = "tokenData";
 
     private final ReactiveRedisOperations<String, String> redisOps;
     private final SessionProperties sessionProperties;
     private final ObjectMapper objectMapper;
+    private final Optional<SessionAuditService> auditService;
+    private final Optional<SessionEventPublisher> eventPublisher;
+
+    // ==================== Session Lifecycle ====================
 
     @NonNull
     public Mono<Void> invalidateExistingSessions(@NonNull String userId) {
@@ -88,6 +99,7 @@ public class SessionService {
         sessionData.put("dependents", dependents != null ? String.join(",", dependents) : "");
         sessionData.put("ipAddress", clientInfo.ipAddress());
         sessionData.put("userAgentHash", clientInfo.userAgentHash());
+        sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
         sessionData.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
         sessionData.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
 
@@ -99,6 +111,13 @@ public class SessionService {
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
                 .then(redisOps.expire(sessionKey, ttl))
                 .then(redisOps.opsForValue().set(userSessionKey, sessionId, ttl))
+                .doOnSuccess(v -> auditService.ifPresent(audit -> {
+                    SessionData session = SessionData.basic(userId, user.getEmail(), user.getFullName(),
+                            persona != null ? persona : "individual",
+                            dependents != null ? dependents : List.of(),
+                            clientInfo.ipAddress(), clientInfo.userAgentHash());
+                    audit.logSessionCreated(sessionId, session, clientInfo, null);
+                }))
                 .thenReturn(sessionId);
     }
 
@@ -121,39 +140,6 @@ public class SessionService {
     }
 
     @NonNull
-    public Mono<Boolean> validateSessionBinding(@NonNull String sessionId, @NonNull ClientInfo clientInfo) {
-        if (!sessionProperties.binding().enabled()) {
-            return Mono.just(true);
-        }
-
-        if (!StringSanitizer.isValidSessionId(sessionId)) {
-            return Mono.just(false);
-        }
-
-        return getSession(sessionId)
-                .map(session -> {
-                    boolean valid = true;
-
-                    if (sessionProperties.binding().ipAddress()) {
-                        valid = session.ipAddress().equals(clientInfo.ipAddress());
-                        if (!valid) {
-                            log.warn("Session IP mismatch for session {}", StringSanitizer.forLog(sessionId));
-                        }
-                    }
-
-                    if (valid && sessionProperties.binding().userAgent()) {
-                        valid = session.userAgentHash().equals(clientInfo.userAgentHash());
-                        if (!valid) {
-                            log.warn("Session User-Agent mismatch for session {}", StringSanitizer.forLog(sessionId));
-                        }
-                    }
-
-                    return valid;
-                })
-                .defaultIfEmpty(false);
-    }
-
-    @NonNull
     public Mono<Boolean> refreshSession(@NonNull String sessionId) {
         if (!StringSanitizer.isValidSessionId(sessionId)) {
             return Mono.just(false);
@@ -170,6 +156,11 @@ public class SessionService {
 
     @NonNull
     public Mono<Void> invalidateSession(@NonNull String sessionId) {
+        return invalidateSession(sessionId, "User logout");
+    }
+
+    @NonNull
+    public Mono<Void> invalidateSession(@NonNull String sessionId, @NonNull String reason) {
         if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in invalidateSession");
             return Mono.empty();
@@ -178,6 +169,11 @@ public class SessionService {
         return getSession(sessionId)
                 .flatMap(session -> {
                     log.info("Invalidating session {}", StringSanitizer.forLog(sessionId));
+                    auditService.ifPresent(audit ->
+                            audit.logSessionInvalidated(sessionId, session.userId(), reason, null));
+                    // Publish invalidation event for other instances
+                    eventPublisher.ifPresent(publisher ->
+                            publisher.publishInvalidation(sessionId, session.userId(), reason).subscribe());
                     return redisOps.delete(sessionKey)
                             .then(redisOps.delete(USER_SESSION_KEY + session.userId()));
                 })
@@ -191,6 +187,147 @@ public class SessionService {
         }
         return redisOps.opsForValue().get(USER_SESSION_KEY + userId);
     }
+
+    // ==================== Session Binding Validation ====================
+
+    @NonNull
+    public Mono<Boolean> validateSessionBinding(@NonNull String sessionId, @NonNull ClientInfo clientInfo) {
+        if (!sessionProperties.binding().enabled()) {
+            return Mono.just(true);
+        }
+
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
+            return Mono.just(false);
+        }
+
+        return getSession(sessionId)
+                .map(session -> validateBinding(session, clientInfo, sessionId))
+                .defaultIfEmpty(false);
+    }
+
+    private boolean validateBinding(@NonNull SessionData session, @NonNull ClientInfo clientInfo, @NonNull String sessionId) {
+        // Check device fingerprint if available (preferred for Zero Trust)
+        if (sessionProperties.fingerprint().enabled() && session.hasDeviceFingerprint()) {
+            if (!session.deviceFingerprint().equals(clientInfo.deviceFingerprint())) {
+                log.warn("Session fingerprint mismatch for session {}", StringSanitizer.forLog(sessionId));
+                return false;
+            }
+            return true; // Fingerprint match is sufficient
+        }
+
+        // Fall back to legacy IP + User-Agent validation
+        boolean valid = true;
+
+        if (sessionProperties.binding().ipAddress()) {
+            valid = session.ipAddress().equals(clientInfo.ipAddress());
+            if (!valid) {
+                log.warn("Session IP mismatch for session {}", StringSanitizer.forLog(sessionId));
+            }
+        }
+
+        if (valid && sessionProperties.binding().userAgent()) {
+            valid = session.userAgentHash().equals(clientInfo.userAgentHash());
+            if (!valid) {
+                log.warn("Session User-Agent mismatch for session {}", StringSanitizer.forLog(sessionId));
+            }
+        }
+
+        return valid;
+    }
+
+    // ==================== Session Rotation (Zero Trust) ====================
+
+    /**
+     * Checks if session needs rotation based on configured interval.
+     */
+    public boolean needsRotation(@NonNull SessionData session) {
+        if (!sessionProperties.rotation().enabled()) {
+            return false;
+        }
+        Duration sinceRotation = Duration.between(session.getEffectiveRotatedAt(), Instant.now());
+        return sinceRotation.compareTo(sessionProperties.rotation().interval()) > 0;
+    }
+
+    /**
+     * Rotates session ID while preserving session data.
+     * Old session is kept alive for grace period to handle in-flight requests.
+     *
+     * @param oldSessionId Current session ID
+     * @param clientInfo Current client information for updated fingerprint
+     * @return New session ID
+     */
+    @NonNull
+    public Mono<String> rotateSession(@NonNull String oldSessionId, @NonNull ClientInfo clientInfo) {
+        if (!StringSanitizer.isValidSessionId(oldSessionId)) {
+            return Mono.error(new IllegalArgumentException("Invalid session ID"));
+        }
+
+        return getSession(oldSessionId)
+                .switchIfEmpty(Mono.error(new IllegalStateException("Session not found for rotation")))
+                .flatMap(session -> performRotation(oldSessionId, session, clientInfo));
+    }
+
+    private Mono<String> performRotation(
+            @NonNull String oldSessionId,
+            @NonNull SessionData session,
+            @NonNull ClientInfo clientInfo) {
+
+        String newSessionId = UUID.randomUUID().toString();
+        String newSessionKey = SESSION_KEY + newSessionId;
+        String oldSessionKey = SESSION_KEY + oldSessionId;
+        String userSessionKey = USER_SESSION_KEY + session.userId();
+
+        // Build new session data with updated rotation timestamp and fingerprint
+        Map<String, String> sessionData = session.toMap();
+        sessionData.put("rotatedAt", String.valueOf(Instant.now().toEpochMilli()));
+        sessionData.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
+        sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
+        sessionData.put("ipAddress", clientInfo.ipAddress());
+        sessionData.put("userAgentHash", clientInfo.userAgentHash());
+
+        Duration ttl = sessionProperties.timeout();
+        Duration gracePeriod = sessionProperties.rotation().gracePeriod();
+
+        log.info("Rotating session for user {}: {} -> {}",
+                StringSanitizer.forLog(session.userId()),
+                StringSanitizer.forLog(oldSessionId),
+                StringSanitizer.forLog(newSessionId));
+
+        // Atomic rotation:
+        // 1. Create new session with full TTL
+        // 2. Update user mapping to point to new session
+        // 3. Copy tokens and permissions to new session
+        // 4. Set old session TTL to grace period (allows in-flight requests)
+        return redisOps.opsForHash().putAll(newSessionKey, sessionData)
+                .then(redisOps.expire(newSessionKey, ttl))
+                .then(redisOps.opsForValue().set(userSessionKey, newSessionId, ttl))
+                .then(copySessionField(oldSessionId, newSessionId, PERMISSIONS_FIELD))
+                .then(copySessionField(oldSessionId, newSessionId, TOKEN_DATA_FIELD))
+                .then(redisOps.expire(oldSessionKey, gracePeriod))
+                .doOnSuccess(v -> {
+                    auditService.ifPresent(audit ->
+                            audit.logSessionRotated(oldSessionId, newSessionId, session, clientInfo, null));
+                    // Publish rotation event for other instances (cache invalidation)
+                    eventPublisher.ifPresent(publisher ->
+                            publisher.publishRotation(oldSessionId, newSessionId, session.userId()).subscribe());
+                })
+                .thenReturn(newSessionId);
+    }
+
+    private Mono<Boolean> copySessionField(
+            @NonNull String fromSessionId,
+            @NonNull String toSessionId,
+            @NonNull String fieldName) {
+        String fromKey = SESSION_KEY + fromSessionId;
+        String toKey = SESSION_KEY + toSessionId;
+
+        return redisOps.opsForHash().get(fromKey, fieldName)
+                .cast(String.class)
+                .flatMap(value -> redisOps.opsForHash().put(toKey, fieldName, value))
+                .defaultIfEmpty(false);
+    }
+
+    // ==================== Permissions Management ====================
 
     @NonNull
     public Mono<Void> storePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
@@ -233,6 +370,8 @@ public class SessionService {
         return storePermissions(sessionId, permissions);
     }
 
+    // ==================== Session Creation with Enrichment ====================
+
     @NonNull
     public Mono<String> createSessionWithPermissions(
             @NonNull String userId, @NonNull OidcUser user, @Nullable String persona,
@@ -263,6 +402,7 @@ public class SessionService {
         sessionData.put("dependents", buildDependentsString(memberAccess));
         sessionData.put("ipAddress", clientInfo.ipAddress());
         sessionData.put("userAgentHash", clientInfo.userAgentHash());
+        sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
         sessionData.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
         sessionData.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
         sessionData.put("eid", memberAccess.eid());
@@ -291,8 +431,16 @@ public class SessionService {
                 .then(redisOps.expire(sessionKey, ttl))
                 .then(redisOps.opsForValue().set(userSessionKey, sessionId, ttl))
                 .then(storePermissions(sessionId, permissions))
+                .doOnSuccess(v -> auditService.ifPresent(audit -> {
+                    SessionData session = SessionData.basic(userId, user.getEmail(), user.getFullName(),
+                            memberAccess.getEffectivePersona(), List.of(),
+                            clientInfo.ipAddress(), clientInfo.userAgentHash());
+                    audit.logSessionCreated(sessionId, session, clientInfo, null);
+                }))
                 .thenReturn(sessionId);
     }
+
+    // ==================== Helper Methods ====================
 
     @NonNull
     private String buildDependentsString(@NonNull MemberAccess memberAccess) {

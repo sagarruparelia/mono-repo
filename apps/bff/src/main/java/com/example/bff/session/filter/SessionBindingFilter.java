@@ -3,6 +3,7 @@ package com.example.bff.session.filter;
 import com.example.bff.common.exception.SessionBindingException;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
+import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.service.SessionService;
 import lombok.RequiredArgsConstructor;
@@ -24,10 +25,13 @@ import reactor.core.publisher.Mono;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Validates session binding (IP, User-Agent) to prevent session hijacking.
+ * Zero Trust session binding filter that validates device fingerprint and handles session rotation.
+ * Validates IP, User-Agent, and Accept headers to prevent session hijacking.
  */
 @Slf4j
 @Component
@@ -39,10 +43,11 @@ public class SessionBindingFilter implements WebFilter {
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile(
             "^([0-9]{1,3}\\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
-    private static final int MAX_USER_AGENT_LENGTH = 500;
+    private static final int MAX_HEADER_LENGTH = 500;
 
     private final SessionService sessionService;
     private final SessionProperties sessionProperties;
+    private final Optional<SessionAuditService> auditService;
 
     @Override
     @NonNull
@@ -66,7 +71,7 @@ public class SessionBindingFilter implements WebFilter {
         // Validate session ID format
         if (!StringSanitizer.isValidSessionId(sessionId)) {
             log.warn("Invalid session ID format in request");
-            return invalidateAndRedirect(exchange);
+            return invalidateAndRespond(exchange);
         }
 
         ClientInfo clientInfo = extractClientInfo(exchange);
@@ -76,16 +81,63 @@ public class SessionBindingFilter implements WebFilter {
                     if (!valid) {
                         log.warn("Session binding validation failed for session {}",
                                 StringSanitizer.forLog(sessionId));
-                        return invalidateAndRedirect(exchange);
+                        auditService.ifPresent(audit ->
+                                audit.logBindingFailed(sessionId, null,
+                                        "Device fingerprint or IP mismatch",
+                                        clientInfo, exchange.getRequest()));
+                        return invalidateAndRespond(exchange);
                     }
-                    // Refresh session TTL on valid request (sliding expiration)
-                    return sessionService.refreshSession(sessionId)
-                            .then(chain.filter(exchange));
+                    // Check if session needs rotation (Zero Trust)
+                    return checkAndRotateSession(exchange, chain, sessionId, clientInfo);
                 })
                 .onErrorResume(SessionBindingException.class, e -> {
                     log.warn("Session binding error: {}", StringSanitizer.forLog(e.getMessage()));
-                    return invalidateAndRedirect(exchange);
+                    auditService.ifPresent(audit ->
+                            audit.logBindingFailed(sessionId, null,
+                                    e.getMessage(), clientInfo, exchange.getRequest()));
+                    return invalidateAndRespond(exchange);
                 });
+    }
+
+    /**
+     * Checks if session needs rotation and performs it if necessary.
+     * Sets new session cookie after rotation.
+     */
+    private Mono<Void> checkAndRotateSession(
+            @NonNull ServerWebExchange exchange,
+            @NonNull WebFilterChain chain,
+            @NonNull String sessionId,
+            @NonNull ClientInfo clientInfo) {
+
+        return sessionService.getSession(sessionId)
+                .flatMap(session -> {
+                    if (sessionService.needsRotation(session)) {
+                        // Rotate session and set new cookie
+                        return sessionService.rotateSession(sessionId, clientInfo)
+                                .flatMap(newSessionId -> {
+                                    setSessionCookie(exchange, newSessionId);
+                                    log.debug("Session rotated: {} -> {}",
+                                            StringSanitizer.forLog(sessionId),
+                                            StringSanitizer.forLog(newSessionId));
+                                    return chain.filter(exchange);
+                                })
+                                .onErrorResume(e -> {
+                                    // Rotation failed - continue with existing session
+                                    log.warn("Session rotation failed, continuing with existing session: {}",
+                                            e.getMessage());
+                                    return sessionService.refreshSession(sessionId)
+                                            .then(chain.filter(exchange));
+                                });
+                    }
+                    // No rotation needed - just refresh TTL
+                    return sessionService.refreshSession(sessionId)
+                            .then(chain.filter(exchange));
+                })
+                .switchIfEmpty(Mono.defer(() -> {
+                    // Session not found
+                    log.warn("Session not found for ID: {}", StringSanitizer.forLog(sessionId));
+                    return invalidateAndRespond(exchange);
+                }));
     }
 
     private boolean isPublicPath(@NonNull String path) {
@@ -95,14 +147,29 @@ public class SessionBindingFilter implements WebFilter {
                path.startsWith("/api/mfe/");  // MFE uses different auth
     }
 
+    /**
+     * Extracts client information including enhanced device fingerprint.
+     */
     @NonNull
     private ClientInfo extractClientInfo(@NonNull ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
 
         String ipAddress = extractClientIp(request);
-        String userAgent = extractUserAgent(request);
+        String userAgent = extractHeader(request, "User-Agent");
+        String acceptLanguage = null;
+        String acceptEncoding = null;
 
-        return ClientInfo.of(ipAddress, userAgent);
+        // Include Accept headers if fingerprinting is enabled
+        if (sessionProperties.fingerprint().enabled()) {
+            if (sessionProperties.fingerprint().includeAcceptLanguage()) {
+                acceptLanguage = extractHeader(request, "Accept-Language");
+            }
+            if (sessionProperties.fingerprint().includeAcceptEncoding()) {
+                acceptEncoding = extractHeader(request, "Accept-Encoding");
+            }
+        }
+
+        return ClientInfo.of(ipAddress, userAgent, acceptLanguage, acceptEncoding);
     }
 
     @NonNull
@@ -137,29 +204,44 @@ public class SessionBindingFilter implements WebFilter {
         return IP_ADDRESS_PATTERN.matcher(ip).matches();
     }
 
-    @NonNull
-    private String extractUserAgent(@NonNull ServerHttpRequest request) {
-        String userAgent = request.getHeaders().getFirst("User-Agent");
+    @Nullable
+    private String extractHeader(@NonNull ServerHttpRequest request, @NonNull String headerName) {
+        String value = request.getHeaders().getFirst(headerName);
 
-        if (userAgent == null || userAgent.isBlank()) {
-            return "unknown";
+        if (value == null || value.isBlank()) {
+            return null;
         }
 
         // Sanitize and limit length
-        String sanitized = userAgent
+        String sanitized = value
                 .replace("\n", "")
                 .replace("\r", "")
                 .replace("\t", " ");
 
-        if (sanitized.length() > MAX_USER_AGENT_LENGTH) {
-            sanitized = sanitized.substring(0, MAX_USER_AGENT_LENGTH);
+        if (sanitized.length() > MAX_HEADER_LENGTH) {
+            sanitized = sanitized.substring(0, MAX_HEADER_LENGTH);
         }
 
-        return sanitized;
+        return sanitized.isBlank() ? null : sanitized;
+    }
+
+    /**
+     * Sets session cookie with secure attributes.
+     */
+    private void setSessionCookie(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
+        Duration timeout = sessionProperties.timeout();
+        ResponseCookie sessionCookie = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(timeout)
+                .sameSite("Lax")
+                .build();
+        exchange.getResponse().addCookie(sessionCookie);
     }
 
     @NonNull
-    private Mono<Void> invalidateAndRedirect(@NonNull ServerWebExchange exchange) {
+    private Mono<Void> invalidateAndRespond(@NonNull ServerWebExchange exchange) {
         // Clear session cookie
         ResponseCookie clearCookie = ResponseCookie.from(SESSION_COOKIE_NAME, "")
                 .httpOnly(true)

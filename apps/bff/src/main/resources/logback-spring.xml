@@ -31,6 +31,10 @@
             <includeMdcKeyName>memberId</includeMdcKeyName>
             <includeMdcKeyName>traceId</includeMdcKeyName>
             <includeMdcKeyName>spanId</includeMdcKeyName>
+            <!-- Session audit fields -->
+            <includeMdcKeyName>sessionIdHash</includeMdcKeyName>
+            <includeMdcKeyName>sessionEvent</includeMdcKeyName>
+            <includeMdcKeyName>deviceFingerprint</includeMdcKeyName>
 
             <!-- Custom fields -->
             <customFields>{"service":"${APP_NAME}","environment":"${ENVIRONMENT}"}</customFields>
@@ -70,6 +74,11 @@
     <!-- Security logging (audit trail) -->
     <logger name="com.example.bff.authz" level="INFO"/>
     <logger name="com.example.bff.session" level="INFO"/>
+
+    <!-- SIEM Audit Logger (used by both AuthZ and Session auditing) -->
+    <logger name="AUTHZ_AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="${AUDIT_APPENDER:-CONSOLE}"/>
+    </logger>
 
     <!-- Spring Framework -->
     <logger name="org.springframework" level="INFO"/>

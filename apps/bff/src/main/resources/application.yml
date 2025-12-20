@@ -162,9 +162,22 @@ app:
   session:
     timeout: 30m
     binding:
-      enabled: true
+      enabled: ${SESSION_BINDING_ENABLED:true}
       ip-address: true
       user-agent: true
+    rotation:
+      enabled: ${SESSION_ROTATION_ENABLED:true}
+      interval: 15m
+      grace-period: 5s
+    fingerprint:
+      enabled: ${SESSION_FINGERPRINT_ENABLED:true}
+      include-accept-language: true
+      include-accept-encoding: true
+    pubsub:
+      enabled: ${SESSION_PUBSUB_ENABLED:true}
+      channel: bff:session:events
+    audit:
+      enabled: ${SESSION_AUDIT_ENABLED:true}
 
   persona:
     hsid:
