@@ -3,8 +3,7 @@ package com.example.bff.identity.service;
 import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.identity.dto.UserInfoResponse;
 import com.example.bff.identity.exception.IdentityServiceException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -25,10 +24,10 @@ import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEB
  *
  * Responses are cached in Redis for improved performance.
  */
+@Slf4j
 @Service
 public class UserInfoService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(UserInfoService.class);
     private static final String SERVICE_NAME = "UserService";
 
     private final WebClient webClient;
@@ -54,7 +53,7 @@ public class UserInfoService {
      */
     @NonNull
     public Mono<UserInfoResponse> getUserInfo(@NonNull String hsidUuid) {
-        LOG.debug("Fetching user info for hsidUuid: {}", hsidUuid);
+        log.debug("Fetching user info for hsidUuid: {}", hsidUuid);
 
         Mono<UserInfoResponse> loader = fetchFromApi(hsidUuid);
         return cacheService.getOrLoadUserInfo(hsidUuid, loader, UserInfoResponse.class);
@@ -75,7 +74,7 @@ public class UserInfoService {
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response -> {
                     if (response.statusCode() == HttpStatus.NOT_FOUND) {
-                        LOG.warn("User not found for hsidUuid: {}", hsidUuid);
+                        log.warn("User not found for hsidUuid: {}", hsidUuid);
                         return Mono.error(new IdentityServiceException(
                                 SERVICE_NAME, 404, "User not found"));
                     }
@@ -92,12 +91,12 @@ public class UserInfoService {
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
                         .filter(this::isRetryable)
-                        .doBeforeRetry(signal -> LOG.warn(
+                        .doBeforeRetry(signal -> log.warn(
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
-                .doOnSuccess(response -> LOG.debug(
+                .doOnSuccess(response -> log.debug(
                         "Successfully fetched user info for hsidUuid: {}", hsidUuid))
-                .doOnError(e -> LOG.error(
+                .doOnError(e -> log.error(
                         "Failed to fetch user info for hsidUuid {}: {}", hsidUuid, e.getMessage()));
     }
 

@@ -2,8 +2,7 @@ package com.example.bff.authz.abac.config;
 
 import com.example.bff.authz.abac.policy.ConfigurablePolicy;
 import com.example.bff.authz.abac.policy.Policy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,11 +13,10 @@ import java.util.List;
  * Configuration that creates ABAC policies from YAML configuration.
  * Replaces 8 hardcoded @Component policy classes with config-driven approach.
  */
+@Slf4j
 @Configuration
 @EnableConfigurationProperties(AbacPolicyProperties.class)
 public class AbacPolicyConfig {
-
-    private static final Logger log = LoggerFactory.getLogger(AbacPolicyConfig.class);
 
     @Bean
     public List<Policy> abacPolicies(AbacPolicyProperties properties) {

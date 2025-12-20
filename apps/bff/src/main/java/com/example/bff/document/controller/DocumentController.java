@@ -10,8 +10,8 @@ import com.example.bff.document.dto.DocumentDto;
 import com.example.bff.document.dto.DocumentUploadRequest;
 import com.example.bff.document.model.DocumentEntity.DocumentType;
 import com.example.bff.document.service.DocumentService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,22 +28,16 @@ import java.util.Map;
  * REST controller for document management.
  * Documents always belong to youth (member) - others act as delegates.
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/member/{memberId}/documents")
+@RequiredArgsConstructor
 public class DocumentController {
 
-    private static final Logger log = LoggerFactory.getLogger(DocumentController.class);
     private static final String SESSION_COOKIE = "BFF_SESSION";
 
     private final DocumentService documentService;
     private final AbacAuthorizationService authorizationService;
-
-    public DocumentController(
-            DocumentService documentService,
-            AbacAuthorizationService authorizationService) {
-        this.documentService = documentService;
-        this.authorizationService = authorizationService;
-    }
 
     /**
      * List all documents for a youth.

@@ -3,8 +3,7 @@ package com.example.bff.identity.service;
 import com.example.bff.config.properties.IdentityCacheProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.lang.NonNull;
@@ -20,10 +19,9 @@ import static com.example.bff.config.properties.IdentityCacheProperties.*;
  * Reactive cache service for identity API responses.
  * Uses Redis for caching with configurable TTL per cache type.
  */
+@Slf4j
 @Service
 public class IdentityCacheService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(IdentityCacheService.class);
 
     private final ReactiveRedisTemplate<String, Object> redisTemplate;
     private final IdentityCacheProperties cacheProperties;
@@ -97,30 +95,30 @@ public class IdentityCacheService {
                     try {
                         // Convert the cached Object back to the target type
                         T value = objectMapper.convertValue(cached, type);
-                        LOG.debug("Cache hit for key: {}", fullKey);
+                        log.debug("Cache hit for key: {}", fullKey);
                         return Mono.just(value);
                     } catch (Exception e) {
-                        LOG.warn("Failed to deserialize cached value for key {}, evicting corrupted entry", fullKey);
+                        log.warn("Failed to deserialize cached value for key {}, evicting corrupted entry", fullKey);
                         // Delete corrupted cache entry and return empty to trigger loader
                         return redisTemplate.delete(fullKey).then(Mono.empty());
                     }
                 })
                 .switchIfEmpty(
                         loader.flatMap(value -> {
-                            LOG.debug("Cache miss for key: {}, loading and caching with TTL: {}", fullKey, ttl);
+                            log.debug("Cache miss for key: {}, loading and caching with TTL: {}", fullKey, ttl);
                             return redisTemplate.opsForValue()
                                     .set(fullKey, value, ttl)
                                     .thenReturn(value)
                                     .onErrorResume(cacheWriteError -> {
                                         // If cache write fails, still return the loaded value
-                                        LOG.warn("Failed to write to cache for key {}: {}", fullKey, cacheWriteError.getMessage());
+                                        log.warn("Failed to write to cache for key {}: {}", fullKey, cacheWriteError.getMessage());
                                         return Mono.just(value);
                                     });
                         })
                 )
                 .onErrorResume(cacheError -> {
                     // Graceful degradation: fall back to loader if cache is unavailable
-                    LOG.warn("Cache unavailable for key {}, falling back to loader: {}", fullKey, cacheError.getMessage());
+                    log.warn("Cache unavailable for key {}, falling back to loader: {}", fullKey, cacheError.getMessage());
                     return loader;
                 });
     }
@@ -151,7 +149,7 @@ public class IdentityCacheService {
                 .map(count -> count > 0)
                 .doOnSuccess(evicted -> {
                     if (evicted) {
-                        LOG.debug("Evicted cache entry: {}", fullKey);
+                        log.debug("Evicted cache entry: {}", fullKey);
                     }
                 });
     }

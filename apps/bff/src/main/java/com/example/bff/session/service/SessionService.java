@@ -8,8 +8,7 @@ import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.lang.NonNull;
@@ -41,11 +40,10 @@ import java.util.regex.Pattern;
  * @see SessionProperties
  * @see SessionData
  */
+@Slf4j
 @Service
 @ConditionalOnProperty(name = "spring.session.store-type", havingValue = "redis")
 public class SessionService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(SessionService.class);
 
     private static final String USER_SESSION_KEY = "bff:user_session:";
     private static final String SESSION_KEY = "bff:session:";
@@ -81,7 +79,7 @@ public class SessionService {
     @NonNull
     public Mono<Void> invalidateExistingSessions(@NonNull String userId) {
         if (!isValidUserId(userId)) {
-            LOG.warn("Invalid user ID format in invalidateExistingSessions");
+            log.warn("Invalid user ID format in invalidateExistingSessions");
             return Mono.empty();
         }
 
@@ -89,7 +87,7 @@ public class SessionService {
 
         return redisOps.opsForValue().get(userSessionKey)
                 .flatMap(existingSessionId -> {
-                    LOG.info("Invalidating existing session for user {}: {}",
+                    log.info("Invalidating existing session for user {}: {}",
                             sanitizeForLog(userId), sanitizeForLog(existingSessionId));
                     return redisOps.delete(SESSION_KEY + existingSessionId)
                             .then(redisOps.delete(userSessionKey));
@@ -116,7 +114,7 @@ public class SessionService {
             @NonNull ClientInfo clientInfo) {
 
         if (!isValidUserId(userId)) {
-            LOG.warn("Invalid user ID format in createSession");
+            log.warn("Invalid user ID format in createSession");
             return Mono.error(new IllegalArgumentException("Invalid user ID format"));
         }
 
@@ -137,7 +135,7 @@ public class SessionService {
 
         Duration ttl = sessionProperties.timeout();
 
-        LOG.info("Creating session for user {}: sessionId={}, persona={}",
+        log.info("Creating session for user {}: sessionId={}, persona={}",
                 sanitizeForLog(userId), sanitizeForLog(sessionId), sanitizeForLog(persona));
 
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
@@ -155,7 +153,7 @@ public class SessionService {
     @NonNull
     public Mono<SessionData> getSession(@NonNull String sessionId) {
         if (!isValidSessionId(sessionId)) {
-            LOG.debug("Invalid session ID format in getSession");
+            log.debug("Invalid session ID format in getSession");
             return Mono.empty();
         }
 
@@ -194,14 +192,14 @@ public class SessionService {
                     if (sessionProperties.binding().ipAddress()) {
                         valid = session.ipAddress().equals(clientInfo.ipAddress());
                         if (!valid) {
-                            LOG.warn("Session IP mismatch for session {}", sanitizeForLog(sessionId));
+                            log.warn("Session IP mismatch for session {}", sanitizeForLog(sessionId));
                         }
                     }
 
                     if (valid && sessionProperties.binding().userAgent()) {
                         valid = session.userAgentHash().equals(clientInfo.userAgentHash());
                         if (!valid) {
-                            LOG.warn("Session User-Agent mismatch for session {}", sanitizeForLog(sessionId));
+                            log.warn("Session User-Agent mismatch for session {}", sanitizeForLog(sessionId));
                         }
                     }
 
@@ -245,7 +243,7 @@ public class SessionService {
     @NonNull
     public Mono<Void> invalidateSession(@NonNull String sessionId) {
         if (!isValidSessionId(sessionId)) {
-            LOG.warn("Invalid session ID format in invalidateSession");
+            log.warn("Invalid session ID format in invalidateSession");
             return Mono.empty();
         }
 
@@ -254,7 +252,7 @@ public class SessionService {
         return getSession(sessionId)
                 .flatMap(session -> {
                     String userSessionKey = USER_SESSION_KEY + session.userId();
-                    LOG.info("Invalidating session {}", sanitizeForLog(sessionId));
+                    log.info("Invalidating session {}", sanitizeForLog(sessionId));
                     return redisOps.delete(sessionKey)
                             .then(redisOps.delete(userSessionKey));
                 })
@@ -287,7 +285,7 @@ public class SessionService {
     @NonNull
     public Mono<Void> storePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
         if (!isValidSessionId(sessionId)) {
-            LOG.warn("Invalid session ID format in storePermissions");
+            log.warn("Invalid session ID format in storePermissions");
             return Mono.error(new IllegalArgumentException("Invalid session ID format"));
         }
 
@@ -299,7 +297,7 @@ public class SessionService {
                     .put(sessionKey, PERMISSIONS_FIELD, permissionsJson)
                     .then();
         } catch (JsonProcessingException e) {
-            LOG.error("Failed to serialize permissions for session {}: {}",
+            log.error("Failed to serialize permissions for session {}: {}",
                     sanitizeForLog(sessionId), sanitizeForLog(e.getMessage()));
             return Mono.error(e);
         }
@@ -327,7 +325,7 @@ public class SessionService {
                         PermissionSet permissions = objectMapper.readValue(json, PermissionSet.class);
                         return Mono.just(permissions);
                     } catch (JsonProcessingException e) {
-                        LOG.error("Failed to deserialize permissions for session {}: {}",
+                        log.error("Failed to deserialize permissions for session {}: {}",
                                 sanitizeForLog(sessionId), sanitizeForLog(e.getMessage()));
                         return Mono.empty();
                     }
@@ -343,7 +341,7 @@ public class SessionService {
      */
     @NonNull
     public Mono<Void> updatePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
-        LOG.debug("Updating permissions for session {}", sanitizeForLog(sessionId));
+        log.debug("Updating permissions for session {}", sanitizeForLog(sessionId));
         return storePermissions(sessionId, permissions);
     }
 
@@ -393,7 +391,7 @@ public class SessionService {
             @NonNull PermissionSet permissions) {
 
         if (!isValidUserId(userId)) {
-            LOG.warn("Invalid user ID format in createSessionWithMemberAccess");
+            log.warn("Invalid user ID format in createSessionWithMemberAccess");
             return Mono.error(new IllegalArgumentException("Invalid user ID format"));
         }
 
@@ -433,7 +431,7 @@ public class SessionService {
 
         Duration ttl = sessionProperties.timeout();
 
-        LOG.info("Creating session with member access for user {}: sessionId={}, persona={}, eligibility={}",
+        log.info("Creating session with member access for user {}: sessionId={}, persona={}, eligibility={}",
                 sanitizeForLog(userId), sanitizeForLog(sessionId),
                 memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
 
@@ -464,7 +462,7 @@ public class SessionService {
         try {
             return objectMapper.writeValueAsString(managedMembers);
         } catch (JsonProcessingException e) {
-            LOG.warn("Failed to serialize managed members: {}", e.getMessage());
+            log.warn("Failed to serialize managed members: {}", e.getMessage());
             return "[]";
         }
     }

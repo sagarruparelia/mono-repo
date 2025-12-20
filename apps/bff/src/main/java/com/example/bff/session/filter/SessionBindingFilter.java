@@ -4,8 +4,8 @@ import com.example.bff.common.exception.SessionBindingException;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.service.SessionService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -34,12 +34,13 @@ import java.util.regex.Pattern;
  * @see SessionService
  * @see SessionProperties
  */
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
 @ConditionalOnProperty(name = "app.session.binding.enabled", havingValue = "true")
+@RequiredArgsConstructor
 public class SessionBindingFilter implements WebFilter {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SessionBindingFilter.class);
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
     // Validation patterns
@@ -53,13 +54,6 @@ public class SessionBindingFilter implements WebFilter {
 
     private final SessionService sessionService;
     private final SessionProperties sessionProperties;
-
-    public SessionBindingFilter(
-            @NonNull SessionService sessionService,
-            @NonNull SessionProperties sessionProperties) {
-        this.sessionService = sessionService;
-        this.sessionProperties = sessionProperties;
-    }
 
     @Override
     @NonNull
@@ -82,7 +76,7 @@ public class SessionBindingFilter implements WebFilter {
 
         // Validate session ID format
         if (!isValidSessionId(sessionId)) {
-            LOG.warn("Invalid session ID format in request");
+            log.warn("Invalid session ID format in request");
             return invalidateAndRedirect(exchange);
         }
 
@@ -91,7 +85,7 @@ public class SessionBindingFilter implements WebFilter {
         return sessionService.validateSessionBinding(sessionId, clientInfo)
                 .flatMap(valid -> {
                     if (!valid) {
-                        LOG.warn("Session binding validation failed for session {}",
+                        log.warn("Session binding validation failed for session {}",
                                 sanitizeForLog(sessionId));
                         return invalidateAndRedirect(exchange);
                     }
@@ -100,7 +94,7 @@ public class SessionBindingFilter implements WebFilter {
                             .then(chain.filter(exchange));
                 })
                 .onErrorResume(SessionBindingException.class, e -> {
-                    LOG.warn("Session binding error: {}", sanitizeForLog(e.getMessage()));
+                    log.warn("Session binding error: {}", sanitizeForLog(e.getMessage()));
                     return invalidateAndRedirect(exchange);
                 });
     }
@@ -165,7 +159,7 @@ public class SessionBindingFilter implements WebFilter {
             if (isValidIpAddress(firstIp)) {
                 return firstIp;
             }
-            LOG.debug("Invalid IP in X-Forwarded-For header, falling back to remote address");
+            log.debug("Invalid IP in X-Forwarded-For header, falling back to remote address");
         }
 
         // Fall back to direct remote address

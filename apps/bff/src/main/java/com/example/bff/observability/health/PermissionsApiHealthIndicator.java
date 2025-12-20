@@ -1,7 +1,6 @@
 package com.example.bff.observability.health;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.ReactiveHealthIndicator;
@@ -15,10 +14,10 @@ import java.time.Duration;
  * Health indicator for the external Permissions API.
  * Checks connectivity to the permissions service used for ABAC authorization.
  */
+@Slf4j
 @Component
 public class PermissionsApiHealthIndicator implements ReactiveHealthIndicator {
 
-    private static final Logger log = LoggerFactory.getLogger(PermissionsApiHealthIndicator.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private final WebClient webClient;

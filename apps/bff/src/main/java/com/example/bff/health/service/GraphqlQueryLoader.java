@@ -1,8 +1,7 @@
 package com.example.bff.health.service;
 
 import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
@@ -16,10 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * Loads and caches GraphQL queries from classpath resources.
  * Queries are preloaded at startup for performance.
  */
+@Slf4j
 @Component
 public class GraphqlQueryLoader {
 
-    private static final Logger LOG = LoggerFactory.getLogger(GraphqlQueryLoader.class);
     private static final String GRAPHQL_BASE_PATH = "graphql/health/";
 
     private static final String IMMUNIZATION_QUERY_FILE = "immunization-query.graphql";
@@ -30,11 +29,11 @@ public class GraphqlQueryLoader {
 
     @PostConstruct
     void preloadQueries() {
-        LOG.info("Preloading GraphQL queries for health data");
+        log.info("Preloading GraphQL queries for health data");
         loadQuery(IMMUNIZATION_QUERY_FILE);
         loadQuery(ALLERGY_QUERY_FILE);
         loadQuery(CONDITION_QUERY_FILE);
-        LOG.info("Loaded {} GraphQL queries", queryCache.size());
+        log.info("Loaded {} GraphQL queries", queryCache.size());
     }
 
     /**
@@ -72,7 +71,7 @@ public class GraphqlQueryLoader {
         try {
             ClassPathResource resource = new ClassPathResource(GRAPHQL_BASE_PATH + fileName);
             String query = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-            LOG.debug("Loaded GraphQL query: {}", fileName);
+            log.debug("Loaded GraphQL query: {}", fileName);
             return query;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load GraphQL query: " + fileName, e);

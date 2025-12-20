@@ -4,8 +4,7 @@ import com.example.bff.auth.model.TokenData;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.http.MediaType;
@@ -27,10 +26,9 @@ import java.util.regex.Pattern;
  * fresh HSID tokens. Tokens are stored in Redis session and refreshed
  * using the refresh_token when needed.
  */
+@Slf4j
 @Service
 public class TokenService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(TokenService.class);
 
     private static final String SESSION_KEY = "bff:session:";
     private static final String TOKEN_FIELD = "tokenData";
@@ -68,7 +66,7 @@ public class TokenService {
     @NonNull
     public Mono<Void> storeTokens(@NonNull String sessionId, @NonNull TokenData tokenData) {
         if (!isValidSessionId(sessionId)) {
-            LOG.warn("Invalid session ID format in storeTokens");
+            log.warn("Invalid session ID format in storeTokens");
             return Mono.error(new IllegalArgumentException("Invalid session ID format"));
         }
 
@@ -80,7 +78,7 @@ public class TokenService {
                     .put(sessionKey, TOKEN_FIELD, tokenJson)
                     .then();
         } catch (JsonProcessingException e) {
-            LOG.error("Failed to serialize token data: {}", e.getMessage());
+            log.error("Failed to serialize token data: {}", e.getMessage());
             return Mono.error(e);
         }
     }
@@ -107,7 +105,7 @@ public class TokenService {
                         TokenData tokenData = objectMapper.readValue(json, TokenData.class);
                         return Mono.just(tokenData);
                     } catch (JsonProcessingException e) {
-                        LOG.error("Failed to deserialize token data: {}", e.getMessage());
+                        log.error("Failed to deserialize token data: {}", e.getMessage());
                         return Mono.empty();
                     }
                 });
@@ -126,18 +124,18 @@ public class TokenService {
                 .flatMap(tokenData -> {
                     if (!tokenData.isAccessTokenExpired(TOKEN_EXPIRY_BUFFER_SECONDS)) {
                         // Token still valid
-                        LOG.debug("Access token still valid for session {}", sanitize(sessionId));
+                        log.debug("Access token still valid for session {}", sanitize(sessionId));
                         return Mono.just(tokenData.accessToken());
                     }
 
                     if (!tokenData.canRefresh()) {
                         // Cannot refresh - user needs to re-authenticate
-                        LOG.warn("Refresh token expired for session {}, re-auth required", sanitize(sessionId));
+                        log.warn("Refresh token expired for session {}, re-auth required", sanitize(sessionId));
                         return Mono.empty();
                     }
 
                     // Refresh the token
-                    LOG.info("Refreshing access token for session {}", sanitize(sessionId));
+                    log.info("Refreshing access token for session {}", sanitize(sessionId));
                     return refreshToken(sessionId, tokenData.refreshToken());
                 });
     }
@@ -163,7 +161,7 @@ public class TokenService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .flatMap(response -> parseAndStoreTokens(sessionId, response))
-                .doOnError(e -> LOG.error("Token refresh failed for session {}: {}",
+                .doOnError(e -> log.error("Token refresh failed for session {}: {}",
                         sanitize(sessionId), e.getMessage()));
     }
 
@@ -182,7 +180,7 @@ public class TokenService {
             int refreshExpiresIn = json.path("refresh_expires_in").asInt(0);
 
             if (accessToken == null) {
-                LOG.error("No access_token in refresh response for session {}", sanitize(sessionId));
+                log.error("No access_token in refresh response for session {}", sanitize(sessionId));
                 return Mono.empty();
             }
 
@@ -203,7 +201,7 @@ public class TokenService {
                     .thenReturn(accessToken);
 
         } catch (JsonProcessingException e) {
-            LOG.error("Failed to parse token response: {}", e.getMessage());
+            log.error("Failed to parse token response: {}", e.getMessage());
             return Mono.empty();
         }
     }

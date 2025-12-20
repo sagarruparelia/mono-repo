@@ -7,8 +7,7 @@ import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.service.AbacAuthorizationService;
 import com.example.bff.authz.model.AuthType;
 import com.example.bff.config.properties.AuthzProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpCookie;
@@ -36,11 +35,11 @@ import java.util.stream.Collectors;
  * @see AbacAuthorizationService
  * @see AuthzProperties
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
 public class AuthorizationFilter implements WebFilter, Ordered {
 
-    private static final Logger LOG = LoggerFactory.getLogger(AuthorizationFilter.class);
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final int MAX_RESOURCE_ID_LENGTH = 128;
 
@@ -68,7 +67,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
                 "^/api/(?:dependent|member)/[^/]+/(?:%s)(?:/.*)?$", sensitiveSegments);
         this.sensitivePathPattern = Pattern.compile(sensitivePatternStr);
 
-        LOG.info("AuthorizationFilter initialized with resource pattern: {} and sensitive segments: {}",
+        log.info("AuthorizationFilter initialized with resource pattern: {} and sensitive segments: {}",
                 authzProperties.pathPatterns().resourcePattern(),
                 sensitiveSegments);
     }
@@ -97,7 +96,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         String resourceId = sanitizeResourceId(resourceMatcher.group(2));
 
         if (resourceId == null) {
-            LOG.warn("Invalid resource ID format in request path");
+            log.warn("Invalid resource ID format in request path");
             return forbiddenResponse(exchange, PolicyDecision.deny("INVALID_RESOURCE_ID", "Invalid resource identifier"));
         }
 
@@ -114,7 +113,7 @@ public class AuthorizationFilter implements WebFilter, Ordered {
                 .flatMap(subject -> authorizationService.authorize(subject, resource, action, exchange.getRequest()))
                 .flatMap(decision -> handleDecision(exchange, chain, decision, resourceId))
                 .switchIfEmpty(Mono.defer(() -> {
-                    LOG.warn("Could not build subject attributes for authorization");
+                    log.warn("Could not build subject attributes for authorization");
                     return unauthorizedResponse(exchange, "Authentication required");
                 }));
     }
@@ -146,14 +145,14 @@ public class AuthorizationFilter implements WebFilter, Ordered {
         // HSID - get session from cookie
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
-            LOG.debug("No session cookie for HSID authorization");
+            log.debug("No session cookie for HSID authorization");
             return Mono.empty();
         }
 
         String sessionId = sessionCookie.getValue();
         // Validate session ID format (UUID)
         if (!isValidSessionId(sessionId)) {
-            LOG.warn("Invalid session ID format");
+            log.warn("Invalid session ID format");
             return Mono.empty();
         }
 
@@ -168,12 +167,12 @@ public class AuthorizationFilter implements WebFilter, Ordered {
             @NonNull String resourceId) {
 
         if (decision.isAllowed()) {
-            LOG.debug("ABAC: Access ALLOWED - policy={}, resource={}",
+            log.debug("ABAC: Access ALLOWED - policy={}, resource={}",
                     sanitizeForLog(decision.policyId()), sanitizeForLog(resourceId));
             return chain.filter(exchange);
         }
 
-        LOG.warn("ABAC: Access DENIED - policy={}, reason={}, resource={}",
+        log.warn("ABAC: Access DENIED - policy={}, reason={}, resource={}",
                 sanitizeForLog(decision.policyId()),
                 sanitizeForLog(decision.reason()),
                 sanitizeForLog(resourceId));

@@ -5,8 +5,8 @@ import com.example.bff.document.dto.DocumentDto;
 import com.example.bff.document.dto.DocumentUploadRequest;
 import com.example.bff.document.model.DocumentEntity;
 import com.example.bff.document.repository.DocumentRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -19,24 +19,16 @@ import java.util.regex.Pattern;
  * Service for managing documents (upload, download, delete).
  * Documents always belong to youth - others act as delegates.
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class DocumentService {
 
-    private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
     private static final Pattern SAFE_FILENAME_PATTERN = Pattern.compile("[^a-zA-Z0-9._-]");
 
     private final DocumentRepository repository;
     private final S3StorageService storageService;
     private final DocumentProperties properties;
-
-    public DocumentService(
-            DocumentRepository repository,
-            S3StorageService storageService,
-            DocumentProperties properties) {
-        this.repository = repository;
-        this.storageService = storageService;
-        this.properties = properties;
-    }
 
     /**
      * List all documents for a member (youth).

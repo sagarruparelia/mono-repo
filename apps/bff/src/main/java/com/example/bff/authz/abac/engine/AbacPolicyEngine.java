@@ -5,8 +5,7 @@ import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.policy.Policy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -23,10 +22,9 @@ import java.util.List;
  * <p>Policies are auto-discovered via Spring component scanning.
  * To add a new policy, create a class implementing {@link Policy} and annotate with @Component.
  */
+@Slf4j
 @Component
 public class AbacPolicyEngine {
-
-    private static final Logger log = LoggerFactory.getLogger(AbacPolicyEngine.class);
 
     private final List<Policy> policies;
 

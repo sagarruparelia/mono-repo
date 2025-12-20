@@ -1,8 +1,8 @@
 package com.example.bff.document.service;
 
 import com.example.bff.config.properties.DocumentProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
@@ -18,19 +18,15 @@ import java.util.UUID;
 /**
  * Service for storing and retrieving documents from S3.
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class S3StorageService {
 
-    private static final Logger log = LoggerFactory.getLogger(S3StorageService.class);
     private static final String KEY_PREFIX = "documents";
 
     private final S3AsyncClient s3Client;
     private final DocumentProperties properties;
-
-    public S3StorageService(S3AsyncClient s3Client, DocumentProperties properties) {
-        this.s3Client = s3Client;
-        this.properties = properties;
-    }
 
     /**
      * Upload a file to S3.

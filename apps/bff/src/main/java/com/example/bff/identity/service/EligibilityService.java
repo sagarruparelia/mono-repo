@@ -4,8 +4,7 @@ import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.identity.dto.EligibilityResponse;
 import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.model.EligibilityResult;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -35,10 +34,10 @@ import static com.example.bff.identity.model.EligibilityResult.GRACE_PERIOD_MONT
  * - NOT_ELIGIBLE: 404 from API (no eligibility record)
  * - UNKNOWN: API error (treated as NOT_ELIGIBLE for security)
  */
+@Slf4j
 @Service
 public class EligibilityService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EligibilityService.class);
     private static final String SERVICE_NAME = "Eligibility";
     private static final String X_IDENTIFIER_HEADER = "x-identifier";
 
@@ -68,7 +67,7 @@ public class EligibilityService {
             @NonNull String memberEid,
             @Nullable String apiIdentifier) {
 
-        LOG.debug("Checking eligibility for memberEid: {}", memberEid);
+        log.debug("Checking eligibility for memberEid: {}", memberEid);
 
         Mono<EligibilityResult> loader = fetchFromApi(memberEid, apiIdentifier)
                 .map(this::toEligibilityResult);
@@ -110,7 +109,7 @@ public class EligibilityService {
         return requestBuilder
                 .retrieve()
                 .onStatus(status -> status == HttpStatus.NOT_FOUND, response -> {
-                    LOG.debug("No eligibility record found for memberEid: {}", memberEid);
+                    log.debug("No eligibility record found for memberEid: {}", memberEid);
                     // Return empty to trigger NOT_ELIGIBLE handling
                     return Mono.empty();
                 })
@@ -127,15 +126,15 @@ public class EligibilityService {
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
                         .filter(this::isRetryable)
-                        .doBeforeRetry(signal -> LOG.warn(
+                        .doBeforeRetry(signal -> log.warn(
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
                 .switchIfEmpty(Mono.just(new EligibilityResponse(null))) // 404 case
-                .doOnSuccess(response -> LOG.debug(
+                .doOnSuccess(response -> log.debug(
                         "Eligibility check completed for memberEid: {}", memberEid))
                 .onErrorResume(e -> {
                     // Fail closed: return UNKNOWN on errors
-                    LOG.error("Failed to check eligibility for memberEid {}: {}", memberEid, e.getMessage());
+                    log.error("Failed to check eligibility for memberEid {}: {}", memberEid, e.getMessage());
                     return Mono.just(new EligibilityResponse(null));
                 });
     }

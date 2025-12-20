@@ -8,8 +8,7 @@ import com.example.bff.health.exception.EcdhApiException;
 import com.example.bff.health.model.AllergyEntity;
 import com.example.bff.health.model.ConditionEntity;
 import com.example.bff.health.model.ImmunizationEntity;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.NonNull;
@@ -33,10 +32,10 @@ import static com.example.bff.config.EcdhApiWebClientConfig.ECDH_API_WEBCLIENT;
  * Service for fetching health data from ECDH GraphQL API.
  * Handles pagination, retries, and error handling.
  */
+@Slf4j
 @Service
 public class EcdhApiClientService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EcdhApiClientService.class);
     private static final String X_IDENTIFIER_HEADER = "x-identifier";
 
     private final WebClient webClient;
@@ -60,7 +59,7 @@ public class EcdhApiClientService {
             @NonNull String memberEid,
             @Nullable String apiIdentifier) {
 
-        LOG.debug("Fetching immunizations for memberEid: {}", memberEid);
+        log.debug("Fetching immunizations for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getImmunizationQuery(),
@@ -74,7 +73,7 @@ public class EcdhApiClientService {
                     allRecords.add(mapToImmunizationRecord(dto));
                 }
             }
-            LOG.debug("Fetched {} immunization records for memberEid: {}", allRecords.size(), memberEid);
+            log.debug("Fetched {} immunization records for memberEid: {}", allRecords.size(), memberEid);
             return allRecords;
         });
     }
@@ -87,7 +86,7 @@ public class EcdhApiClientService {
             @NonNull String memberEid,
             @Nullable String apiIdentifier) {
 
-        LOG.debug("Fetching allergies for memberEid: {}", memberEid);
+        log.debug("Fetching allergies for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getAllergyQuery(),
@@ -101,7 +100,7 @@ public class EcdhApiClientService {
                     allRecords.add(mapToAllergyRecord(dto));
                 }
             }
-            LOG.debug("Fetched {} allergy records for memberEid: {}", allRecords.size(), memberEid);
+            log.debug("Fetched {} allergy records for memberEid: {}", allRecords.size(), memberEid);
             return allRecords;
         });
     }
@@ -114,7 +113,7 @@ public class EcdhApiClientService {
             @NonNull String memberEid,
             @Nullable String apiIdentifier) {
 
-        LOG.debug("Fetching conditions for memberEid: {}", memberEid);
+        log.debug("Fetching conditions for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getConditionQuery(),
@@ -128,7 +127,7 @@ public class EcdhApiClientService {
                     allRecords.add(mapToConditionRecord(dto));
                 }
             }
-            LOG.debug("Fetched {} condition records for memberEid: {}", allRecords.size(), memberEid);
+            log.debug("Fetched {} condition records for memberEid: {}", allRecords.size(), memberEid);
             return allRecords;
         });
     }
@@ -199,7 +198,7 @@ public class EcdhApiClientService {
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
                         .filter(this::isRetryable)
-                        .doBeforeRetry(signal -> LOG.warn(
+                        .doBeforeRetry(signal -> log.warn(
                                 "Retrying ECDH API call, attempt {}: {}",
                                 signal.totalRetries() + 1, signal.failure().getMessage())));
     }

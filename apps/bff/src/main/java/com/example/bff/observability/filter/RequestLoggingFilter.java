@@ -2,8 +2,8 @@ package com.example.bff.observability.filter;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -23,17 +23,13 @@ import java.util.concurrent.TimeUnit;
  * WebFilter that logs HTTP requests with timing and records metrics.
  * Runs after CorrelationIdFilter to have access to correlation ID.
  */
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@RequiredArgsConstructor
 public class RequestLoggingFilter implements WebFilter {
 
-    private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
-
     private final MeterRegistry meterRegistry;
-
-    public RequestLoggingFilter(MeterRegistry meterRegistry) {
-        this.meterRegistry = meterRegistry;
-    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {

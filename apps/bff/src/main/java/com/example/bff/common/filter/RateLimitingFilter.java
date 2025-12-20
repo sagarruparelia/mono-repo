@@ -3,8 +3,7 @@ package com.example.bff.common.filter;
 import com.example.bff.config.properties.RateLimitProperties;
 import com.example.bff.config.properties.RateLimitProperties.PersonaRule;
 import com.example.bff.config.properties.RateLimitProperties.RateLimitRule;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -32,12 +31,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Uses a token bucket algorithm for rate limiting.
  */
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 @ConditionalOnProperty(name = "rate-limiting.enabled", havingValue = "true", matchIfMissing = true)
 public class RateLimitingFilter implements WebFilter {
 
-    private static final Logger log = LoggerFactory.getLogger(RateLimitingFilter.class);
     private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     private final RateLimitProperties rateLimitProperties;

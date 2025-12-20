@@ -1,8 +1,8 @@
 package com.example.bff.external.filter;
 
 import com.example.bff.config.properties.ExternalIntegrationProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -34,12 +34,12 @@ import java.util.regex.Pattern;
  *
  * @see ExternalIntegrationProperties
  */
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 @ConditionalOnProperty(name = "app.external-integration.enabled", havingValue = "true")
+@RequiredArgsConstructor
 public class ExternalAuthFilter implements WebFilter {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ExternalAuthFilter.class);
 
     // Header names for mapping to proxy auth system
     private static final String PROXY_AUTH_TYPE_HEADER = "X-Auth-Type";
@@ -53,10 +53,6 @@ public class ExternalAuthFilter implements WebFilter {
     private static final int MAX_HEADER_LENGTH = 256;
 
     private final ExternalIntegrationProperties properties;
-
-    public ExternalAuthFilter(@NonNull ExternalIntegrationProperties properties) {
-        this.properties = properties;
-    }
 
     @Override
     @NonNull
@@ -79,11 +75,11 @@ public class ExternalAuthFilter implements WebFilter {
 
         // Validate client ID format
         if (!isValidIdentifier(clientId)) {
-            LOG.warn("Invalid client ID format in external request");
+            log.warn("Invalid client ID format in external request");
             return forbiddenResponse(exchange, "INVALID_CLIENT_ID", "Invalid client identifier format");
         }
 
-        LOG.debug("Processing external integration request from client: {}", sanitizeForLog(clientId));
+        log.debug("Processing external integration request from client: {}", sanitizeForLog(clientId));
 
         // Validate required headers
         String persona = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().persona()));
@@ -92,37 +88,37 @@ public class ExternalAuthFilter implements WebFilter {
 
         // Persona is required
         if (persona == null || persona.isBlank()) {
-            LOG.warn("External request missing persona header from client: {}", sanitizeForLog(clientId));
+            log.warn("External request missing persona header from client: {}", sanitizeForLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_PERSONA", "X-Persona header is required");
         }
 
         // User ID is required
         if (userId == null || userId.isBlank()) {
-            LOG.warn("External request missing user-id header from client: {}", sanitizeForLog(clientId));
+            log.warn("External request missing user-id header from client: {}", sanitizeForLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_USER_ID", "X-User-Id header is required");
         }
 
         // Validate identifiers format
         if (!isValidIdentifier(persona)) {
-            LOG.warn("Invalid persona format from client: {}", sanitizeForLog(clientId));
+            log.warn("Invalid persona format from client: {}", sanitizeForLog(clientId));
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Invalid persona format");
         }
 
         if (!isValidIdentifier(userId)) {
-            LOG.warn("Invalid user ID format from client: {}", sanitizeForLog(clientId));
+            log.warn("Invalid user ID format from client: {}", sanitizeForLog(clientId));
             return forbiddenResponse(exchange, "INVALID_USER_ID", "Invalid user ID format");
         }
 
         // Validate persona is allowed
         if (!properties.allowedPersonas().contains(persona)) {
-            LOG.warn("External request with disallowed persona from client: {}", sanitizeForLog(clientId));
+            log.warn("External request with disallowed persona from client: {}", sanitizeForLog(clientId));
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Persona not allowed");
         }
 
         // Validate IDP type if configured
         if (!properties.trustedIdpTypes().isEmpty()) {
             if (idpType == null || !properties.trustedIdpTypes().contains(idpType)) {
-                LOG.warn("External request with untrusted IDP type from client: {}", sanitizeForLog(clientId));
+                log.warn("External request with untrusted IDP type from client: {}", sanitizeForLog(clientId));
                 return forbiddenResponse(exchange, "UNTRUSTED_IDP", "IDP type not trusted");
             }
         }
@@ -130,7 +126,7 @@ public class ExternalAuthFilter implements WebFilter {
         // Map external headers to proxy auth headers for downstream processing
         ServerHttpRequest mutatedRequest = createMutatedRequest(request, userId, clientId);
 
-        LOG.info("External auth validated - client: {}, persona: {}",
+        log.info("External auth validated - client: {}, persona: {}",
                 sanitizeForLog(clientId), sanitizeForLog(persona));
 
         return chain.filter(exchange.mutate().request(mutatedRequest).build());

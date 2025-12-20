@@ -5,8 +5,7 @@ import com.example.bff.authz.model.DependentAccess;
 import com.example.bff.authz.model.Permission;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.config.properties.AuthzProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -35,11 +34,10 @@ import java.util.stream.Collectors;
  * @see PermissionSet
  * @see AuthzProperties
  */
+@Slf4j
 @Service
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
 public class PermissionsFetchService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(PermissionsFetchService.class);
 
     // Validation patterns
     private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_@.-]{1,128}$");
@@ -70,13 +68,13 @@ public class PermissionsFetchService {
     @NonNull
     public Mono<PermissionSet> fetchPermissions(@NonNull String userId) {
         if (!isValidUserId(userId)) {
-            LOG.warn("Invalid user ID format in fetchPermissions");
+            log.warn("Invalid user ID format in fetchPermissions");
             return Mono.just(PermissionSet.empty(userId, "individual"));
         }
 
         String correlationId = UUID.randomUUID().toString();
 
-        LOG.debug("Fetching permissions for user {} with correlationId {}",
+        log.debug("Fetching permissions for user {} with correlationId {}",
                 sanitizeForLog(userId), correlationId);
 
         return webClient.get()
@@ -85,13 +83,13 @@ public class PermissionsFetchService {
                 .retrieve()
                 .bodyToMono(PermissionsApiResponse.class)
                 .map(this::toPermissionSet)
-                .doOnSuccess(p -> LOG.info(
+                .doOnSuccess(p -> log.info(
                         "Fetched {} dependents for user {} (correlationId={})",
                         p.dependents() != null ? p.dependents().size() : 0,
                         sanitizeForLog(userId),
                         correlationId))
                 .onErrorResume(WebClientResponseException.class, e -> {
-                    LOG.error("Permissions API error for user {}: {} (correlationId={})",
+                    log.error("Permissions API error for user {}: {} (correlationId={})",
                             sanitizeForLog(userId),
                             sanitizeForLog(e.getStatusCode() + " " + e.getStatusText()),
                             correlationId);
@@ -99,7 +97,7 @@ public class PermissionsFetchService {
                     return Mono.just(PermissionSet.empty(userId, "individual"));
                 })
                 .onErrorResume(Exception.class, e -> {
-                    LOG.error("Failed to fetch permissions for user {}: {} (correlationId={})",
+                    log.error("Failed to fetch permissions for user {}: {} (correlationId={})",
                             sanitizeForLog(userId),
                             sanitizeForLog(e.getMessage()),
                             correlationId);
@@ -173,7 +171,7 @@ public class PermissionsFetchService {
         try {
             return Optional.of(Permission.valueOf(permission.toUpperCase()));
         } catch (IllegalArgumentException e) {
-            LOG.warn("Unknown permission type: {}", sanitizeForLog(permission));
+            log.warn("Unknown permission type: {}", sanitizeForLog(permission));
             return Optional.empty();
         }
     }

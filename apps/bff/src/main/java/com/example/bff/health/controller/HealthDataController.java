@@ -13,8 +13,8 @@ import com.example.bff.health.dto.HealthDataApiResponse;
 import com.example.bff.health.dto.ImmunizationResponse;
 import com.example.bff.health.service.HealthDataOrchestrator;
 import jakarta.validation.constraints.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
@@ -34,12 +34,13 @@ import reactor.core.publisher.Mono;
  *   <li>PROXY: Authorization delegated to consumer - BFF trusts proxy headers</li>
  * </ul>
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/1.0.0/health")
 @Validated
+@RequiredArgsConstructor
 public class HealthDataController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(HealthDataController.class);
     private static final String MEMBER_ID_PATTERN = "^[a-zA-Z0-9_-]{1,128}$";
     private static final String X_MEMBER_ID_HEADER = "X-Member-Id";
     private static final String SESSION_COOKIE = "BFF_SESSION";
@@ -48,13 +49,6 @@ public class HealthDataController {
 
     @Nullable
     private final AbacAuthorizationService authorizationService;
-
-    public HealthDataController(
-            HealthDataOrchestrator orchestrator,
-            @Nullable AbacAuthorizationService authorizationService) {
-        this.orchestrator = orchestrator;
-        this.authorizationService = authorizationService;
-    }
 
     /**
      * Get immunization records for a member.
@@ -144,13 +138,13 @@ public class HealthDataController {
                 .flatMap(context -> {
                     AuthContext authContext = AuthContextResolver.resolve(exchange).orElse(null);
                     if (authContext == null) {
-                        LOG.warn("No auth context available");
+                        log.warn("No auth context available");
                         return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<T>build());
                     }
 
                     // PROXY: Skip ABAC - authorization delegated to consumer
                     if (authContext.isProxy()) {
-                        LOG.debug("Proxy auth - skipping ABAC, authZ delegated to consumer");
+                        log.debug("Proxy auth - skipping ABAC, authZ delegated to consumer");
                         return operation.apply(context);
                     }
 
@@ -160,13 +154,13 @@ public class HealthDataController {
                                 if (decision.isAllowed()) {
                                     return operation.apply(context);
                                 }
-                                LOG.warn("Authorization denied for health data access: memberId={}, reason={}",
+                                log.warn("Authorization denied for health data access: memberId={}, reason={}",
                                         context.effectiveMemberId, decision.reason());
                                 return Mono.just(this.<T>buildForbiddenResponse(decision));
                             });
                 })
                 .switchIfEmpty(Mono.fromSupplier(() -> {
-                    LOG.warn("Could not resolve member context");
+                    log.warn("Could not resolve member context");
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).<T>build();
                 }));
     }
@@ -176,14 +170,14 @@ public class HealthDataController {
      */
     private Mono<PolicyDecision> authorizeHsid(ServerWebExchange exchange, String memberId) {
         if (authorizationService == null) {
-            LOG.debug("ABAC service not available - allowing request");
+            log.debug("ABAC service not available - allowing request");
             return Mono.just(PolicyDecision.allow("ABAC_DISABLED", "ABAC authorization disabled"));
         }
 
         // Get session from cookie
         var sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE);
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
-            LOG.debug("No session cookie found");
+            log.debug("No session cookie found");
             return Mono.just(PolicyDecision.deny("NO_SESSION", "No session found"));
         }
 
@@ -215,7 +209,7 @@ public class HealthDataController {
                         .getFirst(X_MEMBER_ID_HEADER);
 
                 if (effectiveMemberId == null || effectiveMemberId.isBlank()) {
-                    LOG.warn("Proxy request missing X-Member-Id header");
+                    log.warn("Proxy request missing X-Member-Id header");
                     return null;
                 }
 
@@ -232,17 +226,17 @@ public class HealthDataController {
                 }
 
                 if (effectiveMemberId == null || effectiveMemberId.isBlank()) {
-                    LOG.warn("HSID request has no member ID");
+                    log.warn("HSID request has no member ID");
                     return null;
                 }
             }
 
-            LOG.debug("Resolved member context: memberId={}, authType={}",
+            log.debug("Resolved member context: memberId={}, authType={}",
                     effectiveMemberId, authContext.authType());
 
             return new MemberContext(effectiveMemberId, apiIdentifier);
         }).onErrorResume(e -> {
-            LOG.error("Failed to resolve member context: {}", e.getMessage());
+            log.error("Failed to resolve member context: {}", e.getMessage());
             return Mono.empty();
         });
     }

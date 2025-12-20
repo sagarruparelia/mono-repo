@@ -7,8 +7,8 @@ import com.example.bff.identity.exception.NoAccessException;
 import com.example.bff.identity.model.EligibilityResult;
 import com.example.bff.identity.model.ManagedMember;
 import com.example.bff.identity.model.MemberAccess;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -34,23 +34,14 @@ import static com.example.bff.identity.model.MemberAccess.MINIMUM_ACCESS_AGE;
  * 5. Validate access (must have eligibility OR managed members)
  * 6. Return consolidated MemberAccess
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class MemberAccessOrchestrator {
-
-    private static final Logger LOG = LoggerFactory.getLogger(MemberAccessOrchestrator.class);
 
     private final UserInfoService userInfoService;
     private final EligibilityService eligibilityService;
     private final ManagedMemberService managedMemberService;
-
-    public MemberAccessOrchestrator(
-            UserInfoService userInfoService,
-            EligibilityService eligibilityService,
-            ManagedMemberService managedMemberService) {
-        this.userInfoService = userInfoService;
-        this.eligibilityService = eligibilityService;
-        this.managedMemberService = managedMemberService;
-    }
 
     /**
      * Resolve member access for a user after HSID login.
@@ -63,14 +54,14 @@ public class MemberAccessOrchestrator {
      */
     @NonNull
     public Mono<MemberAccess> resolveMemberAccess(@NonNull String hsidUuid) {
-        LOG.info("Resolving member access for hsidUuid: {}", hsidUuid);
+        log.info("Resolving member access for hsidUuid: {}", hsidUuid);
 
         return userInfoService.getUserInfo(hsidUuid)
                 .flatMap(userInfo -> processUserInfo(hsidUuid, userInfo))
-                .doOnSuccess(access -> LOG.info(
+                .doOnSuccess(access -> log.info(
                         "Member access resolved for hsidUuid: {}, persona: {}, canAccess: {}",
                         hsidUuid, access.getEffectivePersona(), access.canAccessSystem()))
-                .doOnError(e -> LOG.error(
+                .doOnError(e -> log.error(
                         "Failed to resolve member access for hsidUuid {}: {}", hsidUuid, e.getMessage()));
     }
 
@@ -95,11 +86,11 @@ public class MemberAccessOrchestrator {
         boolean isResponsibleParty = userInfo.isResponsibleParty();
         String apiIdentifier = userInfo.apiIdentifier();
 
-        LOG.debug("User info extracted - eid: {}, age: {}, isRP: {}", eid, age, isResponsibleParty);
+        log.debug("User info extracted - eid: {}, age: {}, isRP: {}", eid, age, isResponsibleParty);
 
         // Age check (minimum 13)
         if (age < MINIMUM_ACCESS_AGE) {
-            LOG.warn("User {} is under minimum age ({})", hsidUuid, age);
+            log.warn("User {} is under minimum age ({})", hsidUuid, age);
             return Mono.error(new AgeRestrictionException(age, MINIMUM_ACCESS_AGE));
         }
 
@@ -125,10 +116,10 @@ public class MemberAccessOrchestrator {
         // Only check managed members if adult (>= 18) AND responsible party
         Mono<List<ManagedMember>> managedMembersMono;
         if (age >= ADULT_AGE && isResponsibleParty) {
-            LOG.debug("User is adult RP, fetching managed members");
+            log.debug("User is adult RP, fetching managed members");
             managedMembersMono = managedMemberService.getManagedMembers(eid, apiIdentifier);
         } else {
-            LOG.debug("User is not adult RP, skipping managed members fetch");
+            log.debug("User is not adult RP, skipping managed members fetch");
             managedMembersMono = Mono.just(List.of());
         }
 
@@ -150,7 +141,7 @@ public class MemberAccessOrchestrator {
 
                     // Validate access
                     if (!access.canAccessSystem()) {
-                        LOG.warn("User {} has no access: eligibility={}, managedMembers={}",
+                        log.warn("User {} has no access: eligibility={}, managedMembers={}",
                                 hsidUuid, eligibility.status(), managedMembers.size());
                         return Mono.error(new NoAccessException(hsidUuid,
                                 "No eligibility and no managed members"));
@@ -172,7 +163,7 @@ public class MemberAccessOrchestrator {
             return LocalDate.parse(birthdate);
         } catch (DateTimeParseException e) {
             // Do not log actual birthdate (PII) - only log the error type
-            LOG.warn("Failed to parse birthdate: invalid format");
+            log.warn("Failed to parse birthdate: invalid format");
             return null;
         }
     }

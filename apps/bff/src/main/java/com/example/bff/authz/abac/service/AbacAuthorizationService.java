@@ -9,8 +9,7 @@ import com.example.bff.authz.service.PermissionsFetchService;
 import com.example.bff.config.properties.MfeProxyProperties;
 import com.example.bff.config.properties.PersonaProperties;
 import com.example.bff.session.service.SessionService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.lang.Nullable;
@@ -21,11 +20,10 @@ import reactor.core.publisher.Mono;
  * Unified ABAC Authorization Service.
  * Handles both HSID (session-based) and Proxy (header-based) authorization.
  */
+@Slf4j
 @Service
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
 public class AbacAuthorizationService {
-
-    private static final Logger log = LoggerFactory.getLogger(AbacAuthorizationService.class);
 
     private final AbacPolicyEngine policyEngine;
 

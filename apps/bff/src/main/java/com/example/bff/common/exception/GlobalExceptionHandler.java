@@ -5,8 +5,7 @@ import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.exception.NoAccessException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
@@ -29,10 +28,9 @@ import java.util.stream.Collectors;
  * <p>Provides consistent error responses across all endpoints while
  * preventing sensitive information leakage in error messages.
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
-    private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     // Limits for log sanitization
     private static final int MAX_LOG_MESSAGE_LENGTH = 200;
@@ -47,7 +45,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SessionBindingException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleSessionBinding(@NonNull SessionBindingException ex) {
-        LOG.warn("Session binding failure: {}", sanitizeForLog(ex.getReason()));
+        log.warn("Session binding failure: {}", sanitizeForLog(ex.getReason()));
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of(
                         "error", "session_invalid",
@@ -65,7 +63,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleAccessDenied(@NonNull AccessDeniedException ex) {
-        LOG.warn("Access denied: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Access denied: {}", sanitizeForLog(ex.getMessage()));
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of(
                         "error", "access_denied",
@@ -83,7 +81,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AgeRestrictionException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleAgeRestriction(@NonNull AgeRestrictionException ex) {
-        LOG.warn("Age restriction: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Age restriction: {}", sanitizeForLog(ex.getMessage()));
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of(
                         "error", "age_restricted",
@@ -102,7 +100,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoAccessException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleNoAccess(@NonNull NoAccessException ex) {
-        LOG.warn("No access: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("No access: {}", sanitizeForLog(ex.getMessage()));
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of(
                         "error", "no_access",
@@ -121,7 +119,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IdentityServiceException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleIdentityServiceError(@NonNull IdentityServiceException ex) {
-        LOG.error("Identity service error: {}", sanitizeForLog(ex.getMessage()));
+        log.error("Identity service error: {}", sanitizeForLog(ex.getMessage()));
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of(
                         "error", "identity_service_error",
@@ -140,7 +138,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(WebExchangeBindException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleValidationErrors(@NonNull WebExchangeBindException ex) {
-        LOG.warn("Validation error: {} field errors", ex.getBindingResult().getFieldErrorCount());
+        log.warn("Validation error: {} field errors", ex.getBindingResult().getFieldErrorCount());
 
         List<Map<String, String>> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
                 .map(error -> Map.of(
@@ -169,7 +167,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConstraintViolationException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleConstraintViolation(@NonNull ConstraintViolationException ex) {
-        LOG.warn("Constraint violation: {} violations", ex.getConstraintViolations().size());
+        log.warn("Constraint violation: {} violations", ex.getConstraintViolations().size());
 
         List<Map<String, String>> violations = ex.getConstraintViolations().stream()
                 .map(violation -> Map.of(
@@ -196,7 +194,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ServerWebInputException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleInputException(@NonNull ServerWebInputException ex) {
-        LOG.warn("Input error: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Input error: {}", sanitizeForLog(ex.getMessage()));
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of(
@@ -215,7 +213,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(@NonNull IllegalArgumentException ex) {
-        LOG.warn("Illegal argument: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Illegal argument: {}", sanitizeForLog(ex.getMessage()));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of(
                         "error", "invalid_argument",
@@ -233,7 +231,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @NonNull
     public ResponseEntity<Map<String, Object>> handleGeneral(@NonNull Exception ex) {
-        LOG.error("Unhandled exception: {}", sanitizeForLog(ex.getMessage()), ex);
+        log.error("Unhandled exception: {}", sanitizeForLog(ex.getMessage()), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                         "error", "internal_error",

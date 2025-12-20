@@ -1,8 +1,8 @@
 package com.example.bff.observability.health;
 
 import com.example.bff.config.properties.DocumentProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.ReactiveHealthIndicator;
 import org.springframework.stereotype.Component;
@@ -16,19 +16,15 @@ import java.time.Duration;
  * Health indicator for S3 connectivity.
  * Checks if the configured S3 bucket is accessible.
  */
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class S3HealthIndicator implements ReactiveHealthIndicator {
 
-    private static final Logger log = LoggerFactory.getLogger(S3HealthIndicator.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private final S3AsyncClient s3Client;
     private final DocumentProperties documentProperties;
-
-    public S3HealthIndicator(S3AsyncClient s3Client, DocumentProperties documentProperties) {
-        this.s3Client = s3Client;
-        this.documentProperties = documentProperties;
-    }
 
     @Override
     public Mono<Health> health() {

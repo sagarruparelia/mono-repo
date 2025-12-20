@@ -5,8 +5,7 @@ import com.example.bff.identity.dto.ManagedMemberResponse;
 import com.example.bff.identity.dto.ManagedMemberResponse.MemberPermission;
 import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.model.ManagedMember;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.NonNull;
@@ -30,10 +29,10 @@ import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEB
  * Returns list of members who have granted access to the logged-in user.
  * Only returns members with active permissions (startDate <= today <= endDate).
  */
+@Slf4j
 @Service
 public class ManagedMemberService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ManagedMemberService.class);
     private static final String SERVICE_NAME = "Permissions";
     private static final String X_IDENTIFIER_HEADER = "x-identifier";
 
@@ -63,7 +62,7 @@ public class ManagedMemberService {
             @NonNull String memberEid,
             @Nullable String apiIdentifier) {
 
-        LOG.debug("Fetching managed members for memberEid: {}", memberEid);
+        log.debug("Fetching managed members for memberEid: {}", memberEid);
 
         Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid, apiIdentifier);
 
@@ -123,14 +122,14 @@ public class ManagedMemberService {
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
                         .filter(this::isRetryable)
-                        .doBeforeRetry(signal -> LOG.warn(
+                        .doBeforeRetry(signal -> log.warn(
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
-                .doOnSuccess(response -> LOG.debug(
+                .doOnSuccess(response -> log.debug(
                         "Successfully fetched managed members for memberEid: {}", memberEid))
                 .onErrorResume(e -> {
                     // Fail closed: return empty response on errors
-                    LOG.error("Failed to fetch managed members for memberEid {}: {}", memberEid, e.getMessage());
+                    log.error("Failed to fetch managed members for memberEid {}: {}", memberEid, e.getMessage());
                     return Mono.just(new ManagedMemberResponse(null));
                 });
     }

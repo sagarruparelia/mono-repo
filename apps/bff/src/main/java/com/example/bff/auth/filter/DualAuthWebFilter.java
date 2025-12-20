@@ -11,8 +11,7 @@ import com.example.bff.config.properties.SecurityPathsProperties;
 import com.example.bff.session.model.SessionData;
 import com.example.bff.session.service.SessionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpCookie;
@@ -52,11 +51,10 @@ import java.util.regex.Pattern;
  * @see AuthContext
  * @see AuthContextResolver
  */
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class DualAuthWebFilter implements WebFilter {
-
-    private static final Logger LOG = LoggerFactory.getLogger(DualAuthWebFilter.class);
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
@@ -94,7 +92,7 @@ public class DualAuthWebFilter implements WebFilter {
         String path = exchange.getRequest().getPath().value();
         PathCategory category = determinePathCategory(path);
 
-        LOG.debug("DualAuthWebFilter: path={}, category={}", path, category);
+        log.debug("DualAuthWebFilter: path={}, category={}", path, category);
 
         // Public paths - no auth required
         if (category == PathCategory.PUBLIC) {
@@ -114,7 +112,7 @@ public class DualAuthWebFilter implements WebFilter {
                     // Store AuthContext in exchange for downstream use
                     AuthContextResolver.store(exchange, authContext);
 
-                    LOG.info("Auth resolved: type={}, userId={}, persona={}, path={}",
+                    log.info("Auth resolved: type={}, userId={}, persona={}, path={}",
                             authContext.authType(),
                             sanitizeForLog(authContext.userId()),
                             sanitizeForLog(authContext.persona()),
@@ -157,7 +155,7 @@ public class DualAuthWebFilter implements WebFilter {
 
         String sessionId = sessionCookie.getValue();
         if (!isValidSessionId(sessionId)) {
-            LOG.debug("Invalid session ID format");
+            log.debug("Invalid session ID format");
             return Mono.empty();
         }
 
@@ -214,14 +212,14 @@ public class DualAuthWebFilter implements WebFilter {
 
         // Validate required headers
         if (persona == null || persona.isBlank()) {
-            LOG.warn("Proxy auth missing persona header");
+            log.warn("Proxy auth missing persona header");
             return Mono.error(new ProxyAuthException(
                     ErrorResponse.Codes.UNAUTHORIZED,
                     "X-Persona header is required"));
         }
 
         if (userId == null || userId.isBlank()) {
-            LOG.warn("Proxy auth missing user-id header");
+            log.warn("Proxy auth missing user-id header");
             return Mono.error(new ProxyAuthException(
                     ErrorResponse.Codes.UNAUTHORIZED,
                     "X-User-Id header is required"));
@@ -230,7 +228,7 @@ public class DualAuthWebFilter implements WebFilter {
         // Validate IDP-persona mapping
         if (idpType != null && !idpType.isBlank()) {
             if (!idpProperties.isValidIdpType(idpType)) {
-                LOG.warn("Invalid IDP type: {}", sanitizeForLog(idpType));
+                log.warn("Invalid IDP type: {}", sanitizeForLog(idpType));
                 return Mono.error(new ProxyAuthException(
                         ErrorResponse.Codes.INVALID_IDP_TYPE,
                         "Unrecognized IDP type: " + idpType));
@@ -238,7 +236,7 @@ public class DualAuthWebFilter implements WebFilter {
 
             if (!idpProperties.isPersonaAllowed(idpType, persona)) {
                 Set<String> allowed = idpProperties.getAllowedPersonas(idpType);
-                LOG.warn("IDP-persona mismatch: idp={}, persona={}, allowed={}",
+                log.warn("IDP-persona mismatch: idp={}, persona={}, allowed={}",
                         sanitizeForLog(idpType), sanitizeForLog(persona), allowed);
                 return Mono.error(new ProxyAuthException(
                         ErrorResponse.Codes.IDP_PERSONA_MISMATCH,
@@ -337,7 +335,7 @@ public class DualAuthWebFilter implements WebFilter {
                 ? "This endpoint requires session authentication"
                 : "This endpoint requires proxy authentication";
 
-        LOG.warn("Auth type mismatch: authType={}, required={}, path={}",
+        log.warn("Auth type mismatch: authType={}, required={}, path={}",
                 auth.authType(), category, exchange.getRequest().getPath().value());
 
         return forbiddenResponse(exchange, correlationId, code, message);
