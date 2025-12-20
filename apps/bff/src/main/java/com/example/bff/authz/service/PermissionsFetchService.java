@@ -2,6 +2,7 @@ package com.example.bff.authz.service;
 
 import com.example.bff.authz.dto.PermissionsApiResponse;
 import com.example.bff.authz.model.DependentAccess;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.authz.model.Permission;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.config.properties.AuthzProperties;
@@ -32,7 +33,6 @@ import java.util.stream.Collectors;
 public class PermissionsFetchService {
 
     private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_@.-]{1,128}$");
-    private static final int MAX_LOG_VALUE_LENGTH = 64;
     private static final int DEFAULT_CACHE_TTL_SECONDS = 300;
 
     private final WebClient webClient;
@@ -58,7 +58,7 @@ public class PermissionsFetchService {
         String correlationId = UUID.randomUUID().toString();
 
         log.debug("Fetching permissions for user {} with correlationId {}",
-                sanitizeForLog(userId), correlationId);
+                StringSanitizer.forLog(userId), correlationId);
 
         return webClient.get()
                 .uri("/api/internal/permissions/{userId}", userId)
@@ -69,19 +69,19 @@ public class PermissionsFetchService {
                 .doOnSuccess(p -> log.info(
                         "Fetched {} dependents for user {} (correlationId={})",
                         p.dependents() != null ? p.dependents().size() : 0,
-                        sanitizeForLog(userId),
+                        StringSanitizer.forLog(userId),
                         correlationId))
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.error("Permissions API error for user {}: {} (correlationId={})",
-                            sanitizeForLog(userId),
-                            sanitizeForLog(e.getStatusCode() + " " + e.getStatusText()),
+                            StringSanitizer.forLog(userId),
+                            StringSanitizer.forLog(e.getStatusCode() + " " + e.getStatusText()),
                             correlationId);
                     return Mono.just(PermissionSet.empty(userId, "individual"));
                 })
                 .onErrorResume(Exception.class, e -> {
                     log.error("Failed to fetch permissions for user {}: {} (correlationId={})",
-                            sanitizeForLog(userId),
-                            sanitizeForLog(e.getMessage()),
+                            StringSanitizer.forLog(userId),
+                            StringSanitizer.forLog(e.getMessage()),
                             correlationId);
                     return Mono.just(PermissionSet.empty(userId, "individual"));
                 });
@@ -130,7 +130,7 @@ public class PermissionsFetchService {
         try {
             return Optional.of(Permission.valueOf(permission.toUpperCase()));
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown permission type: {}", sanitizeForLog(permission));
+            log.warn("Unknown permission type: {}", StringSanitizer.forLog(permission));
             return Optional.empty();
         }
     }
@@ -140,16 +140,5 @@ public class PermissionsFetchService {
             return false;
         }
         return SAFE_ID_PATTERN.matcher(userId).matches();
-    }
-
-    private String sanitizeForLog(String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), MAX_LOG_VALUE_LENGTH));
     }
 }

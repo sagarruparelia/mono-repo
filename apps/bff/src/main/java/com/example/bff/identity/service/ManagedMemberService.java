@@ -1,5 +1,6 @@
 package com.example.bff.identity.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.identity.dto.ManagedMemberResponse;
 import com.example.bff.identity.dto.ManagedMemberResponse.MemberPermission;
@@ -47,7 +48,7 @@ public class ManagedMemberService {
 
     @NonNull
     public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid, @Nullable String apiIdentifier) {
-        log.debug("Fetching managed members for memberEid: {}", memberEid);
+        log.debug("Fetching managed members for memberEid: {}", StringSanitizer.forLog(memberEid));
 
         Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid, apiIdentifier);
 
@@ -108,10 +109,10 @@ public class ManagedMemberService {
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
                 .doOnSuccess(response -> log.debug(
-                        "Successfully fetched managed members for memberEid: {}", memberEid))
+                        "Successfully fetched managed members for memberEid: {}", StringSanitizer.forLog(memberEid)))
                 .onErrorResume(e -> {
                     // Fail closed: return empty response on errors
-                    log.error("Failed to fetch managed members for memberEid {}: {}", memberEid, e.getMessage());
+                    log.error("Failed to fetch managed members for memberEid {}: {}", StringSanitizer.forLog(memberEid), e.getMessage());
                     return Mono.just(new ManagedMemberResponse(null));
                 });
     }

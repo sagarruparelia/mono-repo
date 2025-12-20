@@ -1,5 +1,6 @@
 package com.example.bff.identity.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.identity.dto.EligibilityResponse;
 import com.example.bff.identity.exception.IdentityServiceException;
@@ -48,7 +49,7 @@ public class EligibilityService {
 
     @NonNull
     public Mono<EligibilityResult> checkEligibility(@NonNull String memberEid, @Nullable String apiIdentifier) {
-        log.debug("Checking eligibility for memberEid: {}", memberEid);
+        log.debug("Checking eligibility for memberEid: {}", StringSanitizer.forLog(memberEid));
 
         Mono<EligibilityResult> loader = fetchFromApi(memberEid, apiIdentifier)
                 .map(this::toEligibilityResult);
@@ -87,7 +88,7 @@ public class EligibilityService {
         return requestBuilder
                 .retrieve()
                 .onStatus(status -> status == HttpStatus.NOT_FOUND, response -> {
-                    log.debug("No eligibility record found for memberEid: {}", memberEid);
+                    log.debug("No eligibility record found for memberEid: {}", StringSanitizer.forLog(memberEid));
                     // Return empty to trigger NOT_ELIGIBLE handling
                     return Mono.empty();
                 })
@@ -109,10 +110,10 @@ public class EligibilityService {
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
                 .switchIfEmpty(Mono.just(new EligibilityResponse(null))) // 404 case
                 .doOnSuccess(response -> log.debug(
-                        "Eligibility check completed for memberEid: {}", memberEid))
+                        "Eligibility check completed for memberEid: {}", StringSanitizer.forLog(memberEid)))
                 .onErrorResume(e -> {
                     // Fail closed: return UNKNOWN on errors
-                    log.error("Failed to check eligibility for memberEid {}: {}", memberEid, e.getMessage());
+                    log.error("Failed to check eligibility for memberEid {}: {}", StringSanitizer.forLog(memberEid), e.getMessage());
                     return Mono.just(new EligibilityResponse(null));
                 });
     }

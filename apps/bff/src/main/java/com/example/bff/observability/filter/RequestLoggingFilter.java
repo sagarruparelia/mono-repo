@@ -1,5 +1,6 @@
 package com.example.bff.observability.filter;
 
+import com.example.bff.common.util.StringSanitizer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
@@ -46,9 +47,9 @@ public class RequestLoggingFilter implements WebFilter {
 
         return chain.filter(exchange)
                 .doFirst(() -> {
-                    MDC.put("clientIp", clientIp);
+                    MDC.put("clientIp", StringSanitizer.forLog(clientIp));
                     MDC.put("userAgent", userAgent != null ? truncate(userAgent, 100) : "unknown");
-                    log.info("Incoming request: {} {}", method, path);
+                    log.info("Incoming request: {} {}", method, StringSanitizer.forLog(path));
                 })
                 .doFinally(signalType -> {
                     Duration duration = Duration.between(startTime, Instant.now());
@@ -65,15 +66,16 @@ public class RequestLoggingFilter implements WebFilter {
                     MDC.put("responseStatus", String.valueOf(statusCode));
                     MDC.put("durationMs", String.valueOf(duration.toMillis()));
 
+                    String sanitizedPath = StringSanitizer.forLog(path);
                     if (statusCode >= 500) {
                         log.error("Request completed: {} {} - {} in {}ms",
-                                method, path, statusCode, duration.toMillis());
+                                method, sanitizedPath, statusCode, duration.toMillis());
                     } else if (statusCode >= 400) {
                         log.warn("Request completed: {} {} - {} in {}ms",
-                                method, path, statusCode, duration.toMillis());
+                                method, sanitizedPath, statusCode, duration.toMillis());
                     } else {
                         log.info("Request completed: {} {} - {} in {}ms",
-                                method, path, statusCode, duration.toMillis());
+                                method, sanitizedPath, statusCode, duration.toMillis());
                     }
 
                     MDC.remove("clientIp");

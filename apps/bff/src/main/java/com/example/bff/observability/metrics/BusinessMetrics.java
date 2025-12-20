@@ -3,15 +3,26 @@ package com.example.bff.observability.metrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
-/** Centralized service for recording business-specific metrics. */
+/**
+ * Centralized service for recording business-specific metrics.
+ * Uses bounded tag values to prevent high-cardinality metric explosion.
+ */
 @Component
 public class BusinessMetrics {
+
+    private static final String OUTCOME_SUCCESS = "success";
+    private static final String OUTCOME_FAILURE = "failure";
+    private static final String TAG_UNKNOWN = "unknown";
+    private static final int MAX_TAG_LENGTH = 50;
 
     private final MeterRegistry registry;
 
@@ -21,6 +32,7 @@ public class BusinessMetrics {
     private final Counter sessionCreated;
     private final Counter sessionExpired;
     private final Counter tokenRefresh;
+    private final Counter tokenRefreshFailure;
 
     private final Counter abacDecisionAllowed;
     private final Counter abacDecisionDenied;
@@ -37,16 +49,16 @@ public class BusinessMetrics {
     private final Counter permissionsApiSuccess;
     private final Counter permissionsApiFailure;
 
-    public BusinessMetrics(MeterRegistry registry) {
+    public BusinessMetrics(@NonNull MeterRegistry registry) {
         this.registry = registry;
 
         this.authLoginSuccess = Counter.builder("auth.login")
-                .tag("outcome", "success")
+                .tag("outcome", OUTCOME_SUCCESS)
                 .description("Successful login attempts")
                 .register(registry);
 
         this.authLoginFailure = Counter.builder("auth.login")
-                .tag("outcome", "failure")
+                .tag("outcome", OUTCOME_FAILURE)
                 .description("Failed login attempts")
                 .register(registry);
 
@@ -65,7 +77,13 @@ public class BusinessMetrics {
                 .register(registry);
 
         this.tokenRefresh = Counter.builder("auth.token.refresh")
-                .description("Token refresh attempts")
+                .tag("outcome", OUTCOME_SUCCESS)
+                .description("Successful token refresh attempts")
+                .register(registry);
+
+        this.tokenRefreshFailure = Counter.builder("auth.token.refresh")
+                .tag("outcome", OUTCOME_FAILURE)
+                .description("Failed token refresh attempts")
                 .register(registry);
 
         this.abacDecisionAllowed = Counter.builder("abac.decision")
@@ -89,12 +107,12 @@ public class BusinessMetrics {
                 .register(registry);
 
         this.documentUploadSuccess = Counter.builder("document.upload")
-                .tag("outcome", "success")
+                .tag("outcome", OUTCOME_SUCCESS)
                 .description("Successful document uploads")
                 .register(registry);
 
         this.documentUploadFailure = Counter.builder("document.upload")
-                .tag("outcome", "failure")
+                .tag("outcome", OUTCOME_FAILURE)
                 .description("Failed document uploads")
                 .register(registry);
 
@@ -118,30 +136,27 @@ public class BusinessMetrics {
                 .register(registry);
 
         this.permissionsApiSuccess = Counter.builder("external.permissions.api.calls")
-                .tag("outcome", "success")
+                .tag("outcome", OUTCOME_SUCCESS)
                 .description("Successful permissions API calls")
                 .register(registry);
 
         this.permissionsApiFailure = Counter.builder("external.permissions.api.calls")
-                .tag("outcome", "failure")
+                .tag("outcome", OUTCOME_FAILURE)
                 .description("Failed permissions API calls")
                 .register(registry);
     }
 
-    public void recordLoginSuccess(String persona) {
+    public void recordLoginSuccess(@Nullable String persona) {
         authLoginSuccess.increment();
-        Counter.builder("auth.login.by_persona")
-                .tag("persona", persona)
-                .tag("outcome", "success")
-                .register(registry)
+        registry.counter("auth.login.by_persona",
+                Tags.of("persona", sanitizeTag(persona), "outcome", OUTCOME_SUCCESS))
                 .increment();
     }
 
-    public void recordLoginFailure(String reason) {
+    public void recordLoginFailure(@Nullable String reason) {
         authLoginFailure.increment();
-        Counter.builder("auth.login.failure.by_reason")
-                .tag("reason", sanitizeTag(reason))
-                .register(registry)
+        registry.counter("auth.login.failure.by_reason",
+                Tags.of("reason", sanitizeTag(reason)))
                 .increment();
     }
 
@@ -158,26 +173,24 @@ public class BusinessMetrics {
     }
 
     public void recordTokenRefresh(boolean success) {
-        tokenRefresh.increment();
-        if (!success) {
-            Counter.builder("auth.token.refresh.failure")
-                    .register(registry)
-                    .increment();
+        if (success) {
+            tokenRefresh.increment();
+        } else {
+            tokenRefreshFailure.increment();
         }
     }
 
-    public void recordAbacDecision(boolean allowed, String policyId, String action) {
+    public void recordAbacDecision(boolean allowed, @Nullable String policyId, @Nullable String action) {
         if (allowed) {
             abacDecisionAllowed.increment();
         } else {
             abacDecisionDenied.increment();
         }
 
-        Counter.builder("abac.decision.detailed")
-                .tag("result", allowed ? "allowed" : "denied")
-                .tag("policy", sanitizeTag(policyId))
-                .tag("action", sanitizeTag(action))
-                .register(registry)
+        registry.counter("abac.decision.detailed",
+                Tags.of("result", allowed ? "allowed" : "denied",
+                        "policy", sanitizeTag(policyId),
+                        "action", sanitizeTag(action)))
                 .increment();
     }
 
@@ -189,38 +202,33 @@ public class BusinessMetrics {
         abacCacheMiss.increment();
     }
 
-    public void recordDocumentUpload(boolean success, String documentType, long sizeBytes) {
+    public void recordDocumentUpload(boolean success, @Nullable String documentType, long sizeBytes) {
         if (success) {
             documentUploadSuccess.increment();
             documentSize.record(sizeBytes);
-
-            Counter.builder("document.upload.by_type")
-                    .tag("type", sanitizeTag(documentType))
-                    .tag("outcome", "success")
-                    .register(registry)
+            registry.counter("document.upload.by_type",
+                    Tags.of("type", sanitizeTag(documentType), "outcome", OUTCOME_SUCCESS))
                     .increment();
         } else {
             documentUploadFailure.increment();
         }
     }
 
-    public void recordDocumentDownload(String documentType) {
+    public void recordDocumentDownload(@Nullable String documentType) {
         documentDownload.increment();
-        Counter.builder("document.download.by_type")
-                .tag("type", sanitizeTag(documentType))
-                .register(registry)
+        registry.counter("document.download.by_type",
+                Tags.of("type", sanitizeTag(documentType)))
                 .increment();
     }
 
-    public void recordDocumentDelete(String documentType) {
+    public void recordDocumentDelete(@Nullable String documentType) {
         documentDelete.increment();
-        Counter.builder("document.delete.by_type")
-                .tag("type", sanitizeTag(documentType))
-                .register(registry)
+        registry.counter("document.delete.by_type",
+                Tags.of("type", sanitizeTag(documentType)))
                 .increment();
     }
 
-    public void recordPermissionsApiCall(boolean success, Duration duration) {
+    public void recordPermissionsApiCall(boolean success, @NonNull Duration duration) {
         permissionsApiTimer.record(duration.toNanos(), TimeUnit.NANOSECONDS);
         if (success) {
             permissionsApiSuccess.increment();
@@ -229,11 +237,12 @@ public class BusinessMetrics {
         }
     }
 
+    @NonNull
     public Timer.Sample startPermissionsApiTimer() {
         return Timer.start(registry);
     }
 
-    public void stopPermissionsApiTimer(Timer.Sample sample, boolean success) {
+    public void stopPermissionsApiTimer(@NonNull Timer.Sample sample, boolean success) {
         sample.stop(permissionsApiTimer);
         if (success) {
             permissionsApiSuccess.increment();
@@ -242,22 +251,24 @@ public class BusinessMetrics {
         }
     }
 
-    public void recordS3Operation(String operation, boolean success, Duration duration) {
+    public void recordS3Operation(@NonNull String operation, boolean success, @NonNull Duration duration) {
         Timer.builder("s3.operation")
-                .tag("operation", operation)
-                .tag("outcome", success ? "success" : "failure")
+                .tag("operation", sanitizeTag(operation))
+                .tag("outcome", success ? OUTCOME_SUCCESS : OUTCOME_FAILURE)
                 .publishPercentiles(0.5, 0.95, 0.99)
                 .register(registry)
                 .record(duration.toNanos(), TimeUnit.NANOSECONDS);
     }
 
-    private String sanitizeTag(String value) {
+    @NonNull
+    private String sanitizeTag(@Nullable String value) {
         if (value == null || value.isBlank()) {
-            return "unknown";
+            return TAG_UNKNOWN;
         }
-        String sanitized = value.toLowerCase()
-                .replaceAll("[^a-z0-9_-]", "_")
-                .substring(0, Math.min(value.length(), 50));
-        return sanitized.isBlank() ? "unknown" : sanitized;
+        String sanitized = value.toLowerCase().replaceAll("[^a-z0-9_-]", "_");
+        if (sanitized.length() > MAX_TAG_LENGTH) {
+            sanitized = sanitized.substring(0, MAX_TAG_LENGTH);
+        }
+        return sanitized.isBlank() ? TAG_UNKNOWN : sanitized;
     }
 }

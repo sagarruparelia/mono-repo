@@ -2,6 +2,7 @@ package com.example.bff.health.controller;
 
 import com.example.bff.auth.model.AuthContext;
 import com.example.bff.auth.util.AuthContextResolver;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
@@ -113,7 +114,7 @@ public class HealthDataController {
                                     return operation.apply(context);
                                 }
                                 log.warn("Authorization denied for health data access: memberId={}, reason={}",
-                                        context.effectiveMemberId, decision.reason());
+                                        StringSanitizer.forLog(context.effectiveMemberId), decision.reason());
                                 return Mono.just(this.<T>buildForbiddenResponse(decision));
                             });
                 })
@@ -184,7 +185,7 @@ public class HealthDataController {
             }
 
             log.debug("Resolved member context: memberId={}, authType={}",
-                    effectiveMemberId, authContext.authType());
+                    StringSanitizer.forLog(effectiveMemberId), authContext.authType());
 
             return new MemberContext(effectiveMemberId, apiIdentifier);
         }).onErrorResume(e -> {
@@ -204,8 +205,8 @@ public class HealthDataController {
         if (value == null) {
             return "";
         }
-        return value.replace("\n", " ").replace("\r", " ")
-                .substring(0, Math.min(value.length(), 200));
+        String sanitized = value.replace("\n", " ").replace("\r", " ");
+        return sanitized.substring(0, Math.min(sanitized.length(), 200));
     }
 
     private record MemberContext(String effectiveMemberId, String apiIdentifier) {}

@@ -1,5 +1,6 @@
 package com.example.bff.identity.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.identity.dto.UserInfoResponse;
 import com.example.bff.identity.exception.IdentityServiceException;
@@ -53,7 +54,7 @@ public class UserInfoService {
      */
     @NonNull
     public Mono<UserInfoResponse> getUserInfo(@NonNull String hsidUuid) {
-        log.debug("Fetching user info for hsidUuid: {}", hsidUuid);
+        log.debug("Fetching user info for hsidUuid: {}", StringSanitizer.forLog(hsidUuid));
 
         Mono<UserInfoResponse> loader = fetchFromApi(hsidUuid);
         return cacheService.getOrLoadUserInfo(hsidUuid, loader, UserInfoResponse.class);
@@ -74,7 +75,7 @@ public class UserInfoService {
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response -> {
                     if (response.statusCode() == HttpStatus.NOT_FOUND) {
-                        log.warn("User not found for hsidUuid: {}", hsidUuid);
+                        log.warn("User not found for hsidUuid: {}", StringSanitizer.forLog(hsidUuid));
                         return Mono.error(new IdentityServiceException(
                                 SERVICE_NAME, 404, "User not found"));
                     }
@@ -95,9 +96,9 @@ public class UserInfoService {
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
                 .doOnSuccess(response -> log.debug(
-                        "Successfully fetched user info for hsidUuid: {}", hsidUuid))
+                        "Successfully fetched user info for hsidUuid: {}", StringSanitizer.forLog(hsidUuid)))
                 .doOnError(e -> log.error(
-                        "Failed to fetch user info for hsidUuid {}: {}", hsidUuid, e.getMessage()));
+                        "Failed to fetch user info for hsidUuid {}: {}", StringSanitizer.forLog(hsidUuid), e.getMessage()));
     }
 
     /**

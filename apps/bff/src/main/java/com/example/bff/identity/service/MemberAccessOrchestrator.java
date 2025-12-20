@@ -1,5 +1,6 @@
 package com.example.bff.identity.service;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.identity.dto.UserInfoResponse;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.IdentityServiceException;
@@ -35,15 +36,15 @@ public class MemberAccessOrchestrator {
 
     @NonNull
     public Mono<MemberAccess> resolveMemberAccess(@NonNull String hsidUuid) {
-        log.info("Resolving member access for hsidUuid: {}", hsidUuid);
+        log.info("Resolving member access for hsidUuid: {}", StringSanitizer.forLog(hsidUuid));
 
         return userInfoService.getUserInfo(hsidUuid)
                 .flatMap(userInfo -> processUserInfo(hsidUuid, userInfo))
                 .doOnSuccess(access -> log.info(
                         "Member access resolved for hsidUuid: {}, persona: {}, canAccess: {}",
-                        hsidUuid, access.getEffectivePersona(), access.canAccessSystem()))
+                        StringSanitizer.forLog(hsidUuid), access.getEffectivePersona(), access.canAccessSystem()))
                 .doOnError(e -> log.error(
-                        "Failed to resolve member access for hsidUuid {}: {}", hsidUuid, e.getMessage()));
+                        "Failed to resolve member access for hsidUuid {}: {}", StringSanitizer.forLog(hsidUuid), e.getMessage()));
     }
 
     private Mono<MemberAccess> processUserInfo(String hsidUuid, UserInfoResponse userInfo) {
@@ -64,11 +65,11 @@ public class MemberAccessOrchestrator {
         boolean isResponsibleParty = userInfo.isResponsibleParty();
         String apiIdentifier = userInfo.apiIdentifier();
 
-        log.debug("User info extracted - eid: {}, age: {}, isRP: {}", eid, age, isResponsibleParty);
+        log.debug("User info extracted - eid: {}, age: {}, isRP: {}", StringSanitizer.forLog(eid), age, isResponsibleParty);
 
         // Age check (minimum 13)
         if (age < MINIMUM_ACCESS_AGE) {
-            log.warn("User {} is under minimum age ({})", hsidUuid, age);
+            log.warn("User {} is under minimum age ({})", StringSanitizer.forLog(hsidUuid), age);
             return Mono.error(new AgeRestrictionException(age, MINIMUM_ACCESS_AGE));
         }
 
@@ -117,7 +118,7 @@ public class MemberAccessOrchestrator {
                     // Validate access
                     if (!access.canAccessSystem()) {
                         log.warn("User {} has no access: eligibility={}, managedMembers={}",
-                                hsidUuid, eligibility.status(), managedMembers.size());
+                                StringSanitizer.forLog(hsidUuid), eligibility.status(), managedMembers.size());
                         return Mono.error(new NoAccessException(hsidUuid,
                                 "No eligibility and no managed members"));
                     }

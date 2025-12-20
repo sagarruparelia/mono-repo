@@ -1,5 +1,6 @@
 package com.example.bff.external.filter;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -70,7 +71,7 @@ public class ExternalAuthFilter implements WebFilter {
             return forbiddenResponse(exchange, "INVALID_CLIENT_ID", "Invalid client identifier format");
         }
 
-        log.debug("Processing external integration request from client: {}", sanitizeForLog(clientId));
+        log.debug("Processing external integration request from client: {}", StringSanitizer.forLog(clientId));
 
         // Validate required headers
         String persona = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().persona()));
@@ -79,37 +80,37 @@ public class ExternalAuthFilter implements WebFilter {
 
         // Persona is required
         if (persona == null || persona.isBlank()) {
-            log.warn("External request missing persona header from client: {}", sanitizeForLog(clientId));
+            log.warn("External request missing persona header from client: {}", StringSanitizer.forLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_PERSONA", "X-Persona header is required");
         }
 
         // User ID is required
         if (userId == null || userId.isBlank()) {
-            log.warn("External request missing user-id header from client: {}", sanitizeForLog(clientId));
+            log.warn("External request missing user-id header from client: {}", StringSanitizer.forLog(clientId));
             return unauthorizedResponse(exchange, "MISSING_USER_ID", "X-User-Id header is required");
         }
 
         // Validate identifiers format
         if (!isValidIdentifier(persona)) {
-            log.warn("Invalid persona format from client: {}", sanitizeForLog(clientId));
+            log.warn("Invalid persona format from client: {}", StringSanitizer.forLog(clientId));
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Invalid persona format");
         }
 
         if (!isValidIdentifier(userId)) {
-            log.warn("Invalid user ID format from client: {}", sanitizeForLog(clientId));
+            log.warn("Invalid user ID format from client: {}", StringSanitizer.forLog(clientId));
             return forbiddenResponse(exchange, "INVALID_USER_ID", "Invalid user ID format");
         }
 
         // Validate persona is allowed
         if (!properties.allowedPersonas().contains(persona)) {
-            log.warn("External request with disallowed persona from client: {}", sanitizeForLog(clientId));
+            log.warn("External request with disallowed persona from client: {}", StringSanitizer.forLog(clientId));
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Persona not allowed");
         }
 
         // Validate IDP type if configured
         if (!properties.trustedIdpTypes().isEmpty()) {
             if (idpType == null || !properties.trustedIdpTypes().contains(idpType)) {
-                log.warn("External request with untrusted IDP type from client: {}", sanitizeForLog(clientId));
+                log.warn("External request with untrusted IDP type from client: {}", StringSanitizer.forLog(clientId));
                 return forbiddenResponse(exchange, "UNTRUSTED_IDP", "IDP type not trusted");
             }
         }
@@ -118,7 +119,7 @@ public class ExternalAuthFilter implements WebFilter {
         ServerHttpRequest mutatedRequest = createMutatedRequest(request, userId, clientId);
 
         log.info("External auth validated - client: {}, persona: {}",
-                sanitizeForLog(clientId), sanitizeForLog(persona));
+                StringSanitizer.forLog(clientId), StringSanitizer.forLog(persona));
 
         return chain.filter(exchange.mutate().request(mutatedRequest).build());
     }
@@ -166,18 +167,6 @@ public class ExternalAuthFilter implements WebFilter {
             return trimmed.substring(0, MAX_HEADER_LENGTH);
         }
         return trimmed;
-    }
-
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) {
-            return "null";
-        }
-        return value
-                .replace("\n", "")
-                .replace("\r", "")
-                .replace("\t", "")
-                .substring(0, Math.min(value.length(), 64));
     }
 
     @NonNull

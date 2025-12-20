@@ -1,5 +1,6 @@
 package com.example.bff.common.exception;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.exception.NoAccessException;
@@ -27,38 +28,37 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    private static final int MAX_LOG_LENGTH = 200;
     private static final int MAX_RESPONSE_LENGTH = 100;
 
     @ExceptionHandler(SessionBindingException.class)
     public ResponseEntity<Map<String, Object>> handleSessionBinding(SessionBindingException ex) {
-        log.warn("Session binding failure: {}", sanitizeForLog(ex.getReason()));
+        log.warn("Session binding failure: {}", StringSanitizer.forLog(ex.getReason()));
         return errorResponse(HttpStatus.UNAUTHORIZED, "session_invalid", "Session validation failed");
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
-        log.warn("Access denied: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Access denied: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.FORBIDDEN, "access_denied", "Access denied");
     }
 
     @ExceptionHandler(AgeRestrictionException.class)
     public ResponseEntity<Map<String, Object>> handleAgeRestriction(AgeRestrictionException ex) {
-        log.warn("Age restriction: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Age restriction: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.FORBIDDEN, "age_restricted", "AGE_RESTRICTION",
                 "User does not meet minimum age requirement");
     }
 
     @ExceptionHandler(NoAccessException.class)
     public ResponseEntity<Map<String, Object>> handleNoAccess(NoAccessException ex) {
-        log.warn("No access: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("No access: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.FORBIDDEN, "no_access", "NO_ELIGIBILITY_OR_MANAGED_MEMBERS",
                 "User has no access to the system");
     }
 
     @ExceptionHandler(IdentityServiceException.class)
     public ResponseEntity<Map<String, Object>> handleIdentityServiceError(IdentityServiceException ex) {
-        log.error("Identity service error: {}", sanitizeForLog(ex.getMessage()));
+        log.error("Identity service error: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, "identity_service_error",
                 "IDENTITY_SERVICE_UNAVAILABLE", "Unable to verify identity. Please try again later.");
     }
@@ -87,19 +87,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ServerWebInputException.class)
     public ResponseEntity<Map<String, Object>> handleInputException(ServerWebInputException ex) {
-        log.warn("Input error: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Input error: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.BAD_REQUEST, "invalid_request", "Invalid request format");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("Illegal argument: {}", sanitizeForLog(ex.getMessage()));
+        log.warn("Illegal argument: {}", StringSanitizer.forLog(ex.getMessage()));
         return errorResponse(HttpStatus.BAD_REQUEST, "invalid_argument", "Invalid request parameter");
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
-        log.error("Unhandled exception: {}", sanitizeForLog(ex.getMessage()), ex);
+        log.error("Unhandled exception: {}", StringSanitizer.forLog(ex.getMessage()), ex);
         return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "An unexpected error occurred");
     }
 
@@ -134,13 +134,6 @@ public class GlobalExceptionHandler {
         String path = violation.getPropertyPath().toString();
         int lastDot = path.lastIndexOf('.');
         return lastDot >= 0 ? path.substring(lastDot + 1) : path;
-    }
-
-    @NonNull
-    private String sanitizeForLog(@Nullable String value) {
-        if (value == null) return "null";
-        String s = value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-        return s.length() > MAX_LOG_LENGTH ? s.substring(0, MAX_LOG_LENGTH) + "..." : s;
     }
 
     @NonNull

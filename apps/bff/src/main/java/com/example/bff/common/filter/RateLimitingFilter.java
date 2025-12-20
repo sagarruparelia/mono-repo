@@ -1,5 +1,6 @@
 package com.example.bff.common.filter;
 
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.RateLimitProperties;
 import com.example.bff.config.properties.RateLimitProperties.PersonaRule;
 import com.example.bff.config.properties.RateLimitProperties.RateLimitRule;
@@ -54,7 +55,8 @@ public class RateLimitingFilter implements WebFilter {
 
                 if (!tryConsume(bucketKey, limit)) {
                     log.warn("Rate limit exceeded for {} on path {} (rule: {})",
-                            clientIp, path, rule.description());
+                            StringSanitizer.forLog(clientIp), StringSanitizer.forLog(path),
+                            StringSanitizer.forLog(rule.description()));
                     return rejectRequest(exchange, rule.description());
                 }
                 return chain.filter(exchange);
@@ -72,7 +74,7 @@ public class RateLimitingFilter implements WebFilter {
                                 String bucketKey = "persona:" + persona + ":" + clientIp;
                                 if (!tryConsume(bucketKey, rule.requestsPerSecond())) {
                                     log.warn("Rate limit exceeded for persona {} from {}",
-                                            persona, clientIp);
+                                            StringSanitizer.forLog(persona), StringSanitizer.forLog(clientIp));
                                     return rejectRequest(exchange, rule.description());
                                 }
                                 break;
@@ -85,7 +87,7 @@ public class RateLimitingFilter implements WebFilter {
                     // No authentication - apply default limits
                     String bucketKey = "default:" + clientIp;
                     if (!tryConsume(bucketKey, rateLimitProperties.defaultLimits().requestsPerSecond())) {
-                        log.warn("Rate limit exceeded for anonymous request from {}", clientIp);
+                        log.warn("Rate limit exceeded for anonymous request from {}", StringSanitizer.forLog(clientIp));
                         return rejectRequest(exchange, "Default rate limit");
                     }
                     return chain.filter(exchange);

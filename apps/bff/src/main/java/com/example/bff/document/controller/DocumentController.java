@@ -2,6 +2,7 @@ package com.example.bff.document.controller;
 
 import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.service.AbacAuthorizationService;
@@ -123,7 +124,7 @@ public class DocumentController {
                                     return operation.get();
                                 }
                                 log.warn("Authorization denied for action {} on document {} for member {}: {}",
-                                        action, documentId, memberId, decision.reason());
+                                        action, StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId), decision.reason());
                                 return Mono.<ResponseEntity<T>>just(buildForbiddenResponse(decision));
                             });
                 })
@@ -150,7 +151,7 @@ public class DocumentController {
                                                             .<DocumentDto>body(null)));
                                 }
                                 log.warn("Authorization denied for upload to member {}: {}",
-                                        memberId, decision.reason());
+                                        StringSanitizer.forLog(memberId), decision.reason());
                                 return Mono.<ResponseEntity<DocumentDto>>just(buildForbiddenResponse(decision));
                             });
                 })
@@ -203,7 +204,7 @@ public class DocumentController {
         if (value == null) {
             return "";
         }
-        return value.replace("\n", " ").replace("\r", " ")
-                .substring(0, Math.min(value.length(), 200));
+        String sanitized = value.replace("\n", " ").replace("\r", " ");
+        return sanitized.substring(0, Math.min(sanitized.length(), 200));
     }
 }
