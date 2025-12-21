@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -33,8 +32,6 @@ import static com.example.bff.config.EcdhApiWebClientConfig.ECDH_API_WEBCLIENT;
 @Service
 public class EcdhApiClientService {
 
-    private static final String X_IDENTIFIER_HEADER = "x-identifier";
-
     private final WebClient webClient;
     private final EcdhApiProperties apiProperties;
     private final GraphqlQueryLoader queryLoader;
@@ -50,15 +47,13 @@ public class EcdhApiClientService {
 
     @NonNull
     public Mono<List<ImmunizationEntity.ImmunizationRecord>> fetchImmunizations(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
+            @NonNull String memberEid) {
 
         log.debug("Fetching immunizations for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getImmunizationQuery(),
                 memberEid,
-                apiIdentifier,
                 ImmunizationResponse.class
         ).map(responses -> {
             List<ImmunizationEntity.ImmunizationRecord> allRecords = new ArrayList<>();
@@ -77,15 +72,13 @@ public class EcdhApiClientService {
 
     @NonNull
     public Mono<List<AllergyEntity.AllergyRecord>> fetchAllergies(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
+            @NonNull String memberEid) {
 
         log.debug("Fetching allergies for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getAllergyQuery(),
                 memberEid,
-                apiIdentifier,
                 AllergyResponse.class
         ).map(responses -> {
             List<AllergyEntity.AllergyRecord> allRecords = new ArrayList<>();
@@ -104,15 +97,13 @@ public class EcdhApiClientService {
 
     @NonNull
     public Mono<List<ConditionEntity.ConditionRecord>> fetchConditions(
-            @NonNull String memberEid,
-            @Nullable String apiIdentifier) {
+            @NonNull String memberEid) {
 
         log.debug("Fetching conditions for memberEid: {}", memberEid);
 
         return fetchAllPages(
                 queryLoader.getConditionQuery(),
                 memberEid,
-                apiIdentifier,
                 ConditionResponse.class
         ).map(responses -> {
             List<ConditionEntity.ConditionRecord> allRecords = new ArrayList<>();
@@ -132,16 +123,15 @@ public class EcdhApiClientService {
     private <T> Mono<List<T>> fetchAllPages(
             String query,
             String memberEid,
-            String apiIdentifier,
             Class<T> responseType) {
 
-        return fetchPage(query, memberEid, apiIdentifier, null, responseType)
+        return fetchPage(query, memberEid, null, responseType)
                 .expand(response -> {
                     String continuationToken = getContinuationToken(response);
                     if (continuationToken == null || continuationToken.isBlank()) {
                         return Mono.empty();
                     }
-                    return fetchPage(query, memberEid, apiIdentifier, continuationToken, responseType);
+                    return fetchPage(query, memberEid, continuationToken, responseType);
                 })
                 .collectList();
     }
@@ -149,7 +139,6 @@ public class EcdhApiClientService {
     private <T> Mono<T> fetchPage(
             String query,
             String memberEid,
-            String apiIdentifier,
             String continuationToken,
             Class<T> responseType) {
 
@@ -164,17 +153,11 @@ public class EcdhApiClientService {
                 "variables", variables
         );
 
-        var requestBuilder = webClient.post()
-                .uri(apiProperties.graphPath())
-                .body(BodyInserters.fromValue(requestBody));
-
-        if (apiIdentifier != null && !apiIdentifier.isBlank()) {
-            requestBuilder.header(X_IDENTIFIER_HEADER, apiIdentifier);
-        }
-
         var retryConfig = apiProperties.retry();
 
-        return requestBuilder
+        return webClient.post()
+                .uri(apiProperties.graphPath())
+                .body(BodyInserters.fromValue(requestBody))
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response ->
                         response.bodyToMono(String.class)

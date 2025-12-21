@@ -30,35 +30,35 @@ public class HealthDataOrchestrator {
     private final HealthDataCacheProperties cacheProperties;
 
     @NonNull
-    public Mono<ImmunizationEntity> getImmunizations(@NonNull String memberEid, @Nullable String apiIdentifier) {
-        Mono<ImmunizationEntity> loader = ecdhApiClient.fetchImmunizations(memberEid, apiIdentifier)
+    public Mono<ImmunizationEntity> getImmunizations(@NonNull String memberEid) {
+        Mono<ImmunizationEntity> loader = ecdhApiClient.fetchImmunizations(memberEid)
                 .map(records -> ImmunizationEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadImmunizations(memberEid, loader);
     }
 
     @NonNull
-    public Mono<AllergyEntity> getAllergies(@NonNull String memberEid, @Nullable String apiIdentifier) {
-        Mono<AllergyEntity> loader = ecdhApiClient.fetchAllergies(memberEid, apiIdentifier)
+    public Mono<AllergyEntity> getAllergies(@NonNull String memberEid) {
+        Mono<AllergyEntity> loader = ecdhApiClient.fetchAllergies(memberEid)
                 .map(records -> AllergyEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadAllergies(memberEid, loader);
     }
 
     @NonNull
-    public Mono<ConditionEntity> getConditions(@NonNull String memberEid, @Nullable String apiIdentifier) {
-        Mono<ConditionEntity> loader = ecdhApiClient.fetchConditions(memberEid, apiIdentifier)
+    public Mono<ConditionEntity> getConditions(@NonNull String memberEid) {
+        Mono<ConditionEntity> loader = ecdhApiClient.fetchConditions(memberEid)
                 .map(records -> ConditionEntity.create(memberEid, records, cacheService.getTtl()));
 
         return cacheService.getOrLoadConditions(memberEid, loader);
     }
 
     @NonNull
-    public Mono<Void> refreshAllHealthData(@NonNull String memberEid, @Nullable String apiIdentifier) {
+    public Mono<Void> refreshAllHealthData(@NonNull String memberEid) {
         log.info("Refreshing all health data for member: {}", memberEid);
 
         return cacheService.evictAllForMember(memberEid)
-                .then(fetchAllHealthDataForMember(memberEid, apiIdentifier))
+                .then(fetchAllHealthDataForMember(memberEid))
                 .doOnSuccess(v -> log.info("Health data refresh completed for: {}", memberEid));
     }
 
@@ -68,7 +68,6 @@ public class HealthDataOrchestrator {
      */
     public void triggerBackgroundFetchForSession(
             @NonNull String userEid,
-            @Nullable String apiIdentifier,
             @Nullable List<ManagedMember> managedMembers) {
 
         if (!cacheProperties.proactiveFetch().enabled()) {
@@ -90,7 +89,7 @@ public class HealthDataOrchestrator {
 
         Flux.fromIterable(eidsToFetch)
                 .delayElements(cacheProperties.proactiveFetch().delayAfterLogin())
-                .flatMap(eid -> fetchAllHealthDataForMember(eid, apiIdentifier)
+                .flatMap(eid -> fetchAllHealthDataForMember(eid)
                                 .onErrorResume(e -> {
                                     log.warn("Background fetch failed for eid={}: {}", eid, e.getMessage());
                                     return Mono.empty();
@@ -108,7 +107,7 @@ public class HealthDataOrchestrator {
      * Proactively fetch health data for a single member.
      * Called after OAuth2 proxy connection (fire-and-forget).
      */
-    public void triggerBackgroundFetchForMember(@NonNull String memberEid, @Nullable String apiIdentifier) {
+    public void triggerBackgroundFetchForMember(@NonNull String memberEid) {
         if (!cacheProperties.proactiveFetch().enabled()) {
             log.debug("Proactive fetch disabled, skipping for member: {}", memberEid);
             return;
@@ -116,7 +115,7 @@ public class HealthDataOrchestrator {
 
         log.info("Triggering background health data fetch for member: {}", memberEid);
 
-        fetchAllHealthDataForMember(memberEid, apiIdentifier)
+        fetchAllHealthDataForMember(memberEid)
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         result -> log.debug("Background fetch completed for member: {}", memberEid),
@@ -125,11 +124,11 @@ public class HealthDataOrchestrator {
                 );
     }
 
-    private Mono<Void> fetchAllHealthDataForMember(String memberEid, String apiIdentifier) {
+    private Mono<Void> fetchAllHealthDataForMember(String memberEid) {
         return Mono.when(
-                getImmunizations(memberEid, apiIdentifier),
-                getAllergies(memberEid, apiIdentifier),
-                getConditions(memberEid, apiIdentifier)
+                getImmunizations(memberEid),
+                getAllergies(memberEid),
+                getConditions(memberEid)
         ).doOnSuccess(v -> log.debug("All health data fetched for member: {}", memberEid));
     }
 }

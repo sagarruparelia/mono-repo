@@ -93,7 +93,7 @@ public class MemberAccessOrchestrator {
         Mono<List<ManagedMember>> managedMembersMono;
         if (age >= ADULT_AGE && isResponsibleParty) {
             log.debug("User is adult RP, fetching managed members");
-            managedMembersMono = managedMemberService.getManagedMembers(eid, apiIdentifier);
+            managedMembersMono = managedMemberService.getManagedMembers(eid);
         } else {
             log.debug("User is not adult RP, skipping managed members fetch");
             managedMembersMono = Mono.just(List.of());

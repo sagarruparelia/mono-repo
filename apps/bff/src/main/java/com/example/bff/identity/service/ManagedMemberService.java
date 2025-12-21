@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -31,7 +30,6 @@ import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEB
 public class ManagedMemberService {
 
     private static final String SERVICE_NAME = "Permissions";
-    private static final String X_IDENTIFIER_HEADER = "x-identifier";
 
     private final WebClient webClient;
     private final ExternalApiProperties apiProperties;
@@ -47,16 +45,16 @@ public class ManagedMemberService {
     }
 
     @NonNull
-    public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid, @Nullable String apiIdentifier) {
+    public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid) {
         log.debug("Fetching managed members for memberEid: {}", StringSanitizer.forLog(memberEid));
 
-        Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid, apiIdentifier);
+        Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid);
 
         return cacheService.getOrLoadPermissions(memberEid, loader, ManagedMemberResponse.class)
                 .map(this::toManagedMembers);
     }
 
-    private Mono<ManagedMemberResponse> fetchFromApi(String memberEid, String apiIdentifier) {
+    private Mono<ManagedMemberResponse> fetchFromApi(String memberEid) {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.permissions().timeout();
 
@@ -81,16 +79,9 @@ public class ManagedMemberService {
                 "variables", Map.of("memberEid", memberEid)
         );
 
-        var requestBuilder = webClient.post()
+        return webClient.post()
                 .uri(apiProperties.permissions().path())
-                .body(BodyInserters.fromValue(requestBody));
-
-        // Add x-identifier header if available
-        if (apiIdentifier != null && !apiIdentifier.isBlank()) {
-            requestBuilder.header(X_IDENTIFIER_HEADER, apiIdentifier);
-        }
-
-        return requestBuilder
+                .body(BodyInserters.fromValue(requestBody))
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response ->
                         response.bodyToMono(String.class)

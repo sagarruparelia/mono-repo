@@ -31,7 +31,6 @@ public record SessionData(
         @Nullable String enterpriseId,
         @Nullable String birthdate,
         boolean isResponsibleParty,
-        @Nullable String apiIdentifier,
         @Nullable String eligibilityStatus,
         @Nullable String termDate,
         @Nullable String managedMembersJson,
@@ -55,7 +54,6 @@ public record SessionData(
                 map.get("eid"),
                 map.get("birthdate"),
                 "true".equals(map.get("isResponsibleParty")),
-                map.get("apiIdentifier"),
                 map.get("eligibilityStatus"),
                 map.get("termDate"),
                 map.get("managedMembersJson"),
@@ -87,7 +85,6 @@ public record SessionData(
         if (enterpriseId != null) map.put("eid", enterpriseId);
         if (birthdate != null) map.put("birthdate", birthdate);
         map.put("isResponsibleParty", String.valueOf(isResponsibleParty));
-        if (apiIdentifier != null) map.put("apiIdentifier", apiIdentifier);
         if (eligibilityStatus != null) map.put("eligibilityStatus", eligibilityStatus);
         if (termDate != null) map.put("termDate", termDate);
         if (managedMembersJson != null) map.put("managedMembersJson", managedMembersJson);
@@ -114,7 +111,7 @@ public record SessionData(
                 hsidUuid, email, name, persona, dependents,
                 ipAddress, userAgentHash,
                 Instant.now(), Instant.now(),
-                null, null, false, null, null, null, null, null,
+                null, null, false, null, null, null, null,
                 null, null  // Zero Trust fields
         );
     }

@@ -54,7 +54,7 @@ public class HealthDataController {
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Getting immunizations for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
 
-        return orchestrator.getImmunizations(enterpriseId, null)
+        return orchestrator.getImmunizations(enterpriseId)
                 .map(HealthDataApiResponse::fromImmunizations)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
@@ -73,7 +73,7 @@ public class HealthDataController {
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Getting allergies for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
 
-        return orchestrator.getAllergies(enterpriseId, null)
+        return orchestrator.getAllergies(enterpriseId)
                 .map(HealthDataApiResponse::fromAllergies)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
@@ -92,7 +92,7 @@ public class HealthDataController {
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Getting conditions for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
 
-        return orchestrator.getConditions(enterpriseId, null)
+        return orchestrator.getConditions(enterpriseId)
                 .map(HealthDataApiResponse::fromConditions)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
@@ -111,7 +111,7 @@ public class HealthDataController {
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Refreshing health data for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
 
-        return orchestrator.refreshAllHealthData(enterpriseId, null)
+        return orchestrator.refreshAllHealthData(enterpriseId)
                 .thenReturn(ResponseEntity.ok().<Void>build());
     }
 

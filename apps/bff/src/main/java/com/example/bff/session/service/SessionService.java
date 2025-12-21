@@ -449,9 +449,6 @@ public class SessionService {
         sessionData.put("eid", memberAccess.enterpriseId());
         sessionData.put("birthdate", memberAccess.birthdate().toString());
         sessionData.put("isResponsibleParty", String.valueOf(memberAccess.isResponsibleParty()));
-        if (memberAccess.apiIdentifier() != null) {
-            sessionData.put("apiIdentifier", memberAccess.apiIdentifier());
-        }
         sessionData.put("eligibilityStatus", memberAccess.eligibilityStatus().name());
         if (memberAccess.termDate() != null) {
             sessionData.put("termDate", memberAccess.termDate().toString());
