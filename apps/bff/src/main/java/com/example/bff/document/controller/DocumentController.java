@@ -1,16 +1,20 @@
 package com.example.bff.document.controller;
 
+import com.example.bff.auth.model.AuthContext;
+import com.example.bff.auth.util.AuthContextResolver;
 import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
-import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.service.AbacAuthorizationService;
 import com.example.bff.authz.model.AuthType;
+import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.document.dto.DocumentDto;
 import com.example.bff.document.dto.DocumentUploadRequest;
 import com.example.bff.document.model.DocumentEntity.DocumentType;
 import com.example.bff.document.service.DocumentService;
+import com.example.bff.session.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -23,65 +27,77 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.Map;
 
-/** REST controller for document management. */
+/**
+ * REST controller for document management.
+ * API Version 1.0.0
+ */
 @Slf4j
 @RestController
-@RequestMapping("/api/member/{memberId}/documents")
+@RequestMapping("/api/1.0.0/documents")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private static final String SESSION_COOKIE = "BFF_SESSION";
+    private static final String ENTERPRISE_ID_HEADER = "X-Enterprise-Id";
 
     private final DocumentService documentService;
     private final AbacAuthorizationService authorizationService;
+    private final SessionService sessionService;
 
     @GetMapping
     public Mono<ResponseEntity<List<DocumentDto>>> listDocuments(
-            @PathVariable String memberId,
+            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId, Action.LIST, "list",
-                () -> documentService.listDocuments(memberId)
-                        .collectList()
-                        .map(ResponseEntity::ok));
+        return resolveEnterpriseId(enterpriseId, exchange)
+                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.LIST, "list",
+                        () -> documentService.listDocuments(memberId)
+                                .collectList()
+                                .map(ResponseEntity::ok)))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
     }
 
     @GetMapping("/{documentId}")
     public Mono<ResponseEntity<DocumentDto>> getDocument(
-            @PathVariable String memberId,
             @PathVariable String documentId,
+            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId, Action.VIEW, documentId,
-                () -> documentService.getDocument(memberId, documentId)
-                        .map(ResponseEntity::ok)
-                        .defaultIfEmpty(ResponseEntity.notFound().build()));
+        return resolveEnterpriseId(enterpriseId, exchange)
+                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.VIEW, documentId,
+                        () -> documentService.getDocument(memberId, documentId)
+                                .map(ResponseEntity::ok)
+                                .defaultIfEmpty(ResponseEntity.notFound().build())))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
     }
 
     @GetMapping("/{documentId}/download")
     public Mono<ResponseEntity<byte[]>> downloadDocument(
-            @PathVariable String memberId,
             @PathVariable String documentId,
+            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             ServerWebExchange exchange) {
 
-        // Download requires VIEW_SENSITIVE since all documents are sensitive
-        return authorizeAndExecute(exchange, memberId, Action.VIEW_SENSITIVE, documentId,
-                () -> documentService.getDocument(memberId, documentId)
-                        .flatMap(doc -> documentService.downloadDocument(memberId, documentId)
-                                .map(content -> ResponseEntity.ok()
-                                        .header(HttpHeaders.CONTENT_DISPOSITION,
-                                                "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
-                                        .contentType(MediaType.parseMediaType(doc.contentType()))
-                                        .contentLength(content.length)
-                                        .body(content)))
-                        .defaultIfEmpty(ResponseEntity.notFound().build()));
+        return resolveEnterpriseId(enterpriseId, exchange)
+                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.VIEW_SENSITIVE, documentId,
+                        () -> documentService.getDocument(memberId, documentId)
+                                .flatMap(doc -> documentService.downloadDocument(memberId, documentId)
+                                        .map(content -> ResponseEntity.ok()
+                                                .header(HttpHeaders.CONTENT_DISPOSITION,
+                                                        "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
+                                                .contentType(MediaType.parseMediaType(doc.contentType()))
+                                                .contentLength(content.length)
+                                                .body(content)))
+                                .defaultIfEmpty(ResponseEntity.notFound().build())))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<DocumentDto>> uploadDocument(
-            @PathVariable String memberId,
+            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             @RequestPart("file") FilePart file,
             @RequestPart(value = "description", required = false) String description,
             @RequestPart(value = "documentType", required = false) String documentType,
@@ -92,20 +108,75 @@ public class DocumentController {
                 parseDocumentType(documentType)
         );
 
-        return authorizeUpload(exchange, memberId, file, request);
+        return resolveEnterpriseId(enterpriseId, exchange)
+                .flatMap(memberId -> authorizeUpload(exchange, memberId, file, request))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
     }
 
     @DeleteMapping("/{documentId}")
     public Mono<ResponseEntity<Void>> deleteDocument(
-            @PathVariable String memberId,
             @PathVariable String documentId,
+            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId, Action.DELETE, documentId,
-                () -> documentService.deleteDocument(memberId, documentId)
-                        .then(Mono.just(ResponseEntity.noContent().<Void>build()))
-                        .onErrorResume(IllegalArgumentException.class,
-                                e -> Mono.just(ResponseEntity.notFound().build())));
+        return resolveEnterpriseId(enterpriseId, exchange)
+                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.DELETE, documentId,
+                        () -> documentService.deleteDocument(memberId, documentId)
+                                .then(Mono.just(ResponseEntity.noContent().<Void>build()))
+                                .onErrorResume(IllegalArgumentException.class,
+                                        e -> Mono.just(ResponseEntity.notFound().build()))))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
+    }
+
+    /**
+     * Resolve enterprise ID from header or session context.
+     * - PROXY: Uses X-Enterprise-Id header (required)
+     * - HSID Self: Uses session's effectiveMemberId
+     * - HSID ResponsibleParty: Uses X-Enterprise-Id header, validated against permissions
+     */
+    private Mono<String> resolveEnterpriseId(String headerEnterpriseId, ServerWebExchange exchange) {
+        AuthContext ctx = AuthContextResolver.resolve(exchange).orElse(null);
+        if (ctx == null) {
+            return Mono.error(new IllegalStateException("No auth context available"));
+        }
+
+        // PROXY: Trust header (authZ delegated to consumer)
+        if (ctx.isProxy()) {
+            if (headerEnterpriseId == null || headerEnterpriseId.isBlank()) {
+                return Mono.error(new IllegalArgumentException("X-Enterprise-Id required for proxy auth"));
+            }
+            return Mono.just(headerEnterpriseId);
+        }
+
+        // HSID Self: Use own eid from session
+        if (ctx.isSelf()) {
+            return Mono.just(ctx.effectiveMemberId());
+        }
+
+        // HSID ResponsibleParty: Validate against permission set
+        if (ctx.isResponsibleParty()) {
+            if (headerEnterpriseId == null || headerEnterpriseId.isBlank()) {
+                return Mono.error(new IllegalArgumentException("X-Enterprise-Id required for ResponsibleParty"));
+            }
+
+            // Validate eid is in viewable dependents (DAA + RPR)
+            return sessionService.getPermissions(ctx.sessionId())
+                    .flatMap(permissions -> {
+                        List<String> allowed = permissions.getViewableDependentIds();
+                        if (allowed.contains(headerEnterpriseId)) {
+                            return Mono.just(headerEnterpriseId);
+                        }
+                        log.warn("ResponsibleParty attempted to access unauthorized member: {}",
+                                StringSanitizer.forLog(headerEnterpriseId));
+                        return Mono.error(new SecurityException(
+                                "No permission to access member: " + headerEnterpriseId));
+                    })
+                    .switchIfEmpty(Mono.error(new IllegalStateException("Could not load permissions")));
+        }
+
+        return Mono.error(new IllegalArgumentException("Invalid persona: " + ctx.persona()));
     }
 
     private <T> Mono<ResponseEntity<T>> authorizeAndExecute(

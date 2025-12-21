@@ -144,6 +144,10 @@ public class DualAuthWebFilter implements WebFilter {
                         }));
     }
 
+    private static final Set<String> VALID_PROXY_PERSONAS = Set.of("CaseWorker", "Agent", "ConfigSpecialist");
+    private static final Set<String> VALID_IDP_TYPES = Set.of("OHID", "MSID");
+    private static final int MIN_LOGGED_IN_MEMBER_ID_LENGTH = 3;
+
     @NonNull
     private Mono<AuthContext> resolveProxyContext(@NonNull ServerWebExchange exchange) {
         // Check if this is a proxy request (has X-Auth-Type: proxy or X-Client-Id)
@@ -155,71 +159,69 @@ public class DualAuthWebFilter implements WebFilter {
             return Mono.empty();
         }
 
-        String correlationId = getCorrelationId(exchange);
-
-        // Extract required headers
+        // Extract required headers using new header names
+        String enterpriseId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
+                .getFirst(externalProperties.headers().enterpriseId()));
+        String loggedInMemberIdValue = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
+                .getFirst(externalProperties.headers().loggedInMemberIdValue()));
+        String loggedInMemberIdType = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
+                .getFirst(externalProperties.headers().loggedInMemberIdType()));
         String persona = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
-                .getFirst(externalProperties.headers().persona()));
-        String userId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
-                .getFirst(externalProperties.headers().userId()));
-        String idpType = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
-                .getFirst(externalProperties.headers().idpType()));
+                .getFirst(externalProperties.headers().loggedInMemberPersona()));
         String partnerId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().partnerId()));
 
-        // Validate required headers
-        if (persona == null || persona.isBlank()) {
-            log.warn("Proxy auth missing persona header");
+        // Validate X-Enterprise-Id (required for all proxy requests)
+        if (enterpriseId == null || enterpriseId.isBlank()) {
+            log.warn("Proxy auth missing X-Enterprise-Id header");
             return Mono.error(new ProxyAuthException(
                     ErrorResponse.Codes.UNAUTHORIZED,
-                    "X-Persona header is required"));
+                    "X-Enterprise-Id header is required"));
         }
 
-        if (userId == null || userId.isBlank()) {
-            log.warn("Proxy auth missing user-id header");
+        // Validate X-Logged-In-Member-Id-Value (min 3 chars)
+        if (loggedInMemberIdValue == null || loggedInMemberIdValue.length() < MIN_LOGGED_IN_MEMBER_ID_LENGTH) {
+            log.warn("Proxy auth missing or invalid X-Logged-In-Member-Id-Value header");
             return Mono.error(new ProxyAuthException(
                     ErrorResponse.Codes.UNAUTHORIZED,
-                    "X-User-Id header is required"));
+                    "X-Logged-In-Member-Id-Value header is required (min " + MIN_LOGGED_IN_MEMBER_ID_LENGTH + " chars)"));
         }
 
-        // Validate IDP-persona mapping
-        if (idpType != null && !idpType.isBlank()) {
-            if (!idpProperties.isValidIdpType(idpType)) {
-                log.warn("Invalid IDP type: {}", StringSanitizer.forLog(idpType));
-                return Mono.error(new ProxyAuthException(
-                        ErrorResponse.Codes.INVALID_IDP_TYPE,
-                        "Unrecognized IDP type: " + idpType));
-            }
+        // Validate X-Logged-In-Member-Id-Type (OHID or MSID)
+        if (loggedInMemberIdType == null || !VALID_IDP_TYPES.contains(loggedInMemberIdType)) {
+            log.warn("Proxy auth missing or invalid X-Logged-In-Member-Id-Type header: {}",
+                    StringSanitizer.forLog(loggedInMemberIdType));
+            return Mono.error(new ProxyAuthException(
+                    ErrorResponse.Codes.UNAUTHORIZED,
+                    "X-Logged-In-Member-Id-Type header must be one of: " + VALID_IDP_TYPES));
+        }
 
-            if (!idpProperties.isPersonaAllowed(idpType, persona)) {
-                Set<String> allowed = idpProperties.getAllowedPersonas(idpType);
-                log.warn("IDP-persona mismatch: idp={}, persona={}, allowed={}",
-                        StringSanitizer.forLog(idpType), StringSanitizer.forLog(persona), allowed);
-                return Mono.error(new ProxyAuthException(
-                        ErrorResponse.Codes.IDP_PERSONA_MISMATCH,
-                        "Persona '" + persona + "' is not allowed for IDP '" + idpType + "'"));
-            }
+        // Validate X-Logged-In-Member-Persona (CaseWorker, Agent, ConfigSpecialist)
+        if (persona == null || !VALID_PROXY_PERSONAS.contains(persona)) {
+            log.warn("Proxy auth missing or invalid X-Logged-In-Member-Persona header: {}",
+                    StringSanitizer.forLog(persona));
+            return Mono.error(new ProxyAuthException(
+                    ErrorResponse.Codes.UNAUTHORIZED,
+                    "X-Logged-In-Member-Persona header must be one of: " + VALID_PROXY_PERSONAS));
         }
 
         // Build SubjectAttributes for ABAC
-        // Note: memberId will be set from request body at controller level
         SubjectAttributes subject = SubjectAttributes.forProxy(
-                userId,
+                loggedInMemberIdValue,
                 persona,
                 partnerId,
-                null,  // memberId - set from request body
-                userId,
-                null   // operatorName - could be added if needed
+                enterpriseId,
+                loggedInMemberIdValue,
+                loggedInMemberIdType
         );
 
         AuthContext authContext = AuthContext.forProxy(
-                userId,
-                null,  // effectiveMemberId - set from request body at controller
+                loggedInMemberIdValue,
+                enterpriseId,
                 persona,
                 partnerId,
-                userId,
-                null,  // operatorName
-                idpType,
+                loggedInMemberIdValue,
+                loggedInMemberIdType,
                 subject
         );
 

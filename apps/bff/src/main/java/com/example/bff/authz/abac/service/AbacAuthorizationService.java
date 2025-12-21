@@ -135,11 +135,11 @@ public class AbacAuthorizationService {
     public Mono<SubjectAttributes> buildProxySubject(ServerHttpRequest request) {
         MfeProxyProperties.ProxyHeaders headers = proxyProperties.headers();
 
-        String persona = request.getHeaders().getFirst(headers.persona());
+        String persona = request.getHeaders().getFirst(headers.loggedInMemberPersona());
         String partnerId = request.getHeaders().getFirst(headers.partnerId());
-        String memberId = request.getHeaders().getFirst(headers.memberId());
-        String operatorId = request.getHeaders().getFirst(headers.operatorId());
-        String operatorName = request.getHeaders().getFirst(headers.operatorName());
+        String enterpriseId = request.getHeaders().getFirst(headers.enterpriseId());
+        String loggedInMemberIdValue = request.getHeaders().getFirst(headers.loggedInMemberIdValue());
+        String loggedInMemberIdType = request.getHeaders().getFirst(headers.loggedInMemberIdType());
 
         if (persona == null || persona.isBlank()) {
             log.warn("Missing persona header for proxy request");
@@ -155,14 +155,14 @@ public class AbacAuthorizationService {
             return Mono.empty();
         }
 
-        // Use operatorId as userId for proxy users
-        String userId = operatorId != null ? operatorId : "proxy-" + persona;
+        // Use loggedInMemberIdValue as userId for proxy users
+        String userId = loggedInMemberIdValue != null ? loggedInMemberIdValue : "proxy-" + persona;
 
         SubjectAttributes subject = SubjectAttributes.forProxy(
-                userId, persona, partnerId, memberId, operatorId, operatorName);
+                userId, persona, partnerId, enterpriseId, loggedInMemberIdValue, loggedInMemberIdType);
 
-        log.debug("Built proxy subject: userId={}, persona={}, memberId={}",
-                userId, persona, memberId);
+        log.debug("Built proxy subject: userId={}, persona={}, enterpriseId={}",
+                userId, persona, enterpriseId);
 
         return Mono.just(subject);
     }
@@ -182,7 +182,7 @@ public class AbacAuthorizationService {
         }
 
         String persona = request.getHeaders()
-                .getFirst(proxyProperties.headers().persona());
+                .getFirst(proxyProperties.headers().loggedInMemberPersona());
 
         var proxyConf = personaProperties.proxy();
         if (persona != null && proxyConf != null && proxyConf.allowed() != null &&

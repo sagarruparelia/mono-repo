@@ -85,10 +85,10 @@ app:
       headers:
         auth-type: X-Auth-Type
         partner-id: X-Partner-Id
-        member-id: X-Member-Id
-        persona: X-Persona
-        operator-id: X-Operator-Id
-        operator-name: X-Operator-Name
+        enterprise-id: X-Enterprise-Id
+        logged-in-member-persona: X-Logged-In-Member-Persona
+        logged-in-member-id-value: X-Logged-In-Member-Id-Value
+        logged-in-member-id-type: X-Logged-In-Member-Id-Type
         correlation-id: X-Correlation-Id
 
   # Enable authorization (required by DocumentController)
@@ -102,17 +102,18 @@ app:
   external-integration:
     enabled: true
     headers:
-      persona: X-Persona
-      user-id: X-User-Id
-      idp-type: X-IDP-Type
+      enterprise-id: X-Enterprise-Id
+      logged-in-member-id-value: X-Logged-In-Member-Id-Value
+      logged-in-member-id-type: X-Logged-In-Member-Id-Type
+      logged-in-member-persona: X-Logged-In-Member-Persona
       client-id: X-Client-Id
     allowed-personas:
-      - agent
-      - config
-      - case_worker
+      - Agent
+      - ConfigSpecialist
+      - CaseWorker
     trusted-idp-types:
-      - partner-idp
-      - corporate-idp
+      - OHID
+      - MSID
 
 # Actuator - expose all for E2E debugging
 management:

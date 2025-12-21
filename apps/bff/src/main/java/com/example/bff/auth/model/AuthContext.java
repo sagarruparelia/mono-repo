@@ -16,16 +16,21 @@ import com.example.bff.authz.model.AuthType;
  *   <li><b>PROXY</b>: Partner header-based auth via mTLS ALB</li>
  * </ul>
  *
- * @param authType          The authentication type (HSID or PROXY)
- * @param userId            Authenticated user's ID (from session or X-User-Id header)
- * @param effectiveMemberId Member context for data access (may differ from userId for parents)
- * @param persona           User's persona (individual, parent, agent, case_worker, config_specialist)
- * @param sessionId         Session ID for HSID (null for PROXY)
- * @param partnerId         Partner organization ID for PROXY (null for HSID)
- * @param operatorId        Operator ID for PROXY (null for HSID)
- * @param operatorName      Operator display name for PROXY (null for HSID)
- * @param idpType           Identity Provider type for PROXY (msid, ohid) (null for HSID)
- * @param subject           Cached SubjectAttributes for ABAC authorization
+ * <h3>Personas:</h3>
+ * <ul>
+ *   <li>HSID: Self, ResponsibleParty</li>
+ *   <li>PROXY: CaseWorker, Agent, ConfigSpecialist</li>
+ * </ul>
+ *
+ * @param authType              The authentication type (HSID or PROXY)
+ * @param userId                Authenticated user's ID (from session or header)
+ * @param effectiveMemberId     Member context for data access (may differ from userId for ResponsibleParty)
+ * @param persona               User's persona (Self, ResponsibleParty, CaseWorker, Agent, ConfigSpecialist)
+ * @param sessionId             Session ID for HSID (null for PROXY)
+ * @param partnerId             Partner organization ID for PROXY (null for HSID)
+ * @param loggedInMemberIdValue Logged-in member ID value for PROXY (from X-Logged-In-Member-Id-Value)
+ * @param loggedInMemberIdType  Logged-in member ID type for PROXY (OHID or MSID)
+ * @param subject               Cached SubjectAttributes for ABAC authorization
  */
 public record AuthContext(
         AuthType authType,
@@ -34,9 +39,8 @@ public record AuthContext(
         String persona,
         String sessionId,
         String partnerId,
-        String operatorId,
-        String operatorName,
-        String idpType,
+        String loggedInMemberIdValue,
+        String loggedInMemberIdType,
         SubjectAttributes subject
 ) {
     /**
@@ -48,8 +52,8 @@ public record AuthContext(
      * Create an AuthContext for HSID (session-based) authentication.
      *
      * @param userId            The authenticated user's ID
-     * @param effectiveMemberId The member context (userId or selected child)
-     * @param persona           The user's persona (individual or parent)
+     * @param effectiveMemberId The member context (userId or selected dependent)
+     * @param persona           The user's persona (Self or ResponsibleParty)
      * @param sessionId         The session ID
      * @param subject           The cached SubjectAttributes for ABAC
      * @return AuthContext configured for HSID
@@ -68,9 +72,8 @@ public record AuthContext(
                 persona,
                 sessionId,
                 null,  // partnerId
-                null,  // operatorId
-                null,  // operatorName
-                null,  // idpType
+                null,  // loggedInMemberIdValue
+                null,  // loggedInMemberIdType
                 subject
         );
     }
@@ -78,14 +81,13 @@ public record AuthContext(
     /**
      * Create an AuthContext for PROXY (header-based) authentication.
      *
-     * @param userId            The operator's user ID (from X-User-Id header)
-     * @param effectiveMemberId The member being accessed (from request body)
-     * @param persona           The operator's persona (agent, case_worker, config_specialist)
-     * @param partnerId         The partner organization ID
-     * @param operatorId        The operator ID
-     * @param operatorName      The operator display name
-     * @param idpType           The IDP type (msid, ohid)
-     * @param subject           The cached SubjectAttributes for ABAC
+     * @param userId                Derived user identifier
+     * @param effectiveMemberId     The member being accessed (from X-Enterprise-Id header)
+     * @param persona               The operator's persona (CaseWorker, Agent, ConfigSpecialist)
+     * @param partnerId             The partner organization ID
+     * @param loggedInMemberIdValue The logged-in member ID value (from X-Logged-In-Member-Id-Value)
+     * @param loggedInMemberIdType  The logged-in member ID type (OHID or MSID)
+     * @param subject               The cached SubjectAttributes for ABAC
      * @return AuthContext configured for PROXY
      */
     public static AuthContext forProxy(
@@ -93,9 +95,8 @@ public record AuthContext(
             String effectiveMemberId,
             String persona,
             String partnerId,
-            String operatorId,
-            String operatorName,
-            String idpType,
+            String loggedInMemberIdValue,
+            String loggedInMemberIdType,
             SubjectAttributes subject
     ) {
         return new AuthContext(
@@ -105,9 +106,8 @@ public record AuthContext(
                 persona,
                 null,  // sessionId
                 partnerId,
-                operatorId,
-                operatorName,
-                idpType,
+                loggedInMemberIdValue,
+                loggedInMemberIdType,
                 subject
         );
     }
@@ -141,37 +141,37 @@ public record AuthContext(
     }
 
     /**
-     * Check if user is an individual member (HSID).
+     * Check if user is Self persona (HSID).
      */
-    public boolean isIndividual() {
-        return isHsid() && "individual".equalsIgnoreCase(persona);
+    public boolean isSelf() {
+        return isHsid() && "Self".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if user is a responsible party/parent (HSID).
+     * Check if user is a ResponsibleParty persona (HSID).
      */
     public boolean isResponsibleParty() {
-        return isHsid() && "parent".equalsIgnoreCase(persona);
+        return isHsid() && "ResponsibleParty".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if user is an agent (PROXY).
+     * Check if user is an Agent persona (PROXY).
      */
     public boolean isAgent() {
-        return isProxy() && "agent".equalsIgnoreCase(persona);
+        return isProxy() && "Agent".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if user is a case worker (PROXY).
+     * Check if user is a CaseWorker persona (PROXY).
      */
     public boolean isCaseWorker() {
-        return isProxy() && "case_worker".equalsIgnoreCase(persona);
+        return isProxy() && "CaseWorker".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if user is a config specialist (PROXY).
+     * Check if user is a ConfigSpecialist persona (PROXY).
      */
     public boolean isConfigSpecialist() {
-        return isProxy() && "config_specialist".equalsIgnoreCase(persona);
+        return isProxy() && "ConfigSpecialist".equalsIgnoreCase(persona);
     }
 }

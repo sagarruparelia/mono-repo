@@ -18,14 +18,6 @@ security:
       - pattern: "/actuator/info"
         description: "App info"
 
-    # MFE proxy endpoints (OAuth2 Client Credentials) - DEPRECATED
-    # Use /api/health/** with dual-auth instead
-    proxy-auth:
-      - pattern: "/api/mfe/**"
-        description: "MFE proxy endpoints (deprecated - use /api/health/**)"
-        required-scopes:
-          - mfe:read
-
     # HSID session-only endpoints (browser only)
     session-auth:
       - pattern: "/api/user/**"
@@ -36,14 +28,12 @@ security:
     # Dual-auth endpoints (session OR proxy)
     # Accessible via browser session (HSID) or partner headers (PROXY via mTLS ALB)
     dual-auth:
-      - pattern: "/api/health/**"
-        description: "Health summary endpoints (legacy)"
       - pattern: "/api/1.0.0/health/**"
         description: "Health data API v1.0.0 (immunization, allergy, condition)"
+      - pattern: "/api/1.0.0/documents/**"
+        description: "Document management API v1.0.0"
       - pattern: "/api/profile/**"
         description: "Member profile endpoints"
-      - pattern: "/api/documents/**"
-        description: "Document management endpoints"
 
     # Admin endpoints (future use)
     admin:

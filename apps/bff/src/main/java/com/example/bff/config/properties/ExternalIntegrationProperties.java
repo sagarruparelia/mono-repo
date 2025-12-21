@@ -26,12 +26,13 @@ public record ExternalIntegrationProperties(
         List<String> trustedIdpTypes
 ) {
     /**
-     * Header names for external integration context.
+     * Header names for external integration context (OAuth2 external consumers).
      */
     public record HeaderNames(
-            String persona,
-            String userId,
-            String idpType,
+            String enterpriseId,
+            String loggedInMemberIdValue,
+            String loggedInMemberIdType,
+            String loggedInMemberPersona,
             String clientId,
             String partnerId
     ) {}
@@ -39,9 +40,10 @@ public record ExternalIntegrationProperties(
     public ExternalIntegrationProperties {
         if (headers == null) {
             headers = new HeaderNames(
-                    "X-Persona",
-                    "X-User-Id",
-                    "X-IDP-Type",
+                    "X-Enterprise-Id",
+                    "X-Logged-In-Member-Id-Value",
+                    "X-Logged-In-Member-Id-Type",
+                    "X-Logged-In-Member-Persona",
                     "X-Client-Id",
                     "X-Partner-Id"
             );

@@ -125,21 +125,21 @@ public class ConfigurablePolicy implements Policy {
     private PolicyDecision evaluateProxyRules(SubjectAttributes subject, ResourceAttributes resource, ProxyRules rules) {
         String persona = subject.persona() != null ? subject.persona() : "UNKNOWN";
 
-        // Config-only access
+        // ConfigSpecialist-only access
         if (rules.configOnly()) {
-            if (subject.isConfig()) {
+            if (subject.isConfigSpecialist()) {
                 return PolicyDecision.allow(getPolicyId(),
-                        String.format("Config persona has access to %s", resource.id()));
+                        String.format("ConfigSpecialist persona has access to %s", resource.id()));
             }
             return PolicyDecision.deny(getPolicyId(),
-                    String.format("Persona '%s' cannot access. Only 'config' allowed.", persona),
+                    String.format("Persona '%s' cannot access. Only 'ConfigSpecialist' allowed.", persona),
                     Set.of("persona"));
         }
 
-        // Config has full access
-        if (rules.configFullAccess() && subject.isConfig()) {
+        // ConfigSpecialist has full access
+        if (rules.configFullAccess() && subject.isConfigSpecialist()) {
             return PolicyDecision.allow(getPolicyId(),
-                    String.format("Config persona has full access to %s", resource.id()));
+                    String.format("ConfigSpecialist persona has full access to %s", resource.id()));
         }
 
         // Assignment check

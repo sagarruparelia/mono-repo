@@ -13,7 +13,6 @@ import com.example.bff.health.dto.ConditionResponse;
 import com.example.bff.health.dto.HealthDataApiResponse;
 import com.example.bff.health.dto.ImmunizationResponse;
 import com.example.bff.health.service.HealthDataOrchestrator;
-import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -31,8 +30,7 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class HealthDataController {
 
-    private static final String MEMBER_ID_PATTERN = "^[a-zA-Z0-9_-]{1,128}$";
-    private static final String X_MEMBER_ID_HEADER = "X-Member-Id";
+    private static final String X_ENTERPRISE_ID_HEADER = "X-Enterprise-Id";
     private static final String SESSION_COOKIE = "BFF_SESSION";
 
     private final HealthDataOrchestrator orchestrator;
@@ -40,11 +38,9 @@ public class HealthDataController {
 
     @GetMapping("/immunization")
     public Mono<ResponseEntity<HealthDataApiResponse<ImmunizationResponse.ImmunizationDto>>> getImmunizations(
-            @RequestParam(required = false)
-            @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId,
+        return authorizeAndExecute(exchange,
                 context -> orchestrator.getImmunizations(context.effectiveMemberId, context.apiIdentifier)
                         .map(HealthDataApiResponse::fromImmunizations)
                         .map(ResponseEntity::ok)
@@ -53,11 +49,9 @@ public class HealthDataController {
 
     @GetMapping("/allergy")
     public Mono<ResponseEntity<HealthDataApiResponse<AllergyResponse.AllergyDto>>> getAllergies(
-            @RequestParam(required = false)
-            @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId,
+        return authorizeAndExecute(exchange,
                 context -> orchestrator.getAllergies(context.effectiveMemberId, context.apiIdentifier)
                         .map(HealthDataApiResponse::fromAllergies)
                         .map(ResponseEntity::ok)
@@ -66,11 +60,9 @@ public class HealthDataController {
 
     @GetMapping("/condition")
     public Mono<ResponseEntity<HealthDataApiResponse<ConditionResponse.ConditionDto>>> getConditions(
-            @RequestParam(required = false)
-            @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId,
+        return authorizeAndExecute(exchange,
                 context -> orchestrator.getConditions(context.effectiveMemberId, context.apiIdentifier)
                         .map(HealthDataApiResponse::fromConditions)
                         .map(ResponseEntity::ok)
@@ -79,21 +71,18 @@ public class HealthDataController {
 
     @PostMapping("/refresh")
     public Mono<ResponseEntity<Void>> refreshHealthData(
-            @RequestParam(required = false)
-            @Pattern(regexp = MEMBER_ID_PATTERN, message = "Invalid member ID format") String memberId,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(exchange, memberId,
+        return authorizeAndExecute(exchange,
                 context -> orchestrator.refreshAllHealthData(context.effectiveMemberId, context.apiIdentifier)
                         .thenReturn(ResponseEntity.ok().<Void>build()));
     }
 
     private <T> Mono<ResponseEntity<T>> authorizeAndExecute(
             ServerWebExchange exchange,
-            String requestMemberId,
             java.util.function.Function<MemberContext, Mono<ResponseEntity<T>>> operation) {
 
-        return resolveMemberContext(exchange, requestMemberId)
+        return resolveMemberContext(exchange)
                 .flatMap(context -> {
                     AuthContext authContext = AuthContextResolver.resolve(exchange).orElse(null);
                     if (authContext == null) {
@@ -145,9 +134,7 @@ public class HealthDataController {
                 .switchIfEmpty(Mono.just(PolicyDecision.deny("NO_SUBJECT", "Could not build subject")));
     }
 
-    private Mono<MemberContext> resolveMemberContext(
-            ServerWebExchange exchange,
-            String requestMemberId) {
+    private Mono<MemberContext> resolveMemberContext(ServerWebExchange exchange) {
 
         return Mono.fromCallable(() -> {
             AuthContext authContext = AuthContextResolver.require(exchange);
@@ -157,12 +144,12 @@ public class HealthDataController {
             String apiIdentifier = null;
 
             if (authContext.isProxy()) {
-                // Proxy: Use X-Member-Id header (required)
+                // Proxy: Use X-Enterprise-Id header (already validated in DualAuthWebFilter)
                 effectiveMemberId = exchange.getRequest().getHeaders()
-                        .getFirst(X_MEMBER_ID_HEADER);
+                        .getFirst(X_ENTERPRISE_ID_HEADER);
 
                 if (effectiveMemberId == null || effectiveMemberId.isBlank()) {
-                    log.warn("Proxy request missing X-Member-Id header");
+                    log.warn("Proxy request missing X-Enterprise-Id header");
                     return null;
                 }
 
@@ -170,18 +157,30 @@ public class HealthDataController {
                 apiIdentifier = exchange.getRequest().getHeaders()
                         .getFirst("X-Api-Identifier");
 
-            } else {
-                // HSID: Use request param or default to auth context's effectiveMemberId
-                if (requestMemberId != null && !requestMemberId.isBlank()) {
-                    effectiveMemberId = requestMemberId;
-                } else {
-                    effectiveMemberId = authContext.effectiveMemberId();
-                }
+            } else if (authContext.isSelf()) {
+                // HSID Self: Use session's effectiveMemberId
+                effectiveMemberId = authContext.effectiveMemberId();
 
                 if (effectiveMemberId == null || effectiveMemberId.isBlank()) {
-                    log.warn("HSID request has no member ID");
+                    log.warn("HSID Self request has no member ID");
                     return null;
                 }
+
+            } else if (authContext.isResponsibleParty()) {
+                // HSID ResponsibleParty: Use X-Enterprise-Id header
+                effectiveMemberId = exchange.getRequest().getHeaders()
+                        .getFirst(X_ENTERPRISE_ID_HEADER);
+
+                if (effectiveMemberId == null || effectiveMemberId.isBlank()) {
+                    log.warn("ResponsibleParty request missing X-Enterprise-Id header");
+                    return null;
+                }
+
+                // Note: Permission validation is done at the ABAC layer via authorizeHsid()
+
+            } else {
+                log.warn("Unknown persona: {}", authContext.persona());
+                return null;
             }
 
             log.debug("Resolved member context: memberId={}, authType={}",

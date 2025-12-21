@@ -74,9 +74,9 @@ public class ExternalAuthFilter implements WebFilter {
         log.debug("Processing external integration request from client: {}", StringSanitizer.forLog(clientId));
 
         // Validate required headers
-        String persona = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().persona()));
-        String userId = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().userId()));
-        String idpType = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().idpType()));
+        String persona = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().loggedInMemberPersona()));
+        String loggedInMemberIdValue = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().loggedInMemberIdValue()));
+        String loggedInMemberIdType = sanitizeHeaderValue(request.getHeaders().getFirst(properties.headers().loggedInMemberIdType()));
 
         // Persona is required
         if (persona == null || persona.isBlank()) {
@@ -84,10 +84,10 @@ public class ExternalAuthFilter implements WebFilter {
             return unauthorizedResponse(exchange, "MISSING_PERSONA", "X-Persona header is required");
         }
 
-        // User ID is required
-        if (userId == null || userId.isBlank()) {
-            log.warn("External request missing user-id header from client: {}", StringSanitizer.forLog(clientId));
-            return unauthorizedResponse(exchange, "MISSING_USER_ID", "X-User-Id header is required");
+        // Logged-in member ID value is required
+        if (loggedInMemberIdValue == null || loggedInMemberIdValue.isBlank()) {
+            log.warn("External request missing logged-in-member-id-value header from client: {}", StringSanitizer.forLog(clientId));
+            return unauthorizedResponse(exchange, "MISSING_LOGGED_IN_MEMBER_ID", "X-Logged-In-Member-Id-Value header is required");
         }
 
         // Validate identifiers format
@@ -96,9 +96,9 @@ public class ExternalAuthFilter implements WebFilter {
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Invalid persona format");
         }
 
-        if (!isValidIdentifier(userId)) {
-            log.warn("Invalid user ID format from client: {}", StringSanitizer.forLog(clientId));
-            return forbiddenResponse(exchange, "INVALID_USER_ID", "Invalid user ID format");
+        if (!isValidIdentifier(loggedInMemberIdValue)) {
+            log.warn("Invalid logged-in member ID format from client: {}", StringSanitizer.forLog(clientId));
+            return forbiddenResponse(exchange, "INVALID_LOGGED_IN_MEMBER_ID", "Invalid logged-in member ID format");
         }
 
         // Validate persona is allowed
@@ -111,14 +111,14 @@ public class ExternalAuthFilter implements WebFilter {
         // Validate IDP type if configured
         var trustedIdpTypes = properties.trustedIdpTypes();
         if (trustedIdpTypes != null && !trustedIdpTypes.isEmpty()) {
-            if (idpType == null || !trustedIdpTypes.contains(idpType)) {
+            if (loggedInMemberIdType == null || !trustedIdpTypes.contains(loggedInMemberIdType)) {
                 log.warn("External request with untrusted IDP type from client: {}", StringSanitizer.forLog(clientId));
                 return forbiddenResponse(exchange, "UNTRUSTED_IDP", "IDP type not trusted");
             }
         }
 
         // Map external headers to proxy auth headers for downstream processing
-        ServerHttpRequest mutatedRequest = createMutatedRequest(request, userId, clientId);
+        ServerHttpRequest mutatedRequest = createMutatedRequest(request, loggedInMemberIdValue, clientId);
 
         log.info("External auth validated - client: {}, persona: {}",
                 StringSanitizer.forLog(clientId), StringSanitizer.forLog(persona));
@@ -127,7 +127,7 @@ public class ExternalAuthFilter implements WebFilter {
     }
 
     @NonNull
-    private ServerHttpRequest createMutatedRequest(@NonNull ServerHttpRequest request, @NonNull String userId, @NonNull String clientId) {
+    private ServerHttpRequest createMutatedRequest(@NonNull ServerHttpRequest request, @NonNull String loggedInMemberIdValue, @NonNull String clientId) {
         return new ServerHttpRequestDecorator(request) {
             @Override
             public HttpHeaders getHeaders() {
@@ -137,8 +137,8 @@ public class ExternalAuthFilter implements WebFilter {
                 // Set auth type for downstream filters
                 headers.set(PROXY_AUTH_TYPE_HEADER, "proxy");
 
-                // Map external user-id to operator-id (used by buildProxySubject)
-                headers.set(PROXY_OPERATOR_ID_HEADER, userId);
+                // Map external logged-in-member-id-value to operator-id (used by buildProxySubject)
+                headers.set(PROXY_OPERATOR_ID_HEADER, loggedInMemberIdValue);
 
                 // Map client-id to partner-id
                 headers.set(PROXY_PARTNER_ID_HEADER, clientId);

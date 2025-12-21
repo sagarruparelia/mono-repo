@@ -11,6 +11,12 @@ import java.util.Set;
 /**
  * ABAC Subject Attributes - represents the user making the request.
  * Unified model for both HSID and Proxy authentication types.
+ *
+ * <h3>Personas:</h3>
+ * <ul>
+ *   <li>HSID: Self, ResponsibleParty</li>
+ *   <li>PROXY: CaseWorker, Agent, ConfigSpecialist</li>
+ * </ul>
  */
 public record SubjectAttributes(
         // Common attributes
@@ -23,9 +29,9 @@ public record SubjectAttributes(
 
         // Proxy-specific: context from headers
         String partnerId,
-        String memberId,
-        String operatorId,
-        String operatorName
+        String enterpriseId,
+        String loggedInMemberIdValue,
+        String loggedInMemberIdType
 ) {
     /**
      * Create subject attributes for HSID authenticated user.
@@ -42,20 +48,27 @@ public record SubjectAttributes(
 
     /**
      * Create subject attributes for Proxy authenticated user.
+     *
+     * @param userId                Derived user identifier
+     * @param persona               CaseWorker, Agent, or ConfigSpecialist
+     * @param partnerId             Partner organization ID
+     * @param enterpriseId          Target member's enterprise ID (from X-Enterprise-Id)
+     * @param loggedInMemberIdValue Logged-in member ID value (from X-Logged-In-Member-Id-Value)
+     * @param loggedInMemberIdType  Logged-in member ID type (OHID or MSID)
      */
     public static SubjectAttributes forProxy(
             String userId,
             String persona,
             String partnerId,
-            String memberId,
-            String operatorId,
-            String operatorName) {
+            String enterpriseId,
+            String loggedInMemberIdValue,
+            String loggedInMemberIdType) {
         return new SubjectAttributes(
                 AuthType.PROXY,
                 userId,
                 persona,
                 null,
-                partnerId, memberId, operatorId, operatorName
+                partnerId, enterpriseId, loggedInMemberIdValue, loggedInMemberIdType
         );
     }
 
@@ -81,31 +94,38 @@ public record SubjectAttributes(
     }
 
     /**
-     * Check if subject is a parent (HSID).
+     * Check if subject is Self persona (HSID).
      */
-    public boolean isParent() {
-        return isHsid() && "parent".equalsIgnoreCase(persona);
+    public boolean isSelf() {
+        return isHsid() && "Self".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if subject is an agent (Proxy).
+     * Check if subject is ResponsibleParty persona (HSID).
+     */
+    public boolean isResponsibleParty() {
+        return isHsid() && "ResponsibleParty".equalsIgnoreCase(persona);
+    }
+
+    /**
+     * Check if subject is an Agent persona (Proxy).
      */
     public boolean isAgent() {
-        return isProxy() && "agent".equalsIgnoreCase(persona);
+        return isProxy() && "Agent".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if subject is a case worker (Proxy).
+     * Check if subject is a CaseWorker persona (Proxy).
      */
     public boolean isCaseWorker() {
-        return isProxy() && "case_worker".equalsIgnoreCase(persona);
+        return isProxy() && "CaseWorker".equalsIgnoreCase(persona);
     }
 
     /**
-     * Check if subject is config/admin (Proxy).
+     * Check if subject is a ConfigSpecialist persona (Proxy).
      */
-    public boolean isConfig() {
-        return isProxy() && "config".equalsIgnoreCase(persona);
+    public boolean isConfigSpecialist() {
+        return isProxy() && "ConfigSpecialist".equalsIgnoreCase(persona);
     }
 
     /**
@@ -136,10 +156,10 @@ public record SubjectAttributes(
     }
 
     /**
-     * Check if subject's assigned member matches (Proxy only).
+     * Check if subject's assigned enterprise ID matches (Proxy only).
      */
-    public boolean isAssignedTo(String targetMemberId) {
-        return memberId != null && memberId.equals(targetMemberId);
+    public boolean isAssignedTo(String targetEnterpriseId) {
+        return enterpriseId != null && enterpriseId.equals(targetEnterpriseId);
     }
 
     /**

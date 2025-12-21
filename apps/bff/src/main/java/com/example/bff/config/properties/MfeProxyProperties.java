@@ -13,10 +13,10 @@ public record MfeProxyProperties(
     public record ProxyHeaders(
             String authType,
             String partnerId,
-            String memberId,
-            String persona,
-            String operatorId,
-            String operatorName,
+            String enterpriseId,
+            String loggedInMemberPersona,
+            String loggedInMemberIdValue,
+            String loggedInMemberIdType,
             String correlationId
     ) {}
 
@@ -33,10 +33,10 @@ public record MfeProxyProperties(
             headers = new ProxyHeaders(
                     "X-Auth-Type",
                     "X-Partner-Id",
-                    "X-Member-Id",
-                    "X-Persona",
-                    "X-Operator-Id",
-                    "X-Operator-Name",
+                    "X-Enterprise-Id",
+                    "X-Logged-In-Member-Persona",
+                    "X-Logged-In-Member-Id-Value",
+                    "X-Logged-In-Member-Id-Type",
                     "X-Correlation-Id"
             );
         }

@@ -206,10 +206,10 @@ app:
       headers:
         auth-type: X-Auth-Type
         partner-id: X-Partner-Id
-        member-id: X-Member-Id
-        persona: X-Persona
-        operator-id: X-Operator-Id
-        operator-name: X-Operator-Name
+        enterprise-id: X-Enterprise-Id
+        logged-in-member-persona: X-Logged-In-Member-Persona
+        logged-in-member-id-value: X-Logged-In-Member-Id-Value
+        logged-in-member-id-type: X-Logged-In-Member-Id-Type
         correlation-id: X-Correlation-Id
 
   # Authorization (AuthZ) Configuration
@@ -285,16 +285,19 @@ app:
   external-integration:
     enabled: ${EXTERNAL_INTEGRATION_ENABLED:false}
     headers:
-      persona: X-Persona
-      user-id: X-User-Id
-      idp-type: X-IDP-Type
+      enterprise-id: X-Enterprise-Id
+      logged-in-member-id-value: X-Logged-In-Member-Id-Value
+      logged-in-member-id-type: X-Logged-In-Member-Id-Type
+      logged-in-member-persona: X-Logged-In-Member-Persona
       client-id: X-Client-Id
       partner-id: X-Partner-Id
     allowed-personas:
-      - agent
-      - config_specialist
-      - case_worker
-    trusted-idp-types: ${EXTERNAL_TRUSTED_IDP_TYPES:}
+      - Agent
+      - ConfigSpecialist
+      - CaseWorker
+    trusted-idp-types:
+      - OHID
+      - MSID
 
 # Identity Provider Configuration
 # Maps IDP types to allowed personas for PROXY authentication
