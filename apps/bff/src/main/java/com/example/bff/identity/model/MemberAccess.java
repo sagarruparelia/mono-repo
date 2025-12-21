@@ -13,7 +13,7 @@ import java.util.List;
  */
 public record MemberAccess(
         @NonNull String hsidUuid,
-        @NonNull String eid,
+        @NonNull String enterpriseId,
         @NonNull LocalDate birthdate,
         int age,
         boolean isResponsibleParty,
@@ -37,7 +37,7 @@ public record MemberAccess(
      */
     public static MemberAccess create(
             @NonNull String hsidUuid,
-            @NonNull String eid,
+            @NonNull String enterpriseId,
             @NonNull LocalDate birthdate,
             boolean isResponsibleParty,
             @Nullable String apiIdentifier,
@@ -48,7 +48,7 @@ public record MemberAccess(
 
         return new MemberAccess(
                 hsidUuid,
-                eid,
+                enterpriseId,
                 birthdate,
                 age,
                 isResponsibleParty,

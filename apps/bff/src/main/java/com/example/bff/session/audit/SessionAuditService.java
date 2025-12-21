@@ -218,7 +218,7 @@ public class SessionAuditService {
         AUDIT_LOG.warn("Session {} - event={}, user={}, reason={}, ip={}",
                 event.outcome(),
                 event.eventType(),
-                StringSanitizer.forLog(event.userId()),
+                StringSanitizer.forLog(event.hsidUuid()),
                 StringSanitizer.forLog(event.reason()),
                 StringSanitizer.forLog(event.clientIp()));
     }

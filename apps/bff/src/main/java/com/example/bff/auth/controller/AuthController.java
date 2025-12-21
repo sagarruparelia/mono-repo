@@ -120,7 +120,7 @@ public class AuthController {
                     List<DependentDto> dependents = managedMembers.stream()
                             .filter(ManagedMember::isActive)
                             .map(member -> new DependentDto(
-                                    member.eid(),
+                                    member.enterpriseId(),
                                     member.getFullName(),
                                     member.birthDate() != null ? member.birthDate().toString() : null
                             ))

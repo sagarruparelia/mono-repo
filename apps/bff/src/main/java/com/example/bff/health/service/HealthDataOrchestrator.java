@@ -82,7 +82,7 @@ public class HealthDataOrchestrator {
         if (managedMembers != null) {
             managedMembers.stream()
                     .filter(ManagedMember::isActive)
-                    .map(ManagedMember::eid)
+                    .map(ManagedMember::enterpriseId)
                     .forEach(eidsToFetch::add);
         }
 

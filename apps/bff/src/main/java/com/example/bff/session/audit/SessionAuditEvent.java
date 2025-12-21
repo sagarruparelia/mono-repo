@@ -32,7 +32,7 @@ public record SessionAuditEvent(
         @Nullable String previousSessionIdHash,
 
         // User context
-        @Nullable String userId,
+        @Nullable String hsidUuid,
         @Nullable String persona,
 
         // Device context
@@ -71,7 +71,7 @@ public record SessionAuditEvent(
     @NonNull
     public static SessionAuditEvent sessionCreated(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @Nullable String persona,
             @Nullable String clientIp,
             @Nullable String deviceFingerprint,
@@ -86,7 +86,7 @@ public record SessionAuditEvent(
                 null,
                 hashSessionId(sessionId),
                 null,
-                userId,
+                hsidUuid,
                 persona,
                 clientIp,
                 deviceFingerprint,
@@ -102,7 +102,7 @@ public record SessionAuditEvent(
     public static SessionAuditEvent sessionRotated(
             @NonNull String oldSessionId,
             @NonNull String newSessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @Nullable String persona,
             @Nullable String clientIp,
             @Nullable String deviceFingerprint,
@@ -117,7 +117,7 @@ public record SessionAuditEvent(
                 "Scheduled rotation",
                 hashSessionId(newSessionId),
                 hashSessionId(oldSessionId),
-                userId,
+                hsidUuid,
                 persona,
                 clientIp,
                 deviceFingerprint,
@@ -132,7 +132,7 @@ public record SessionAuditEvent(
     @NonNull
     public static SessionAuditEvent sessionInvalidated(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable String clientIp,
             @Nullable String correlationId) {
@@ -146,7 +146,7 @@ public record SessionAuditEvent(
                 reason,
                 hashSessionId(sessionId),
                 null,
-                userId,
+                hsidUuid,
                 null,
                 clientIp,
                 null,
@@ -161,7 +161,7 @@ public record SessionAuditEvent(
     @NonNull
     public static SessionAuditEvent bindingFailed(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable String clientIp,
             @Nullable String deviceFingerprint,
@@ -178,7 +178,7 @@ public record SessionAuditEvent(
                 reason,
                 hashSessionId(sessionId),
                 null,
-                userId,
+                hsidUuid,
                 null,
                 clientIp,
                 deviceFingerprint,
@@ -193,7 +193,7 @@ public record SessionAuditEvent(
     @NonNull
     public static SessionAuditEvent hijackDetected(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable String expectedIp,
             @Nullable String actualIp,
@@ -216,7 +216,7 @@ public record SessionAuditEvent(
                 detailReason,
                 hashSessionId(sessionId),
                 null,
-                userId,
+                hsidUuid,
                 null,
                 actualIp,
                 deviceFingerprint,
@@ -231,7 +231,7 @@ public record SessionAuditEvent(
     @NonNull
     public static SessionAuditEvent sessionExpired(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @Nullable String correlationId) {
 
         return new SessionAuditEvent(
@@ -243,7 +243,7 @@ public record SessionAuditEvent(
                 "TTL expired",
                 hashSessionId(sessionId),
                 null,
-                userId,
+                hsidUuid,
                 null,
                 null,
                 null,
@@ -270,7 +270,7 @@ public record SessionAuditEvent(
         if (previousSessionIdHash != null) {
             log.put("previous_session_id_hash", previousSessionIdHash);
         }
-        log.put("user_id", userId != null ? userId : "");
+        log.put("hsid_uuid", hsidUuid != null ? hsidUuid : "");
         log.put("persona", persona != null ? persona : "");
         log.put("client_ip", clientIp != null ? clientIp : "");
         log.put("device_fingerprint", deviceFingerprint != null ? deviceFingerprint : "");

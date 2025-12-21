@@ -33,14 +33,14 @@ public record PermissionsApiResponse(
     /**
      * A single permission entry from the delegate-graph API.
      *
-     * @param eid          Enterprise ID of the dependent
+     * @param enterpriseId Enterprise ID of the dependent (JSON field: "eid")
      * @param delegateType The permission type (DAA, RPR, ROI)
      * @param startDate    When the permission becomes valid (yyyy-MM-dd, CST)
      * @param stopDate     When the permission expires (null = no end date)
      * @param active       Whether the permission is explicitly active
      */
     public record DelegatePermissionEntry(
-            @JsonProperty("eid") String eid,
+            @JsonProperty("eid") String enterpriseId,
             @JsonProperty("delegateType") String delegateType,
             @JsonProperty("startDate") @Nullable LocalDate startDate,
             @JsonProperty("stopDate") @Nullable LocalDate stopDate,

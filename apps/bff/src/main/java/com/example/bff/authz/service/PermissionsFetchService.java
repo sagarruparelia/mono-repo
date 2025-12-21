@@ -53,63 +53,63 @@ public class PermissionsFetchService {
     /**
      * Fetch permissions for a user from the delegate-graph API.
      *
-     * @param userId The user's ID (HSID UUID)
+     * @param hsidUuid The user's HSID UUID (OIDC subject claim)
      * @return PermissionSet with all dependents and their permissions
      */
     @NonNull
-    public Mono<PermissionSet> fetchPermissions(@NonNull String userId) {
-        if (!isValidUserId(userId)) {
-            log.warn("Invalid user ID format in fetchPermissions");
-            return Mono.just(PermissionSet.empty(userId, "individual"));
+    public Mono<PermissionSet> fetchPermissions(@NonNull String hsidUuid) {
+        if (!isValidHsidUuid(hsidUuid)) {
+            log.warn("Invalid hsidUuid format in fetchPermissions");
+            return Mono.just(PermissionSet.empty(hsidUuid, "individual"));
         }
 
         String correlationId = UUID.randomUUID().toString();
 
-        log.debug("Fetching permissions for user {} with correlationId {}",
-                StringSanitizer.forLog(userId), correlationId);
+        log.debug("Fetching permissions for hsidUuid {} with correlationId {}",
+                StringSanitizer.forLog(hsidUuid), correlationId);
 
         return webClient.get()
-                .uri("/api/internal/permissions/{userId}", userId)
+                .uri("/api/internal/permissions/{hsidUuid}", hsidUuid)
                 .header("X-Correlation-Id", correlationId)
                 .retrieve()
                 .bodyToMono(PermissionsApiResponse.class)
-                .map(response -> toPermissionSet(userId, response))
+                .map(response -> toPermissionSet(hsidUuid, response))
                 .doOnSuccess(p -> log.info(
-                        "Fetched permissions for {} dependents for user {} (correlationId={})",
+                        "Fetched permissions for {} dependents for hsidUuid {} (correlationId={})",
                         p.dependents() != null ? p.dependents().size() : 0,
-                        StringSanitizer.forLog(userId),
+                        StringSanitizer.forLog(hsidUuid),
                         correlationId))
                 .onErrorResume(WebClientResponseException.class, e -> {
-                    log.error("Permissions API error for user {}: {} (correlationId={})",
-                            StringSanitizer.forLog(userId),
+                    log.error("Permissions API error for hsidUuid {}: {} (correlationId={})",
+                            StringSanitizer.forLog(hsidUuid),
                             StringSanitizer.forLog(e.getStatusCode() + " " + e.getStatusText()),
                             correlationId);
-                    return Mono.just(PermissionSet.empty(userId, "individual"));
+                    return Mono.just(PermissionSet.empty(hsidUuid, "individual"));
                 })
                 .onErrorResume(Exception.class, e -> {
-                    log.error("Failed to fetch permissions for user {}: {} (correlationId={})",
-                            StringSanitizer.forLog(userId),
+                    log.error("Failed to fetch permissions for hsidUuid {}: {} (correlationId={})",
+                            StringSanitizer.forLog(hsidUuid),
                             StringSanitizer.forLog(e.getMessage()),
                             correlationId);
-                    return Mono.just(PermissionSet.empty(userId, "individual"));
+                    return Mono.just(PermissionSet.empty(hsidUuid, "individual"));
                 });
     }
 
     /**
      * Convert the flat API response to a grouped PermissionSet.
      *
-     * <p>Groups permissions by dependent eid and creates Map<DelegateType, DelegatePermission> for each.
+     * <p>Groups permissions by dependent enterpriseId and creates Map<DelegateType, DelegatePermission> for each.
      */
-    private PermissionSet toPermissionSet(String userId, PermissionsApiResponse response) {
+    private PermissionSet toPermissionSet(String hsidUuid, PermissionsApiResponse response) {
         if (response == null || response.permissions() == null || response.permissions().isEmpty()) {
-            return PermissionSet.empty(userId, "individual");
+            return PermissionSet.empty(hsidUuid, "individual");
         }
 
-        // Group permissions by eid (dependent)
+        // Group permissions by enterpriseId (dependent)
         Map<String, List<DelegatePermissionEntry>> groupedByDependent = response.permissions().stream()
                 .filter(Objects::nonNull)
-                .filter(entry -> entry.eid() != null && !entry.eid().isBlank())
-                .collect(Collectors.groupingBy(DelegatePermissionEntry::eid));
+                .filter(entry -> entry.enterpriseId() != null && !entry.enterpriseId().isBlank())
+                .collect(Collectors.groupingBy(DelegatePermissionEntry::enterpriseId));
 
         // Convert each group to DependentAccess
         List<DependentAccess> dependents = groupedByDependent.entrySet().stream()
@@ -122,7 +122,7 @@ public class PermissionsFetchService {
         Instant expiresAt = Instant.now().plusSeconds(DEFAULT_CACHE_TTL_SECONDS);
 
         return new PermissionSet(
-                userId,
+                hsidUuid,
                 persona,
                 dependents,
                 Instant.now(),
@@ -133,7 +133,7 @@ public class PermissionsFetchService {
     /**
      * Convert a list of permission entries for one dependent to DependentAccess.
      */
-    private DependentAccess toDependentAccess(String eid, List<DelegatePermissionEntry> entries) {
+    private DependentAccess toDependentAccess(String enterpriseId, List<DelegatePermissionEntry> entries) {
         Map<DelegateType, DelegatePermission> permissions = new EnumMap<>(DelegateType.class);
 
         for (DelegatePermissionEntry entry : entries) {
@@ -149,7 +149,7 @@ public class PermissionsFetchService {
         }
 
         return new DependentAccess(
-                eid,
+                enterpriseId,
                 null,  // dependentName not provided by delegate-graph API
                 permissions,
                 null   // relationship not provided by delegate-graph API
@@ -172,10 +172,10 @@ public class PermissionsFetchService {
         }
     }
 
-    private boolean isValidUserId(String userId) {
-        if (userId == null || userId.isBlank()) {
+    private boolean isValidHsidUuid(String hsidUuid) {
+        if (hsidUuid == null || hsidUuid.isBlank()) {
             return false;
         }
-        return SAFE_ID_PATTERN.matcher(userId).matches();
+        return SAFE_ID_PATTERN.matcher(hsidUuid).matches();
     }
 }

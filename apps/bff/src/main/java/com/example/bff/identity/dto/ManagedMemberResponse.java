@@ -33,7 +33,7 @@ public record ManagedMemberResponse(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MemberPermission(
-            @JsonProperty("eid") @Nullable String eid,
+            @JsonProperty("eid") @Nullable String enterpriseId,
             @JsonProperty("firstName") @Nullable String firstName,
             @JsonProperty("lastName") @Nullable String lastName,
             @JsonProperty("birthDate") @Nullable LocalDate birthDate,

@@ -10,7 +10,7 @@ import java.time.LocalDate;
  * Used for Responsible Party (parent) personas.
  */
 public record ManagedMember(
-        @NonNull String eid,
+        @NonNull String enterpriseId,
         @Nullable String firstName,
         @Nullable String lastName,
         @Nullable LocalDate birthDate,

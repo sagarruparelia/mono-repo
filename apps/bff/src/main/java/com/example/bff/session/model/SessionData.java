@@ -28,7 +28,7 @@ public record SessionData(
         @NonNull Instant createdAt,
         @NonNull Instant lastAccessedAt,
         // Member access fields
-        @Nullable String eid,
+        @Nullable String enterpriseId,
         @Nullable String birthdate,
         boolean isResponsibleParty,
         @Nullable String apiIdentifier,
@@ -51,7 +51,7 @@ public record SessionData(
                 map.getOrDefault("userAgentHash", ""),
                 parseInstant(map.get("createdAt")),
                 parseInstant(map.get("lastAccessedAt")),
-                // Member access fields
+                // Member access fields (Redis key "eid" maps to enterpriseId field)
                 map.get("eid"),
                 map.get("birthdate"),
                 "true".equals(map.get("isResponsibleParty")),
@@ -83,8 +83,8 @@ public record SessionData(
         map.put("userAgentHash", userAgentHash);
         map.put("createdAt", String.valueOf(createdAt.toEpochMilli()));
         map.put("lastAccessedAt", String.valueOf(lastAccessedAt.toEpochMilli()));
-        // Member access fields
-        if (eid != null) map.put("eid", eid);
+        // Member access fields (Redis key "eid" stores enterpriseId value)
+        if (enterpriseId != null) map.put("eid", enterpriseId);
         if (birthdate != null) map.put("birthdate", birthdate);
         map.put("isResponsibleParty", String.valueOf(isResponsibleParty));
         if (apiIdentifier != null) map.put("apiIdentifier", apiIdentifier);
@@ -161,7 +161,7 @@ public record SessionData(
      * Check if member access data is populated.
      */
     public boolean hasMemberAccess() {
-        return eid != null && !eid.isBlank();
+        return enterpriseId != null && !enterpriseId.isBlank();
     }
 
     /**

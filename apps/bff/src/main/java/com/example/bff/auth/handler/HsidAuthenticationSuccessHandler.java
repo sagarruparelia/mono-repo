@@ -405,11 +405,11 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
 
         try {
             healthDataOrchestrator.triggerBackgroundFetchForSession(
-                    memberAccess.eid(),
+                    memberAccess.enterpriseId(),
                     null,  // apiIdentifier - not available at login time
                     memberAccess.managedMembers()
             );
-            log.debug("Triggered background health data fetch for user: {}", memberAccess.eid());
+            log.debug("Triggered background health data fetch for user: {}", memberAccess.enterpriseId());
         } catch (Exception e) {
             log.warn("Failed to trigger background health data fetch: {}", e.getMessage());
         }

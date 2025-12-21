@@ -125,7 +125,7 @@ public class DualAuthWebFilter implements WebFilter {
                         .defaultIfEmpty(PermissionSet.empty(session.hsidUuid(), session.persona()))
                         .map(permissions -> {
                             // Determine effective member ID (own EID or HSID UUID for Self)
-                            String effectiveMemberId = session.eid() != null ? session.eid() : session.hsidUuid();
+                            String effectiveMemberId = session.enterpriseId() != null ? session.enterpriseId() : session.hsidUuid();
 
                             // Determine persona from session
                             Persona personaEnum = Persona.fromLegacy(session.persona());

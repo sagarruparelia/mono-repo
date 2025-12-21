@@ -446,7 +446,7 @@ public class SessionService {
         sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
         sessionData.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
         sessionData.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
-        sessionData.put("eid", memberAccess.eid());
+        sessionData.put("eid", memberAccess.enterpriseId());
         sessionData.put("birthdate", memberAccess.birthdate().toString());
         sessionData.put("isResponsibleParty", String.valueOf(memberAccess.isResponsibleParty()));
         if (memberAccess.apiIdentifier() != null) {
@@ -489,7 +489,7 @@ public class SessionService {
             return "";
         }
         return memberAccess.managedMembers().stream()
-                .map(ManagedMember::eid)
+                .map(ManagedMember::enterpriseId)
                 .reduce((a, b) -> a + "," + b)
                 .orElse("");
     }

@@ -119,14 +119,14 @@ public class ManagedMemberService {
 
     private List<ManagedMember> toManagedMembers(ManagedMemberResponse response) {
         return response.getActivePermissions().stream()
-                .filter(permission -> permission.eid() != null)
+                .filter(permission -> permission.enterpriseId() != null)
                 .map(this::toManagedMember)
                 .toList();
     }
 
     private ManagedMember toManagedMember(MemberPermission permission) {
         return new ManagedMember(
-                permission.eid(),
+                permission.enterpriseId(),
                 permission.firstName(),
                 permission.lastName(),
                 permission.birthDate(),
