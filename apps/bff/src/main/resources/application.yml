@@ -10,7 +10,6 @@ spring:
       - classpath:config/security-paths.yml
       - classpath:config/rate-limiting.yml
       - classpath:config/zero-trust.yml
-      - classpath:config/abac-policies.yml
 
   # OAuth2 Client Configuration (HSID PKCE + External API Client Credentials)
   security:

@@ -35,7 +35,6 @@ spring:
       - optional:classpath:config/security-paths.yml
       - optional:classpath:config/rate-limiting.yml
       - optional:classpath:config/zero-trust.yml
-      - optional:classpath:config/abac-policies.yml
 
 # Security paths for E2E
 security:
