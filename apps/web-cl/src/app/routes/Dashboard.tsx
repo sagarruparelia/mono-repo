@@ -29,7 +29,7 @@ export function Dashboard() {
   }
 
   // Member persona (individual in HSID terms)
-  return <MemberDashboard user={user} memberEid={effectiveMemberEid} />;
+  return <MemberDashboard user={user} />;
 }
 
 export default Dashboard;

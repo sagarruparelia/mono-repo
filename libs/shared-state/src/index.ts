@@ -8,6 +8,11 @@ export type {
   MfeProps,
 } from './types/persona';
 
+export type {
+  SessionCheckResponse,
+  SessionInfoResponse,
+} from './types/session';
+
 // Auth Store
 export {
   useAuthStore,

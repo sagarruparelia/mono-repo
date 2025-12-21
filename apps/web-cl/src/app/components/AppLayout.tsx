@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from '@tanstack/react-router';
 import { usePersona, useUser, ChildSelector, useLogout } from '@mono-repo/shared-state';
 import styles from './AppLayout.module.css';
 

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useApiClient } from '../api/ApiClientContext';
 import { usePersona } from '../stores/auth.store';
+import type { SessionInfoResponse } from '../types/session';
 
 /**
  * Query key factory for user-related queries
@@ -26,7 +27,7 @@ export interface UserProfile {
 }
 
 /**
- * Session info response type
+ * @deprecated Use SessionInfoResponse from types/session.ts
  */
 export interface SessionInfo {
   sessionId: string;
@@ -73,12 +74,15 @@ export const useUserProfile = () => {
 
 /**
  * Hook to fetch current session info
+ * Used for initial auth state hydration - no automatic refetching
+ * For session monitoring, use useSessionCheck in web-cl
  */
 export const useSessionInfo = () => {
   return useQuery({
     queryKey: userKeys.session(),
-    queryFn: () => api.get<SessionInfo>('/api/auth/session'),
-    refetchInterval: 60 * 1000, // Refresh every minute to track expiry
+    queryFn: () => api.get<SessionInfoResponse>('/api/auth/session'),
+    staleTime: 60 * 1000,  // Consider fresh for 1 minute
+    // No refetchInterval - web-cl's useSessionCheck handles monitoring
   });
 };
 

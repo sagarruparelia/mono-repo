@@ -1,5 +1,5 @@
 import { useIsAuthenticated } from '@mono-repo/shared-state';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from '@tanstack/react-router';
 import styles from './routes.module.css';
 
 /**

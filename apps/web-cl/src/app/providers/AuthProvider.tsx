@@ -1,9 +1,7 @@
 import { ReactNode, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  useAuthStore,
-  useSessionInfo,
-} from '@mono-repo/shared-state';
+import { useRouter } from '@tanstack/react-router';
+import { useAuthStore, useSessionInfo } from '@mono-repo/shared-state';
+import { useSessionCheck } from '../hooks/useSessionCheck';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -12,51 +10,50 @@ interface AuthProviderProps {
 /**
  * AuthProvider handles:
  * - Session state synchronization with backend
- * - Session expiry monitoring
- * - Auth state hydration from session storage
+ * - Session expiry monitoring via useSessionCheck
+ * - Auth state hydration from server session
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-  const navigate = useNavigate();
-  // Track sessionExpiry via selector to properly re-run effect when it changes
-  const sessionExpiry = useAuthStore((state) => state.sessionExpiry);
+  const router = useRouter();
   const { setHsidAuth, clearAuth } = useAuthStore();
 
-  // Fetch session info to verify/sync auth state
-  const { data: sessionInfo, error: sessionError } = useSessionInfo();
+  // Full session info for initial hydration
+  const { data: sessionInfo } = useSessionInfo();
 
-  // Handle session sync
+  // Lightweight session check for monitoring (polls every 60s)
+  const { data: sessionCheck } = useSessionCheck();
+
+  // Hydrate auth state from full session response
   useEffect(() => {
-    if (sessionInfo) {
-      // Session exists on server - sync local state
+    if (sessionInfo?.valid) {
+      // Parse expiresAt to timestamp
+      const expiresAt = sessionInfo.expiresAt
+        ? new Date(sessionInfo.expiresAt).getTime()
+        : Date.now() + 30 * 60 * 1000; // Default 30 min
+
       setHsidAuth(
         {
-          sub: sessionInfo.userId,
-          name: '', // Will be populated from profile query
-          email: '',
+          sub: sessionInfo.hsidUuid || '',
+          name: sessionInfo.name || '',
+          email: sessionInfo.email || '',
         },
         sessionInfo.persona as 'individual' | 'parent',
-        sessionInfo.expiresAt
+        expiresAt,
+        sessionInfo.dependentIds
       );
-    } else if (sessionError) {
-      // Session invalid - clear local state
+    } else if (sessionInfo && !sessionInfo.valid) {
+      // Server explicitly says session is invalid
       clearAuth();
     }
-  }, [sessionInfo, sessionError, setHsidAuth, clearAuth]);
+  }, [sessionInfo, setHsidAuth, clearAuth]);
 
-  // Handle session expiry - re-runs when sessionExpiry changes
+  // Handle session invalidation from lightweight check
   useEffect(() => {
-    if (sessionExpiry) {
-      const timeUntilExpiry = sessionExpiry - Date.now();
-      if (timeUntilExpiry > 0) {
-        const timer = setTimeout(() => {
-          clearAuth();
-          navigate('/');
-        }, timeUntilExpiry);
-
-        return () => clearTimeout(timer);
-      }
+    if (sessionCheck && !sessionCheck.valid) {
+      clearAuth();
+      router.navigate({ to: '/', search: { reason: 'session_expired' } });
     }
-  }, [sessionExpiry, clearAuth, navigate]);
+  }, [sessionCheck, clearAuth, router]);
 
-  return <>{children}</>;
+  return children;
 }
