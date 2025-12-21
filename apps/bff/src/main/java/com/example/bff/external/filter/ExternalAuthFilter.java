@@ -102,14 +102,16 @@ public class ExternalAuthFilter implements WebFilter {
         }
 
         // Validate persona is allowed
-        if (!properties.allowedPersonas().contains(persona)) {
+        var allowedPersonas = properties.allowedPersonas();
+        if (allowedPersonas == null || !allowedPersonas.contains(persona)) {
             log.warn("External request with disallowed persona from client: {}", StringSanitizer.forLog(clientId));
             return forbiddenResponse(exchange, "INVALID_PERSONA", "Persona not allowed");
         }
 
         // Validate IDP type if configured
-        if (!properties.trustedIdpTypes().isEmpty()) {
-            if (idpType == null || !properties.trustedIdpTypes().contains(idpType)) {
+        var trustedIdpTypes = properties.trustedIdpTypes();
+        if (trustedIdpTypes != null && !trustedIdpTypes.isEmpty()) {
+            if (idpType == null || !trustedIdpTypes.contains(idpType)) {
                 log.warn("External request with untrusted IDP type from client: {}", StringSanitizer.forLog(clientId));
                 return forbiddenResponse(exchange, "UNTRUSTED_IDP", "IDP type not trusted");
             }

@@ -63,8 +63,11 @@ public class EcdhApiClientService {
         ).map(responses -> {
             List<ImmunizationEntity.ImmunizationRecord> allRecords = new ArrayList<>();
             for (ImmunizationResponse response : responses) {
-                for (ImmunizationResponse.ImmunizationDto dto : response.getImmunizations()) {
-                    allRecords.add(mapToImmunizationRecord(dto));
+                var immunizations = response.getImmunizations();
+                if (immunizations != null) {
+                    for (ImmunizationResponse.ImmunizationDto dto : immunizations) {
+                        allRecords.add(mapToImmunizationRecord(dto));
+                    }
                 }
             }
             log.debug("Fetched {} immunization records for memberEid: {}", allRecords.size(), memberEid);
@@ -87,8 +90,11 @@ public class EcdhApiClientService {
         ).map(responses -> {
             List<AllergyEntity.AllergyRecord> allRecords = new ArrayList<>();
             for (AllergyResponse response : responses) {
-                for (AllergyResponse.AllergyDto dto : response.getAllergies()) {
-                    allRecords.add(mapToAllergyRecord(dto));
+                var allergies = response.getAllergies();
+                if (allergies != null) {
+                    for (AllergyResponse.AllergyDto dto : allergies) {
+                        allRecords.add(mapToAllergyRecord(dto));
+                    }
                 }
             }
             log.debug("Fetched {} allergy records for memberEid: {}", allRecords.size(), memberEid);
@@ -111,8 +117,11 @@ public class EcdhApiClientService {
         ).map(responses -> {
             List<ConditionEntity.ConditionRecord> allRecords = new ArrayList<>();
             for (ConditionResponse response : responses) {
-                for (ConditionResponse.ConditionDto dto : response.getConditions()) {
-                    allRecords.add(mapToConditionRecord(dto));
+                var conditions = response.getConditions();
+                if (conditions != null) {
+                    for (ConditionResponse.ConditionDto dto : conditions) {
+                        allRecords.add(mapToConditionRecord(dto));
+                    }
                 }
             }
             log.debug("Fetched {} condition records for memberEid: {}", allRecords.size(), memberEid);

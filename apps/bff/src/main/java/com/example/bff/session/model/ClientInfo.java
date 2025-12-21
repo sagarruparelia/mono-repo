@@ -88,8 +88,8 @@ public record ClientInfo(
             byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is always available in JVM
-            throw new RuntimeException("SHA-256 algorithm not available", e);
+            // SHA-256 is mandated by the JVM spec, so this should never happen
+            throw new IllegalStateException("SHA-256 algorithm must be available in JVM", e);
         }
     }
 

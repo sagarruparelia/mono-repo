@@ -70,9 +70,12 @@ public class GraphqlQueryLoader {
     private String loadQuery(String fileName) {
         try {
             ClassPathResource resource = new ClassPathResource(GRAPHQL_BASE_PATH + fileName);
-            String query = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-            log.debug("Loaded GraphQL query: {}", fileName);
-            return query;
+            // Use try-with-resources to ensure InputStream is closed
+            try (var inputStream = resource.getInputStream()) {
+                String query = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+                log.debug("Loaded GraphQL query: {}", fileName);
+                return query;
+            }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load GraphQL query: " + fileName, e);
         }

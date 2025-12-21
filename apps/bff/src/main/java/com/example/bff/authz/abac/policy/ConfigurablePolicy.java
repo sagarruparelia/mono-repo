@@ -123,6 +123,8 @@ public class ConfigurablePolicy implements Policy {
     }
 
     private PolicyDecision evaluateProxyRules(SubjectAttributes subject, ResourceAttributes resource, ProxyRules rules) {
+        String persona = subject.persona() != null ? subject.persona() : "UNKNOWN";
+
         // Config-only access
         if (rules.configOnly()) {
             if (subject.isConfig()) {
@@ -130,7 +132,7 @@ public class ConfigurablePolicy implements Policy {
                         String.format("Config persona has access to %s", resource.id()));
             }
             return PolicyDecision.deny(getPolicyId(),
-                    String.format("Persona '%s' cannot access. Only 'config' allowed.", subject.persona()),
+                    String.format("Persona '%s' cannot access. Only 'config' allowed.", persona),
                     Set.of("persona"));
         }
 
@@ -148,7 +150,7 @@ public class ConfigurablePolicy implements Policy {
                         String.format("User is assigned to %s", targetId));
             }
             return PolicyDecision.deny(getPolicyId(),
-                    String.format("Persona '%s' is not assigned to %s", subject.persona(), targetId),
+                    String.format("Persona '%s' is not assigned to %s", persona, targetId),
                     Set.of("memberId"));
         }
 

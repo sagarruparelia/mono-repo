@@ -147,9 +147,11 @@ public class AbacAuthorizationService {
         }
 
         // Validate persona is allowed for proxy
-        if (!personaProperties.proxy().allowed().contains(persona)) {
+        var proxyConfig = personaProperties.proxy();
+        if (proxyConfig == null || proxyConfig.allowed() == null ||
+                !proxyConfig.allowed().contains(persona)) {
             log.warn("Invalid proxy persona: {}. Allowed: {}",
-                    persona, personaProperties.proxy().allowed());
+                    persona, proxyConfig != null ? proxyConfig.allowed() : "none");
             return Mono.empty();
         }
 
@@ -182,7 +184,9 @@ public class AbacAuthorizationService {
         String persona = request.getHeaders()
                 .getFirst(proxyProperties.headers().persona());
 
-        if (persona != null && personaProperties.proxy().allowed().contains(persona)) {
+        var proxyConf = personaProperties.proxy();
+        if (persona != null && proxyConf != null && proxyConf.allowed() != null &&
+                proxyConf.allowed().contains(persona)) {
             return AuthType.PROXY;
         }
 

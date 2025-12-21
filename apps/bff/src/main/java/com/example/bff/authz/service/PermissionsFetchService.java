@@ -90,6 +90,7 @@ public class PermissionsFetchService {
     private PermissionSet toPermissionSet(PermissionsApiResponse response) {
         List<DependentAccess> dependents = response.dependents() != null
                 ? response.dependents().stream()
+                    .filter(java.util.Objects::nonNull)  // Filter out null elements
                     .map(this::toDependentAccess)
                     .collect(Collectors.toList())
                 : List.of();
