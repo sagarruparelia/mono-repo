@@ -1,8 +1,9 @@
 package com.example.bff.auth.filter;
 
-import com.example.bff.auth.model.AuthContext;
-import com.example.bff.auth.util.AuthContextResolver;
-import com.example.bff.authz.abac.model.SubjectAttributes;
+import com.example.bff.auth.model.AuthPrincipal;
+import com.example.bff.auth.model.DelegateType;
+import com.example.bff.auth.model.LoggedInMemberIdType;
+import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.dto.ErrorResponse;
 import com.example.bff.common.util.StringSanitizer;
@@ -67,27 +68,27 @@ public class DualAuthWebFilter implements WebFilter {
 
         String correlationId = getCorrelationId(exchange);
 
-        // Try to resolve auth context
-        return resolveAuthContext(exchange)
-                .flatMap(authContext -> {
+        // Try to resolve auth principal
+        return resolveAuthPrincipal(exchange)
+                .flatMap(principal -> {
                     // Validate auth type matches path requirements
-                    if (!isAuthTypeAllowedForPath(authContext, category)) {
-                        return authTypeMismatchResponse(exchange, authContext, category, correlationId);
+                    if (!isAuthTypeAllowedForPath(principal, category)) {
+                        return authTypeMismatchResponse(exchange, principal, category, correlationId);
                     }
 
-                    // Store AuthContext in exchange for downstream use
-                    AuthContextResolver.store(exchange, authContext);
+                    // Store AuthPrincipal in exchange for downstream use
+                    exchange.getAttributes().put(AuthPrincipal.EXCHANGE_ATTRIBUTE, principal);
 
-                    log.info("Auth resolved: type={}, userId={}, persona={}, path={}",
-                            authContext.authType(),
-                            StringSanitizer.forLog(authContext.userId()),
-                            StringSanitizer.forLog(authContext.persona()),
+                    log.info("Auth resolved: persona={}, enterpriseId={}, loggedInMemberId={}, path={}",
+                            principal.persona(),
+                            StringSanitizer.forLog(principal.enterpriseId()),
+                            StringSanitizer.forLog(principal.loggedInMemberIdValue()),
                             path);
 
                     return chain.filter(exchange);
                 })
                 .switchIfEmpty(Mono.defer(() -> {
-                    // No auth context resolved
+                    // No auth principal resolved
                     if (category == PathCategory.DUAL_AUTH || category == PathCategory.SESSION_ONLY
                             || category == PathCategory.PROXY_ONLY) {
                         return unauthorizedResponse(exchange, correlationId,
@@ -99,14 +100,14 @@ public class DualAuthWebFilter implements WebFilter {
     }
 
     @NonNull
-    private Mono<AuthContext> resolveAuthContext(@NonNull ServerWebExchange exchange) {
+    private Mono<AuthPrincipal> resolveAuthPrincipal(@NonNull ServerWebExchange exchange) {
         // First try HSID (session cookie)
-        return resolveHsidContext(exchange)
-                .switchIfEmpty(Mono.defer(() -> resolveProxyContext(exchange)));
+        return resolveHsidPrincipal(exchange)
+                .switchIfEmpty(Mono.defer(() -> resolveProxyPrincipal(exchange)));
     }
 
     @NonNull
-    private Mono<AuthContext> resolveHsidContext(@NonNull ServerWebExchange exchange) {
+    private Mono<AuthPrincipal> resolveHsidPrincipal(@NonNull ServerWebExchange exchange) {
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
 
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
@@ -123,24 +124,32 @@ public class DualAuthWebFilter implements WebFilter {
                 .flatMap(session -> sessionService.getPermissions(sessionId)
                         .defaultIfEmpty(PermissionSet.empty(session.hsidUuid(), session.persona()))
                         .map(permissions -> {
-                            // Build SubjectAttributes for ABAC
-                            SubjectAttributes subject = SubjectAttributes.forHsid(
-                                    session.hsidUuid(),
-                                    session.persona(),
-                                    permissions
-                            );
-
-                            // For HSID, effectiveMemberId defaults to eid (or selectedChild if parent)
-                            // The actual selectedChild is managed at controller level via request body
+                            // Determine effective member ID (own EID or HSID UUID for Self)
                             String effectiveMemberId = session.eid() != null ? session.eid() : session.hsidUuid();
 
-                            return AuthContext.forHsid(
-                                    session.hsidUuid(),
-                                    effectiveMemberId,
-                                    session.persona(),
-                                    sessionId,
-                                    subject
-                            );
+                            // Determine persona from session
+                            Persona personaEnum = Persona.fromLegacy(session.persona());
+
+                            if (personaEnum == Persona.DELEGATE) {
+                                // For ResponsibleParty/DELEGATE, extract delegate types from permissions
+                                Set<DelegateType> delegateTypes = AuthPrincipal.extractDelegateTypes(
+                                        permissions, effectiveMemberId);
+                                return AuthPrincipal.forDelegate(
+                                        effectiveMemberId,
+                                        session.hsidUuid(),
+                                        sessionId,
+                                        delegateTypes,
+                                        permissions
+                                );
+                            } else {
+                                // For Self/INDIVIDUAL_SELF
+                                return AuthPrincipal.forIndividualSelf(
+                                        effectiveMemberId,
+                                        session.hsidUuid(),
+                                        sessionId,
+                                        permissions
+                                );
+                            }
                         }));
     }
 
@@ -149,7 +158,7 @@ public class DualAuthWebFilter implements WebFilter {
     private static final int MIN_LOGGED_IN_MEMBER_ID_LENGTH = 3;
 
     @NonNull
-    private Mono<AuthContext> resolveProxyContext(@NonNull ServerWebExchange exchange) {
+    private Mono<AuthPrincipal> resolveProxyPrincipal(@NonNull ServerWebExchange exchange) {
         // Check if this is a proxy request (has X-Auth-Type: proxy or X-Client-Id)
         String authType = exchange.getRequest().getHeaders().getFirst(AUTH_TYPE_HEADER);
         String clientId = exchange.getRequest().getHeaders().getFirst(
@@ -164,12 +173,10 @@ public class DualAuthWebFilter implements WebFilter {
                 .getFirst(externalProperties.headers().enterpriseId()));
         String loggedInMemberIdValue = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().loggedInMemberIdValue()));
-        String loggedInMemberIdType = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
+        String loggedInMemberIdTypeStr = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().loggedInMemberIdType()));
         String persona = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().loggedInMemberPersona()));
-        String partnerId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
-                .getFirst(externalProperties.headers().partnerId()));
 
         // Validate X-Enterprise-Id (required for all proxy requests)
         if (enterpriseId == null || enterpriseId.isBlank()) {
@@ -188,9 +195,9 @@ public class DualAuthWebFilter implements WebFilter {
         }
 
         // Validate X-Logged-In-Member-Id-Type (OHID or MSID)
-        if (loggedInMemberIdType == null || !VALID_IDP_TYPES.contains(loggedInMemberIdType)) {
+        if (loggedInMemberIdTypeStr == null || !VALID_IDP_TYPES.contains(loggedInMemberIdTypeStr)) {
             log.warn("Proxy auth missing or invalid X-Logged-In-Member-Id-Type header: {}",
-                    StringSanitizer.forLog(loggedInMemberIdType));
+                    StringSanitizer.forLog(loggedInMemberIdTypeStr));
             return Mono.error(new ProxyAuthException(
                     ErrorResponse.Codes.UNAUTHORIZED,
                     "X-Logged-In-Member-Id-Type header must be one of: " + VALID_IDP_TYPES));
@@ -205,27 +212,21 @@ public class DualAuthWebFilter implements WebFilter {
                     "X-Logged-In-Member-Persona header must be one of: " + VALID_PROXY_PERSONAS));
         }
 
-        // Build SubjectAttributes for ABAC
-        SubjectAttributes subject = SubjectAttributes.forProxy(
-                loggedInMemberIdValue,
-                persona,
-                partnerId,
-                enterpriseId,
-                loggedInMemberIdValue,
-                loggedInMemberIdType
-        );
+        // Parse LoggedInMemberIdType enum
+        LoggedInMemberIdType loggedInMemberIdType = LoggedInMemberIdType.valueOf(loggedInMemberIdTypeStr);
 
-        AuthContext authContext = AuthContext.forProxy(
-                loggedInMemberIdValue,
-                enterpriseId,
-                persona,
-                partnerId,
-                loggedInMemberIdValue,
-                loggedInMemberIdType,
-                subject
-        );
+        // Create AuthPrincipal based on persona
+        AuthPrincipal principal = switch (persona) {
+            case "CaseWorker" -> AuthPrincipal.forCaseWorker(
+                    enterpriseId, loggedInMemberIdValue, loggedInMemberIdType);
+            case "Agent" -> AuthPrincipal.forAgent(
+                    enterpriseId, loggedInMemberIdValue, loggedInMemberIdType);
+            case "ConfigSpecialist" -> AuthPrincipal.forConfigSpecialist(
+                    enterpriseId, loggedInMemberIdValue, loggedInMemberIdType);
+            default -> throw new IllegalStateException("Unexpected persona: " + persona);
+        };
 
-        return Mono.just(authContext);
+        return Mono.just(principal);
     }
 
     @NonNull
@@ -262,11 +263,11 @@ public class DualAuthWebFilter implements WebFilter {
         return PathCategory.DUAL_AUTH;
     }
 
-    private boolean isAuthTypeAllowedForPath(@NonNull AuthContext auth, @NonNull PathCategory category) {
+    private boolean isAuthTypeAllowedForPath(@NonNull AuthPrincipal principal, @NonNull PathCategory category) {
         return switch (category) {
             case PUBLIC -> true;
-            case SESSION_ONLY -> auth.isHsid();
-            case PROXY_ONLY -> auth.isProxy();
+            case SESSION_ONLY -> principal.isHsidAuth();
+            case PROXY_ONLY -> principal.isProxyAuth();
             case DUAL_AUTH -> true;  // Both allowed
         };
     }
@@ -274,7 +275,7 @@ public class DualAuthWebFilter implements WebFilter {
     @NonNull
     private Mono<Void> authTypeMismatchResponse(
             @NonNull ServerWebExchange exchange,
-            @NonNull AuthContext auth,
+            @NonNull AuthPrincipal principal,
             @NonNull PathCategory category,
             @NonNull String correlationId) {
 
@@ -285,8 +286,9 @@ public class DualAuthWebFilter implements WebFilter {
                 ? "This endpoint requires session authentication"
                 : "This endpoint requires proxy authentication";
 
+        String authType = principal.isHsidAuth() ? "HSID" : "PROXY";
         log.warn("Auth type mismatch: authType={}, required={}, path={}",
-                auth.authType(), category, exchange.getRequest().getPath().value());
+                authType, category, exchange.getRequest().getPath().value());
 
         return forbiddenResponse(exchange, correlationId, code, message);
     }

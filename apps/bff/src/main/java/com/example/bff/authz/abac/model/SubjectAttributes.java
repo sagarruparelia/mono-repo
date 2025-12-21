@@ -1,11 +1,11 @@
 package com.example.bff.authz.abac.model;
 
+import com.example.bff.auth.model.AuthPrincipal;
+import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.model.AuthType;
 import com.example.bff.authz.model.Permission;
 import com.example.bff.authz.model.PermissionSet;
 
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -70,6 +70,38 @@ public record SubjectAttributes(
                 null,
                 partnerId, enterpriseId, loggedInMemberIdValue, loggedInMemberIdType
         );
+    }
+
+    /**
+     * Create SubjectAttributes from AuthPrincipal.
+     *
+     * <p>This factory method bridges the new AuthPrincipal model with the
+     * existing ABAC policy engine which uses SubjectAttributes.</p>
+     *
+     * @param principal The authenticated principal
+     * @return SubjectAttributes for ABAC evaluation
+     */
+    public static SubjectAttributes fromPrincipal(AuthPrincipal principal) {
+        if (principal == null) {
+            throw new IllegalArgumentException("Principal cannot be null");
+        }
+
+        if (principal.isHsidAuth()) {
+            return SubjectAttributes.forHsid(
+                    principal.loggedInMemberIdValue(),
+                    principal.persona().toLegacy(),
+                    principal.permissions()
+            );
+        } else {
+            return SubjectAttributes.forProxy(
+                    principal.loggedInMemberIdValue(),
+                    principal.persona().toLegacy(),
+                    null, // partnerId not in AuthPrincipal
+                    principal.enterpriseId(),
+                    principal.loggedInMemberIdValue(),
+                    principal.loggedInMemberIdType().name()
+            );
+        }
     }
 
     /**

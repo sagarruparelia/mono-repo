@@ -1,20 +1,19 @@
 package com.example.bff.document.controller;
 
-import com.example.bff.auth.model.AuthContext;
-import com.example.bff.auth.util.AuthContextResolver;
+import com.example.bff.auth.model.AuthPrincipal;
+import com.example.bff.auth.model.DelegateType;
+import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.abac.model.Action;
 import com.example.bff.authz.abac.model.PolicyDecision;
 import com.example.bff.authz.abac.model.ResourceAttributes;
 import com.example.bff.authz.abac.model.SubjectAttributes;
 import com.example.bff.authz.abac.service.AbacAuthorizationService;
-import com.example.bff.authz.model.AuthType;
-import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.authz.annotation.RequirePersona;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.document.dto.DocumentDto;
 import com.example.bff.document.dto.DocumentUploadRequest;
 import com.example.bff.document.model.DocumentEntity.DocumentType;
 import com.example.bff.document.service.DocumentService;
-import com.example.bff.session.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -30,7 +29,9 @@ import java.util.List;
 
 /**
  * REST controller for document management.
- * API Version 1.0.0
+ *
+ * <p>Uses {@link RequirePersona} for declarative persona-based authorization.
+ * Document access requires specific delegate permissions for DELEGATE persona.</p>
  */
 @Slf4j
 @RestController
@@ -38,69 +39,76 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentController {
 
-    private static final String SESSION_COOKIE = "BFF_SESSION";
-    private static final String ENTERPRISE_ID_HEADER = "X-Enterprise-Id";
-
     private final DocumentService documentService;
     private final AbacAuthorizationService authorizationService;
-    private final SessionService sessionService;
 
+    /**
+     * List all documents for the authenticated member.
+     */
+    @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
+            requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping
     public Mono<ResponseEntity<List<DocumentDto>>> listDocuments(
-            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
+            AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return resolveEnterpriseId(enterpriseId, exchange)
-                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.LIST, "list",
-                        () -> documentService.listDocuments(memberId)
-                                .collectList()
-                                .map(ResponseEntity::ok)))
-                .onErrorResume(IllegalArgumentException.class,
-                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
+        return authorizeAndExecute(principal, exchange, Action.LIST, "list",
+                () -> documentService.listDocuments(principal.enterpriseId())
+                        .collectList()
+                        .map(ResponseEntity::ok));
     }
 
+    /**
+     * Get a specific document.
+     */
+    @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
+            requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping("/{documentId}")
     public Mono<ResponseEntity<DocumentDto>> getDocument(
             @PathVariable String documentId,
-            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
+            AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return resolveEnterpriseId(enterpriseId, exchange)
-                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.VIEW, documentId,
-                        () -> documentService.getDocument(memberId, documentId)
-                                .map(ResponseEntity::ok)
-                                .defaultIfEmpty(ResponseEntity.notFound().build())))
-                .onErrorResume(IllegalArgumentException.class,
-                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
+        return authorizeAndExecute(principal, exchange, Action.VIEW, documentId,
+                () -> documentService.getDocument(principal.enterpriseId(), documentId)
+                        .map(ResponseEntity::ok)
+                        .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
+    /**
+     * Download a document (requires sensitive access for DELEGATE).
+     */
+    @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT, Persona.CONFIG_SPECIALIST},
+            requiredDelegates = {DelegateType.DAA, DelegateType.RPR, DelegateType.ROI})
     @GetMapping("/{documentId}/download")
     public Mono<ResponseEntity<byte[]>> downloadDocument(
             @PathVariable String documentId,
-            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
+            AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return resolveEnterpriseId(enterpriseId, exchange)
-                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.VIEW_SENSITIVE, documentId,
-                        () -> documentService.getDocument(memberId, documentId)
-                                .flatMap(doc -> documentService.downloadDocument(memberId, documentId)
-                                        .map(content -> ResponseEntity.ok()
-                                                .header(HttpHeaders.CONTENT_DISPOSITION,
-                                                        "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
-                                                .contentType(MediaType.parseMediaType(doc.contentType()))
-                                                .contentLength(content.length)
-                                                .body(content)))
-                                .defaultIfEmpty(ResponseEntity.notFound().build())))
-                .onErrorResume(IllegalArgumentException.class,
-                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
+        return authorizeAndExecute(principal, exchange, Action.VIEW_SENSITIVE, documentId,
+                () -> documentService.getDocument(principal.enterpriseId(), documentId)
+                        .flatMap(doc -> documentService.downloadDocument(principal.enterpriseId(), documentId)
+                                .map(content -> ResponseEntity.ok()
+                                        .header(HttpHeaders.CONTENT_DISPOSITION,
+                                                "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
+                                        .contentType(MediaType.parseMediaType(doc.contentType()))
+                                        .contentLength(content.length)
+                                        .body(content)))
+                        .defaultIfEmpty(ResponseEntity.notFound().build()));
     }
 
+    /**
+     * Upload a new document.
+     */
+    @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
+            requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<DocumentDto>> uploadDocument(
-            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
             @RequestPart("file") FilePart file,
             @RequestPart(value = "description", required = false) String description,
             @RequestPart(value = "documentType", required = false) String documentType,
+            AuthPrincipal principal,
             ServerWebExchange exchange) {
 
         DocumentUploadRequest request = new DocumentUploadRequest(
@@ -108,142 +116,105 @@ public class DocumentController {
                 parseDocumentType(documentType)
         );
 
-        return resolveEnterpriseId(enterpriseId, exchange)
-                .flatMap(memberId -> authorizeUpload(exchange, memberId, file, request))
-                .onErrorResume(IllegalArgumentException.class,
-                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
-    }
-
-    @DeleteMapping("/{documentId}")
-    public Mono<ResponseEntity<Void>> deleteDocument(
-            @PathVariable String documentId,
-            @RequestHeader(value = ENTERPRISE_ID_HEADER, required = false) String enterpriseId,
-            ServerWebExchange exchange) {
-
-        return resolveEnterpriseId(enterpriseId, exchange)
-                .flatMap(memberId -> authorizeAndExecute(exchange, memberId, Action.DELETE, documentId,
-                        () -> documentService.deleteDocument(memberId, documentId)
-                                .then(Mono.just(ResponseEntity.noContent().<Void>build()))
-                                .onErrorResume(IllegalArgumentException.class,
-                                        e -> Mono.just(ResponseEntity.notFound().build()))))
-                .onErrorResume(IllegalArgumentException.class,
-                        e -> Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).build()));
+        return authorizeUpload(principal, exchange, file, request);
     }
 
     /**
-     * Resolve enterprise ID from header or session context.
-     * - PROXY: Uses X-Enterprise-Id header (required)
-     * - HSID Self: Uses session's effectiveMemberId
-     * - HSID ResponsibleParty: Uses X-Enterprise-Id header, validated against permissions
+     * Delete a document.
      */
-    private Mono<String> resolveEnterpriseId(String headerEnterpriseId, ServerWebExchange exchange) {
-        AuthContext ctx = AuthContextResolver.resolve(exchange).orElse(null);
-        if (ctx == null) {
-            return Mono.error(new IllegalStateException("No auth context available"));
-        }
+    @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER},
+            requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
+    @DeleteMapping("/{documentId}")
+    public Mono<ResponseEntity<Void>> deleteDocument(
+            @PathVariable String documentId,
+            AuthPrincipal principal,
+            ServerWebExchange exchange) {
 
-        // PROXY: Trust header (authZ delegated to consumer)
-        if (ctx.isProxy()) {
-            if (headerEnterpriseId == null || headerEnterpriseId.isBlank()) {
-                return Mono.error(new IllegalArgumentException("X-Enterprise-Id required for proxy auth"));
-            }
-            return Mono.just(headerEnterpriseId);
-        }
-
-        // HSID Self: Use own eid from session
-        if (ctx.isSelf()) {
-            return Mono.just(ctx.effectiveMemberId());
-        }
-
-        // HSID ResponsibleParty: Validate against permission set
-        if (ctx.isResponsibleParty()) {
-            if (headerEnterpriseId == null || headerEnterpriseId.isBlank()) {
-                return Mono.error(new IllegalArgumentException("X-Enterprise-Id required for ResponsibleParty"));
-            }
-
-            // Validate eid is in viewable dependents (DAA + RPR)
-            return sessionService.getPermissions(ctx.sessionId())
-                    .flatMap(permissions -> {
-                        List<String> allowed = permissions.getViewableDependentIds();
-                        if (allowed.contains(headerEnterpriseId)) {
-                            return Mono.just(headerEnterpriseId);
-                        }
-                        log.warn("ResponsibleParty attempted to access unauthorized member: {}",
-                                StringSanitizer.forLog(headerEnterpriseId));
-                        return Mono.error(new SecurityException(
-                                "No permission to access member: " + headerEnterpriseId));
-                    })
-                    .switchIfEmpty(Mono.error(new IllegalStateException("Could not load permissions")));
-        }
-
-        return Mono.error(new IllegalArgumentException("Invalid persona: " + ctx.persona()));
+        return authorizeAndExecute(principal, exchange, Action.DELETE, documentId,
+                () -> documentService.deleteDocument(principal.enterpriseId(), documentId)
+                        .then(Mono.just(ResponseEntity.noContent().<Void>build()))
+                        .onErrorResume(IllegalArgumentException.class,
+                                e -> Mono.just(ResponseEntity.notFound().build())));
     }
 
+    /**
+     * Authorize and execute an operation.
+     * - PROXY: Skip ABAC (authorization delegated to consumer)
+     * - HSID: Apply ABAC authorization using SubjectAttributes
+     */
     private <T> Mono<ResponseEntity<T>> authorizeAndExecute(
+            AuthPrincipal principal,
             ServerWebExchange exchange,
-            String memberId,
             Action action,
             String documentId,
             java.util.function.Supplier<Mono<ResponseEntity<T>>> operation) {
 
-        return buildSubjectFromExchange(exchange)
-                .flatMap(subject -> {
-                    ResourceAttributes resource = ResourceAttributes.document(documentId, memberId);
-                    return authorizationService.authorize(subject, resource, action, exchange.getRequest())
-                            .flatMap(decision -> {
-                                if (decision.isAllowed()) {
-                                    return operation.get();
-                                }
-                                log.warn("Authorization denied for action {} on document {} for member {}: {}",
-                                        action, StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId), decision.reason());
-                                return Mono.<ResponseEntity<T>>just(buildForbiddenResponse(decision));
-                            });
+        log.debug("Document access: persona={}, enterpriseId={}, action={}, documentId={}",
+                principal.persona(), StringSanitizer.forLog(principal.enterpriseId()),
+                action, StringSanitizer.forLog(documentId));
+
+        // PROXY: Skip ABAC - authorization delegated to consumer
+        if (principal.isProxyAuth()) {
+            log.debug("Proxy auth - skipping ABAC, authZ delegated to consumer");
+            return operation.get();
+        }
+
+        // HSID: Apply ABAC authorization
+        SubjectAttributes subject = SubjectAttributes.fromPrincipal(principal);
+        ResourceAttributes resource = ResourceAttributes.document(documentId, principal.enterpriseId());
+
+        return authorizationService.authorize(subject, resource, action, exchange.getRequest())
+                .<ResponseEntity<T>>flatMap(decision -> {
+                    if (decision.isAllowed()) {
+                        return operation.get();
+                    }
+                    log.warn("Authorization denied for action {} on document {} for member {}: {}",
+                            action, StringSanitizer.forLog(documentId),
+                            StringSanitizer.forLog(principal.enterpriseId()), decision.reason());
+                    return Mono.just(buildForbiddenResponse(decision));
                 })
-                .switchIfEmpty(Mono.defer(() -> Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<T>build())));
+                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()));
     }
 
     private Mono<ResponseEntity<DocumentDto>> authorizeUpload(
+            AuthPrincipal principal,
             ServerWebExchange exchange,
-            String memberId,
             FilePart file,
             DocumentUploadRequest request) {
 
-        return buildSubjectFromExchange(exchange)
-                .flatMap(subject -> {
-                    ResourceAttributes resource = ResourceAttributes.document("new", memberId);
-                    return authorizationService.authorize(subject, resource, Action.UPLOAD, exchange.getRequest())
-                            .flatMap(decision -> {
-                                if (decision.isAllowed()) {
-                                    return documentService.uploadDocument(
-                                                    memberId, file, request, subject.userId(), subject.persona())
-                                            .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
-                                            .onErrorResume(IllegalArgumentException.class,
-                                                    e -> Mono.just(ResponseEntity.badRequest()
-                                                            .<DocumentDto>body(null)));
-                                }
-                                log.warn("Authorization denied for upload to member {}: {}",
-                                        StringSanitizer.forLog(memberId), decision.reason());
-                                return Mono.<ResponseEntity<DocumentDto>>just(buildForbiddenResponse(decision));
-                            });
+        log.debug("Document upload: persona={}, enterpriseId={}",
+                principal.persona(), StringSanitizer.forLog(principal.enterpriseId()));
+
+        // PROXY: Skip ABAC - authorization delegated to consumer
+        if (principal.isProxyAuth()) {
+            log.debug("Proxy auth - skipping ABAC for upload");
+            return documentService.uploadDocument(
+                            principal.enterpriseId(), file, request,
+                            principal.loggedInMemberIdValue(), principal.persona().toLegacy())
+                    .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
+                    .onErrorResume(IllegalArgumentException.class,
+                            e -> Mono.just(ResponseEntity.badRequest().body(null)));
+        }
+
+        // HSID: Apply ABAC authorization
+        SubjectAttributes subject = SubjectAttributes.fromPrincipal(principal);
+        ResourceAttributes resource = ResourceAttributes.document("new", principal.enterpriseId());
+
+        return authorizationService.authorize(subject, resource, Action.UPLOAD, exchange.getRequest())
+                .flatMap(decision -> {
+                    if (decision.isAllowed()) {
+                        return documentService.uploadDocument(
+                                        principal.enterpriseId(), file, request,
+                                        principal.loggedInMemberIdValue(), principal.persona().toLegacy())
+                                .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
+                                .onErrorResume(IllegalArgumentException.class,
+                                        e -> Mono.just(ResponseEntity.badRequest().body(null)));
+                    }
+                    log.warn("Authorization denied for upload to member {}: {}",
+                            StringSanitizer.forLog(principal.enterpriseId()), decision.reason());
+                    return Mono.<ResponseEntity<DocumentDto>>just(buildForbiddenResponse(decision));
                 })
-                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<DocumentDto>build()));
-    }
-
-    private Mono<SubjectAttributes> buildSubjectFromExchange(ServerWebExchange exchange) {
-        AuthType authType = authorizationService.determineAuthType(exchange.getRequest());
-
-        if (authType == AuthType.PROXY) {
-            return authorizationService.buildProxySubject(exchange.getRequest());
-        }
-
-        // HSID - get session from cookie
-        var sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE);
-        if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
-            log.debug("No session cookie found");
-            return Mono.empty();
-        }
-
-        return authorizationService.buildHsidSubject(sessionCookie.getValue());
+                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()));
     }
 
     private <T> ResponseEntity<T> buildForbiddenResponse(PolicyDecision decision) {
