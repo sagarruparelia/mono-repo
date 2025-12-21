@@ -110,14 +110,14 @@ public class AuthController {
                         return ResponseEntity.status(HttpStatus.FORBIDDEN).<List<DependentDto>>build();
                     }
 
-                    // Parse managedMembersJson to get actual dependent info
+                    // Parse managed members JSON to get actual member info
                     List<ManagedMember> managedMembers = parseManagedMembers(session.managedMembersJson());
 
                     if (managedMembers.isEmpty()) {
                         return ResponseEntity.ok(List.<DependentDto>of());
                     }
 
-                    List<DependentDto> dependents = managedMembers.stream()
+                    List<DependentDto> dependentDtos = managedMembers.stream()
                             .filter(ManagedMember::isActive)
                             .map(member -> new DependentDto(
                                     member.enterpriseId(),
@@ -126,7 +126,7 @@ public class AuthController {
                             ))
                             .toList();
 
-                    return ResponseEntity.ok(dependents);
+                    return ResponseEntity.ok(dependentDtos);
                 })
                 .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
@@ -180,7 +180,7 @@ public class AuthController {
     }
 
     /**
-     * Parse managedMembersJson from session to get actual dependent details.
+     * Parse managed members JSON from session to get actual member details.
      */
     private List<ManagedMember> parseManagedMembers(String json) {
         if (json == null || json.isBlank()) {
@@ -189,7 +189,7 @@ public class AuthController {
         try {
             return objectMapper.readValue(json, new TypeReference<List<ManagedMember>>() {});
         } catch (Exception e) {
-            log.warn("Failed to parse managedMembersJson: {}", e.getMessage());
+            log.warn("Failed to parse managed members JSON: {}", e.getMessage());
             return List.of();
         }
     }

@@ -2,8 +2,8 @@ package com.example.bff.identity.service;
 
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
-import com.example.bff.identity.dto.ManagedMemberResponse;
-import com.example.bff.identity.dto.ManagedMemberResponse.MemberPermission;
+import com.example.bff.identity.dto.ManagedMembersResponse;
+import com.example.bff.identity.dto.ManagedMembersResponse.ManagedMemberEntry;
 import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.model.ManagedMember;
 import lombok.extern.slf4j.Slf4j;
@@ -23,11 +23,15 @@ import java.util.Map;
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
 
 /**
- * Service for fetching managed members (permissions) via the Graph API.
+ * Service for fetching managed members (members the logged-in user has permission to act on behalf of)
+ * via the Permissions Graph API.
+ *
+ * The logged-in user is the "delegate" (recipient of permission). This service returns
+ * the list of managed members (grantors) that the user can act FOR.
  */
 @Slf4j
 @Service
-public class ManagedMemberService {
+public class ManagedMembersService {
 
     private static final String SERVICE_NAME = "Permissions";
 
@@ -35,7 +39,7 @@ public class ManagedMemberService {
     private final ExternalApiProperties apiProperties;
     private final IdentityCacheService cacheService;
 
-    public ManagedMemberService(
+    public ManagedMembersService(
             @Qualifier(EXTERNAL_API_WEBCLIENT) WebClient webClient,
             ExternalApiProperties apiProperties,
             IdentityCacheService cacheService) {
@@ -44,17 +48,23 @@ public class ManagedMemberService {
         this.cacheService = cacheService;
     }
 
+    /**
+     * Get list of managed members the logged-in user can act on behalf of.
+     *
+     * @param memberEid The enterprise ID of the logged-in member (the delegate)
+     * @return List of managed members with active permissions
+     */
     @NonNull
     public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid) {
         log.debug("Fetching managed members for memberEid: {}", StringSanitizer.forLog(memberEid));
 
-        Mono<ManagedMemberResponse> loader = fetchFromApi(memberEid);
+        Mono<ManagedMembersResponse> loader = fetchFromApi(memberEid);
 
-        return cacheService.getOrLoadPermissions(memberEid, loader, ManagedMemberResponse.class)
+        return cacheService.getOrLoadPermissions(memberEid, loader, ManagedMembersResponse.class)
                 .map(this::toManagedMembers);
     }
 
-    private Mono<ManagedMemberResponse> fetchFromApi(String memberEid) {
+    private Mono<ManagedMembersResponse> fetchFromApi(String memberEid) {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.permissions().timeout();
 
@@ -91,7 +101,7 @@ public class ManagedMemberService {
                         response.bodyToMono(String.class)
                                 .flatMap(body -> Mono.error(new IdentityServiceException(
                                         SERVICE_NAME, response.statusCode().value(), body))))
-                .bodyToMono(ManagedMemberResponse.class)
+                .bodyToMono(ManagedMembersResponse.class)
                 .timeout(timeout)
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
@@ -104,24 +114,24 @@ public class ManagedMemberService {
                 .onErrorResume(e -> {
                     // Fail closed: return empty response on errors
                     log.error("Failed to fetch managed members for memberEid {}: {}", StringSanitizer.forLog(memberEid), e.getMessage());
-                    return Mono.just(new ManagedMemberResponse(null));
+                    return Mono.just(new ManagedMembersResponse(null));
                 });
     }
 
-    private List<ManagedMember> toManagedMembers(ManagedMemberResponse response) {
-        return response.getActivePermissions().stream()
-                .filter(permission -> permission.enterpriseId() != null)
+    private List<ManagedMember> toManagedMembers(ManagedMembersResponse response) {
+        return response.getActiveManagedMembers().stream()
+                .filter(entry -> entry.enterpriseId() != null)
                 .map(this::toManagedMember)
                 .toList();
     }
 
-    private ManagedMember toManagedMember(MemberPermission permission) {
+    private ManagedMember toManagedMember(ManagedMemberEntry entry) {
         return new ManagedMember(
-                permission.enterpriseId(),
-                permission.firstName(),
-                permission.lastName(),
-                permission.birthDate(),
-                permission.endDate() // endDate is the permission end date
+                entry.enterpriseId(),
+                entry.firstName(),
+                entry.lastName(),
+                entry.birthDate(),
+                entry.endDate() // endDate is the permission end date
         );
     }
 

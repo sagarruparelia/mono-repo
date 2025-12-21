@@ -6,8 +6,12 @@ import org.springframework.lang.Nullable;
 import java.time.LocalDate;
 
 /**
- * Represents a member that the logged-in user can manage.
- * Used for Responsible Party (parent) personas.
+ * Represents a member that the logged-in user has permission to manage/act on behalf of.
+ * The logged-in user is the "delegate" (recipient of permission), and this record
+ * represents the person they can act FOR (the grantor of permission).
+ *
+ * Used for Responsible Party personas who manage other members (dependents, etc.).
+ * Future scope includes non-dependent access scenarios.
  */
 public record ManagedMember(
         @NonNull String enterpriseId,
@@ -34,7 +38,7 @@ public record ManagedMember(
     }
 
     /**
-     * Check if the permission is still active.
+     * Check if the permission to act for this member is still active.
      *
      * @return true if today is on or before the end date
      */

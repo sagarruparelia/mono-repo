@@ -5,8 +5,8 @@ import com.example.bff.identity.dto.UserInfoResponse;
 import com.example.bff.identity.exception.AgeRestrictionException;
 import com.example.bff.identity.exception.IdentityServiceException;
 import com.example.bff.identity.exception.NoAccessException;
-import com.example.bff.identity.model.EligibilityResult;
 import com.example.bff.identity.model.ManagedMember;
+import com.example.bff.identity.model.EligibilityResult;
 import com.example.bff.identity.model.MemberAccess;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +32,7 @@ public class MemberAccessOrchestrator {
 
     private final UserInfoService userInfoService;
     private final EligibilityService eligibilityService;
-    private final ManagedMemberService managedMemberService;
+    private final ManagedMembersService managedMembersService;
 
     @NonNull
     public Mono<MemberAccess> resolveMemberAccess(@NonNull String hsidUuid) {
@@ -74,10 +74,10 @@ public class MemberAccessOrchestrator {
         }
 
         // Fetch eligibility and managed members in parallel
-        return fetchEligibilityAndPermissions(hsidUuid, eid, apiIdentifier, age, isResponsibleParty, birthdate);
+        return fetchEligibilityAndManagedMembers(hsidUuid, eid, apiIdentifier, age, isResponsibleParty, birthdate);
     }
 
-    private Mono<MemberAccess> fetchEligibilityAndPermissions(
+    private Mono<MemberAccess> fetchEligibilityAndManagedMembers(
             String hsidUuid,
             String eid,
             String apiIdentifier,
@@ -93,7 +93,7 @@ public class MemberAccessOrchestrator {
         Mono<List<ManagedMember>> managedMembersMono;
         if (age >= ADULT_AGE && isResponsibleParty) {
             log.debug("User is adult RP, fetching managed members");
-            managedMembersMono = managedMemberService.getManagedMembers(eid);
+            managedMembersMono = managedMembersService.getManagedMembers(eid);
         } else {
             log.debug("User is not adult RP, skipping managed members fetch");
             managedMembersMono = Mono.just(List.of());

@@ -87,11 +87,11 @@ public record MemberAccess(
     }
 
     /**
-     * Check if user has any active managed members.
+     * Check if user has any managed members (people they can act for).
      *
-     * @return true if managedMembers is not empty
+     * @return true if managed members list is not empty
      */
-    public boolean hasActiveManagedMembers() {
+    public boolean hasManagedMembers() {
         return managedMembers != null && !managedMembers.isEmpty();
     }
 
@@ -99,7 +99,7 @@ public record MemberAccess(
      * Check if user can access the system.
      * User can access if:
      * - Age >= 13 AND
-     * - (Has eligibility OR has active managed members)
+     * - (Has eligibility OR has managed members)
      *
      * @return true if user can access the system
      */
@@ -107,7 +107,7 @@ public record MemberAccess(
         if (!meetsMinimumAge()) {
             return false;
         }
-        return hasEligibility() || hasActiveManagedMembers();
+        return hasEligibility() || hasManagedMembers();
     }
 
     /**
@@ -124,7 +124,7 @@ public record MemberAccess(
         if (hasEligibility()) {
             return "individual";
         }
-        if (hasActiveManagedMembers()) {
+        if (hasManagedMembers()) {
             return "parent";
         }
         return "none";

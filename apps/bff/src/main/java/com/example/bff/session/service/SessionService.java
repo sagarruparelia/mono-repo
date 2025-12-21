@@ -440,7 +440,7 @@ public class SessionService {
         sessionData.put("email", user.getEmail() != null ? user.getEmail() : "");
         sessionData.put("name", user.getFullName() != null ? user.getFullName() : "");
         sessionData.put("persona", memberAccess.getEffectivePersona());
-        sessionData.put("dependents", buildDependentsString(memberAccess));
+        sessionData.put("dependents", buildManagedMembersString(memberAccess));
         sessionData.put("ipAddress", clientInfo.ipAddress());
         sessionData.put("userAgentHash", clientInfo.userAgentHash());
         sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
@@ -453,7 +453,7 @@ public class SessionService {
         if (memberAccess.termDate() != null) {
             sessionData.put("termDate", memberAccess.termDate().toString());
         }
-        if (memberAccess.hasActiveManagedMembers()) {
+        if (memberAccess.hasManagedMembers()) {
             sessionData.put("managedMembersJson", serializeManagedMembers(memberAccess.managedMembers()));
             if (memberAccess.getEarliestPermissionEndDate() != null) {
                 sessionData.put("earliestPermissionEndDate", memberAccess.getEarliestPermissionEndDate().toString());
@@ -481,8 +481,8 @@ public class SessionService {
     // ==================== Helper Methods ====================
 
     @NonNull
-    private String buildDependentsString(@NonNull MemberAccess memberAccess) {
-        if (!memberAccess.hasActiveManagedMembers()) {
+    private String buildManagedMembersString(@NonNull MemberAccess memberAccess) {
+        if (!memberAccess.hasManagedMembers()) {
             return "";
         }
         return memberAccess.managedMembers().stream()
