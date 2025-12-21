@@ -116,13 +116,13 @@ public class AbacAuthorizationService {
                     // Get permissions from session
                     return sessionService.getPermissions(sessionId)
                             .map(permissions -> SubjectAttributes.forHsid(
-                                    session.userId(),
+                                    session.hsidUuid(),
                                     session.persona(),
                                     permissions))
                             .switchIfEmpty(Mono.just(SubjectAttributes.forHsid(
-                                    session.userId(),
+                                    session.hsidUuid(),
                                     session.persona(),
-                                    PermissionSet.empty(session.userId(), session.persona()))));
+                                    PermissionSet.empty(session.hsidUuid(), session.persona()))));
                 });
     }
 

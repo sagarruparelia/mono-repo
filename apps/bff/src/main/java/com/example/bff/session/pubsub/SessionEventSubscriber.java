@@ -86,11 +86,11 @@ public class SessionEventSubscriber {
     private void handleMessage(@NonNull String json) {
         try {
             SessionEventMessage message = objectMapper.readValue(json, SessionEventMessage.class);
-            log.debug("Received session event from {}: type={}, session={}, user={}",
+            log.debug("Received session event from {}: type={}, session={}, hsidUuid={}",
                     message.originInstance(),
                     message.eventType(),
                     StringSanitizer.forLog(message.sessionId()),
-                    StringSanitizer.forLog(message.userId()));
+                    StringSanitizer.forLog(message.hsidUuid()));
 
             switch (message.eventType()) {
                 case INVALIDATED -> eventHandler.handleInvalidation(message);

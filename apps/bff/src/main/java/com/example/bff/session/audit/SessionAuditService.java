@@ -57,7 +57,7 @@ public class SessionAuditService {
 
         SessionAuditEvent event = SessionAuditEvent.sessionCreated(
                 sessionId,
-                sessionData.userId(),
+                sessionData.hsidUuid(),
                 sessionData.persona(),
                 clientIp,
                 deviceFingerprint,
@@ -83,7 +83,7 @@ public class SessionAuditService {
         SessionAuditEvent event = SessionAuditEvent.sessionRotated(
                 oldSessionId,
                 newSessionId,
-                sessionData.userId(),
+                sessionData.hsidUuid(),
                 sessionData.persona(),
                 clientIp,
                 deviceFingerprint,
@@ -98,7 +98,7 @@ public class SessionAuditService {
      */
     public void logSessionInvalidated(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable ServerHttpRequest request) {
 
@@ -107,7 +107,7 @@ public class SessionAuditService {
 
         SessionAuditEvent event = SessionAuditEvent.sessionInvalidated(
                 sessionId,
-                userId,
+                hsidUuid,
                 reason,
                 clientIp,
                 correlationId
@@ -121,7 +121,7 @@ public class SessionAuditService {
      */
     public void logBindingFailed(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable ClientInfo clientInfo,
             @Nullable ServerHttpRequest request) {
@@ -134,7 +134,7 @@ public class SessionAuditService {
 
         SessionAuditEvent event = SessionAuditEvent.bindingFailed(
                 sessionId,
-                userId,
+                hsidUuid,
                 reason,
                 clientIp,
                 deviceFingerprint,
@@ -151,7 +151,7 @@ public class SessionAuditService {
      */
     public void logHijackDetected(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @Nullable String expectedIp,
             @Nullable String actualIp,
@@ -165,7 +165,7 @@ public class SessionAuditService {
 
         SessionAuditEvent event = SessionAuditEvent.hijackDetected(
                 sessionId,
-                userId,
+                hsidUuid,
                 reason,
                 expectedIp,
                 actualIp,
@@ -183,12 +183,12 @@ public class SessionAuditService {
      */
     public void logSessionExpired(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @Nullable String correlationId) {
 
         SessionAuditEvent event = SessionAuditEvent.sessionExpired(
                 sessionId,
-                userId,
+                hsidUuid,
                 correlationId
         );
 

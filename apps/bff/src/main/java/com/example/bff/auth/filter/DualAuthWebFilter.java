@@ -121,21 +121,21 @@ public class DualAuthWebFilter implements WebFilter {
 
         return sessionService.getSession(sessionId)
                 .flatMap(session -> sessionService.getPermissions(sessionId)
-                        .defaultIfEmpty(PermissionSet.empty(session.userId(), session.persona()))
+                        .defaultIfEmpty(PermissionSet.empty(session.hsidUuid(), session.persona()))
                         .map(permissions -> {
                             // Build SubjectAttributes for ABAC
                             SubjectAttributes subject = SubjectAttributes.forHsid(
-                                    session.userId(),
+                                    session.hsidUuid(),
                                     session.persona(),
                                     permissions
                             );
 
-                            // For HSID, effectiveMemberId is userId (or selectedChild if parent)
+                            // For HSID, effectiveMemberId defaults to eid (or selectedChild if parent)
                             // The actual selectedChild is managed at controller level via request body
-                            String effectiveMemberId = session.userId();
+                            String effectiveMemberId = session.eid() != null ? session.eid() : session.hsidUuid();
 
                             return AuthContext.forHsid(
-                                    session.userId(),
+                                    session.hsidUuid(),
                                     effectiveMemberId,
                                     session.persona(),
                                     sessionId,

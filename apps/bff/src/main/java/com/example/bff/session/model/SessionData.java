@@ -13,9 +13,12 @@ import java.util.Map;
 /**
  * Session data stored in Redis.
  * Contains user identity, eligibility, managed member information, and Zero Trust metadata.
+ *
+ * Note: hsidUuid is the OIDC subject claim from HSID authentication.
+ * The Redis key uses "userId" for backward compatibility with existing sessions.
  */
 public record SessionData(
-        @NonNull String userId,
+        @NonNull String hsidUuid,
         @NonNull String email,
         @NonNull String name,
         @NonNull String persona,
@@ -39,7 +42,7 @@ public record SessionData(
 ) {
     public static SessionData fromMap(Map<String, String> map) {
         return new SessionData(
-                map.getOrDefault("userId", ""),
+                map.getOrDefault("userId", ""),  // Redis key "userId" maps to hsidUuid field
                 map.getOrDefault("email", ""),
                 map.getOrDefault("name", ""),
                 map.getOrDefault("persona", "individual"),
@@ -69,7 +72,7 @@ public record SessionData(
     @NonNull
     public Map<String, String> toMap() {
         Map<String, String> map = new HashMap<>();
-        map.put("userId", userId);
+        map.put("userId", hsidUuid);  // Redis key "userId" stores hsidUuid value
         map.put("email", email);
         map.put("name", name);
         map.put("persona", persona);
@@ -100,7 +103,7 @@ public record SessionData(
      * Used for backwards compatibility.
      */
     public static SessionData basic(
-            String userId,
+            String hsidUuid,
             String email,
             String name,
             String persona,
@@ -108,7 +111,7 @@ public record SessionData(
             String ipAddress,
             String userAgentHash) {
         return new SessionData(
-                userId, email, name, persona, dependents,
+                hsidUuid, email, name, persona, dependents,
                 ipAddress, userAgentHash,
                 Instant.now(), Instant.now(),
                 null, null, false, null, null, null, null, null,

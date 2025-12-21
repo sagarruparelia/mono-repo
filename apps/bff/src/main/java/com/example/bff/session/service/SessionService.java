@@ -58,18 +58,18 @@ public class SessionService {
     // ==================== Session Lifecycle ====================
 
     @NonNull
-    public Mono<Void> invalidateExistingSessions(@NonNull String userId) {
-        if (!StringSanitizer.isValidUserId(userId)) {
-            log.warn("Invalid user ID format in invalidateExistingSessions");
+    public Mono<Void> invalidateExistingSessions(@NonNull String hsidUuid) {
+        if (!StringSanitizer.isValidUserId(hsidUuid)) {
+            log.warn("Invalid hsidUuid format in invalidateExistingSessions");
             return Mono.empty();
         }
 
-        String userSessionKey = USER_SESSION_KEY + userId;
+        String userSessionKey = USER_SESSION_KEY + hsidUuid;
 
         return redisOps.opsForValue().get(userSessionKey)
                 .flatMap(existingSessionId -> {
-                    log.info("Invalidating existing session for user {}: {}",
-                            StringSanitizer.forLog(userId), StringSanitizer.forLog(existingSessionId));
+                    log.info("Invalidating existing session for hsidUuid {}: {}",
+                            StringSanitizer.forLog(hsidUuid), StringSanitizer.forLog(existingSessionId));
                     return redisOps.delete(SESSION_KEY + existingSessionId)
                             .then(redisOps.delete(userSessionKey));
                 })
@@ -78,23 +78,23 @@ public class SessionService {
 
     @NonNull
     public Mono<String> createSession(
-            @NonNull String userId,
+            @NonNull String hsidUuid,
             @NonNull OidcUser user,
             @Nullable String persona,
             @Nullable List<String> dependents,
             @NonNull ClientInfo clientInfo) {
 
-        if (!StringSanitizer.isValidUserId(userId)) {
-            log.warn("Invalid user ID format in createSession");
-            return Mono.error(new IllegalArgumentException("Invalid user ID format"));
+        if (!StringSanitizer.isValidUserId(hsidUuid)) {
+            log.warn("Invalid hsidUuid format in createSession");
+            return Mono.error(new IllegalArgumentException("Invalid hsidUuid format"));
         }
 
         String sessionId = UUID.randomUUID().toString();
         String sessionKey = SESSION_KEY + sessionId;
-        String userSessionKey = USER_SESSION_KEY + userId;
+        String userSessionKey = USER_SESSION_KEY + hsidUuid;
 
         Map<String, String> sessionData = new HashMap<>();
-        sessionData.put("userId", userId);
+        sessionData.put("userId", hsidUuid);  // Redis key "userId" stores hsidUuid value
         sessionData.put("email", user.getEmail() != null ? user.getEmail() : "");
         sessionData.put("name", user.getFullName() != null ? user.getFullName() : "");
         sessionData.put("persona", persona != null ? persona : "individual");
@@ -107,14 +107,14 @@ public class SessionService {
 
         Duration ttl = sessionProperties.timeout();
 
-        log.info("Creating session for user {}: sessionId={}, persona={}",
-                StringSanitizer.forLog(userId), StringSanitizer.forLog(sessionId), StringSanitizer.forLog(persona));
+        log.info("Creating session for hsidUuid {}: sessionId={}, persona={}",
+                StringSanitizer.forLog(hsidUuid), StringSanitizer.forLog(sessionId), StringSanitizer.forLog(persona));
 
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
                 .then(redisOps.expire(sessionKey, ttl))
                 .then(redisOps.opsForValue().set(userSessionKey, sessionId, ttl))
                 .doOnSuccess(v -> auditService.ifPresent(audit -> {
-                    SessionData session = SessionData.basic(userId, user.getEmail(), user.getFullName(),
+                    SessionData session = SessionData.basic(hsidUuid, user.getEmail(), user.getFullName(),
                             persona != null ? persona : "individual",
                             dependents != null ? dependents : List.of(),
                             clientInfo.ipAddress(), clientInfo.userAgentHash());
@@ -172,22 +172,22 @@ public class SessionService {
                 .flatMap(session -> {
                     log.info("Invalidating session {}", StringSanitizer.forLog(sessionId));
                     auditService.ifPresent(audit ->
-                            audit.logSessionInvalidated(sessionId, session.userId(), reason, null));
+                            audit.logSessionInvalidated(sessionId, session.hsidUuid(), reason, null));
                     // Publish invalidation event for other instances
                     eventPublisher.ifPresent(publisher ->
-                            publisher.publishInvalidation(sessionId, session.userId(), reason).subscribe());
+                            publisher.publishInvalidation(sessionId, session.hsidUuid(), reason).subscribe());
                     return redisOps.delete(sessionKey)
-                            .then(redisOps.delete(USER_SESSION_KEY + session.userId()));
+                            .then(redisOps.delete(USER_SESSION_KEY + session.hsidUuid()));
                 })
                 .then();
     }
 
     @NonNull
-    public Mono<String> getSessionIdForUser(@NonNull String userId) {
-        if (!StringSanitizer.isValidUserId(userId)) {
+    public Mono<String> getSessionIdForUser(@NonNull String hsidUuid) {
+        if (!StringSanitizer.isValidUserId(hsidUuid)) {
             return Mono.empty();
         }
-        return redisOps.opsForValue().get(USER_SESSION_KEY + userId);
+        return redisOps.opsForValue().get(USER_SESSION_KEY + hsidUuid);
     }
 
     // ==================== Session Binding Validation ====================
@@ -290,7 +290,7 @@ public class SessionService {
                                     // Check if recently rotated by another request
                                     if (!needsRotation(session)) {
                                         // Already rotated by concurrent request, get new session ID
-                                        return redisOps.opsForValue().get(USER_SESSION_KEY + session.userId())
+                                        return redisOps.opsForValue().get(USER_SESSION_KEY + session.hsidUuid())
                                                 .defaultIfEmpty(oldSessionId);
                                     }
                                     // Still needs rotation but lock held - return old session ID
@@ -311,7 +311,7 @@ public class SessionService {
         String newSessionId = UUID.randomUUID().toString();
         String newSessionKey = SESSION_KEY + newSessionId;
         String oldSessionKey = SESSION_KEY + oldSessionId;
-        String userSessionKey = USER_SESSION_KEY + session.userId();
+        String userSessionKey = USER_SESSION_KEY + session.hsidUuid();
 
         // Build new session data with updated rotation timestamp and fingerprint
         Map<String, String> sessionData = session.toMap();
@@ -324,8 +324,8 @@ public class SessionService {
         Duration ttl = sessionProperties.timeout();
         Duration gracePeriod = sessionProperties.rotation().gracePeriod();
 
-        log.info("Rotating session for user {}: {} -> {}",
-                StringSanitizer.forLog(session.userId()),
+        log.info("Rotating session for hsidUuid {}: {} -> {}",
+                StringSanitizer.forLog(session.hsidUuid()),
                 StringSanitizer.forLog(oldSessionId),
                 StringSanitizer.forLog(newSessionId));
 
@@ -346,7 +346,7 @@ public class SessionService {
                             audit.logSessionRotated(oldSessionId, newSessionId, session, clientInfo, null));
                     // Publish rotation event for other instances (cache invalidation)
                     eventPublisher.ifPresent(publisher ->
-                            publisher.publishRotation(oldSessionId, newSessionId, session.userId()).subscribe());
+                            publisher.publishRotation(oldSessionId, newSessionId, session.hsidUuid()).subscribe());
                 })
                 .doFinally(signal -> {
                     // Always release lock after rotation attempt
@@ -415,28 +415,28 @@ public class SessionService {
 
     @NonNull
     public Mono<String> createSessionWithPermissions(
-            @NonNull String userId, @NonNull OidcUser user, @Nullable String persona,
+            @NonNull String hsidUuid, @NonNull OidcUser user, @Nullable String persona,
             @NonNull ClientInfo clientInfo, @NonNull PermissionSet permissions) {
-        return createSession(userId, user, persona, permissions.getViewableDependentIds(), clientInfo)
+        return createSession(hsidUuid, user, persona, permissions.getViewableDependentIds(), clientInfo)
                 .flatMap(sessionId -> storePermissions(sessionId, permissions).thenReturn(sessionId));
     }
 
     @NonNull
     public Mono<String> createSessionWithMemberAccess(
-            @NonNull String userId, @NonNull OidcUser user, @NonNull ClientInfo clientInfo,
+            @NonNull String hsidUuid, @NonNull OidcUser user, @NonNull ClientInfo clientInfo,
             @NonNull MemberAccess memberAccess, @NonNull PermissionSet permissions) {
 
-        if (!StringSanitizer.isValidUserId(userId)) {
-            log.warn("Invalid user ID format in createSessionWithMemberAccess");
-            return Mono.error(new IllegalArgumentException("Invalid user ID format"));
+        if (!StringSanitizer.isValidUserId(hsidUuid)) {
+            log.warn("Invalid hsidUuid format in createSessionWithMemberAccess");
+            return Mono.error(new IllegalArgumentException("Invalid hsidUuid format"));
         }
 
         String sessionId = UUID.randomUUID().toString();
         String sessionKey = SESSION_KEY + sessionId;
-        String userSessionKey = USER_SESSION_KEY + userId;
+        String userSessionKey = USER_SESSION_KEY + hsidUuid;
 
         Map<String, String> sessionData = new HashMap<>();
-        sessionData.put("userId", userId);
+        sessionData.put("userId", hsidUuid);  // Redis key "userId" stores hsidUuid value
         sessionData.put("email", user.getEmail() != null ? user.getEmail() : "");
         sessionData.put("name", user.getFullName() != null ? user.getFullName() : "");
         sessionData.put("persona", memberAccess.getEffectivePersona());
@@ -464,8 +464,8 @@ public class SessionService {
         }
 
         Duration ttl = sessionProperties.timeout();
-        log.info("Creating session with member access for user {}: sessionId={}, persona={}, eligibility={}",
-                StringSanitizer.forLog(userId), StringSanitizer.forLog(sessionId),
+        log.info("Creating session with member access for hsidUuid {}: sessionId={}, persona={}, eligibility={}",
+                StringSanitizer.forLog(hsidUuid), StringSanitizer.forLog(sessionId),
                 memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
 
         return redisOps.opsForHash().putAll(sessionKey, sessionData)
@@ -473,7 +473,7 @@ public class SessionService {
                 .then(redisOps.opsForValue().set(userSessionKey, sessionId, ttl))
                 .then(storePermissions(sessionId, permissions))
                 .doOnSuccess(v -> auditService.ifPresent(audit -> {
-                    SessionData session = SessionData.basic(userId, user.getEmail(), user.getFullName(),
+                    SessionData session = SessionData.basic(hsidUuid, user.getEmail(), user.getFullName(),
                             memberAccess.getEffectivePersona(), List.of(),
                             clientInfo.ipAddress(), clientInfo.userAgentHash());
                     audit.logSessionCreated(sessionId, session, clientInfo, null);

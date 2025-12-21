@@ -72,26 +72,26 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
             return Mono.empty();
         }
 
-        String userId = oidcUser.getSubject();
-        log.info("Authentication success for user: {}", userId);
+        String hsidUuid = oidcUser.getSubject();
+        log.info("Authentication success for hsidUuid: {}", hsidUuid);
 
         ClientInfo clientInfo = extractClientInfo(exchange.getExchange());
         Mono<OAuth2AuthorizedClient> authorizedClientMono = getAuthorizedClient(token);
 
-        return sessionService.invalidateExistingSessions(userId)
-                .then(memberAccessOrchestrator.resolveMemberAccess(userId))
+        return sessionService.invalidateExistingSessions(hsidUuid)
+                .then(memberAccessOrchestrator.resolveMemberAccess(hsidUuid))
                 .flatMap(memberAccess -> createSessionAndRedirect(
-                        exchange, userId, oidcUser, clientInfo, memberAccess, authorizedClientMono))
+                        exchange, hsidUuid, oidcUser, clientInfo, memberAccess, authorizedClientMono))
                 .onErrorResume(AgeRestrictionException.class, e -> {
-                    log.warn("User {} failed age restriction check: {}", userId, e.getMessage());
+                    log.warn("hsidUuid {} failed age restriction check: {}", hsidUuid, e.getMessage());
                     return redirectToError(exchange.getExchange(), AGE_RESTRICTED_PATH);
                 })
                 .onErrorResume(NoAccessException.class, e -> {
-                    log.warn("User {} has no access: {}", userId, e.getMessage());
+                    log.warn("hsidUuid {} has no access: {}", hsidUuid, e.getMessage());
                     return redirectToError(exchange.getExchange(), NO_ACCESS_PATH);
                 })
                 .onErrorResume(e -> {
-                    log.error("Failed to enrich member access for user {}: {}", userId, e.getMessage(), e);
+                    log.error("Failed to enrich member access for hsidUuid {}: {}", hsidUuid, e.getMessage(), e);
                     return redirectToError(exchange.getExchange(), ERROR_PATH);
                 });
     }
@@ -99,16 +99,16 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     @NonNull
     private Mono<Void> createSessionAndRedirect(
             @NonNull WebFilterExchange exchange,
-            @NonNull String userId,
+            @NonNull String hsidUuid,
             @NonNull OidcUser oidcUser,
             @NonNull ClientInfo clientInfo,
             @NonNull MemberAccess memberAccess,
             @NonNull Mono<OAuth2AuthorizedClient> authorizedClientMono) {
 
-        log.info("Member access resolved for user {}: persona={}, eligibility={}",
-                userId, memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
+        log.info("Member access resolved for hsidUuid {}: persona={}, eligibility={}",
+                hsidUuid, memberAccess.getEffectivePersona(), memberAccess.eligibilityStatus());
 
-        Mono<PermissionSet> permissionsMono = fetchPermissions(userId, memberAccess);
+        Mono<PermissionSet> permissionsMono = fetchPermissions(hsidUuid, memberAccess);
 
         return Mono.zip(permissionsMono, authorizedClientMono.defaultIfEmpty(createEmptyClient()))
                 .flatMap(tuple -> {
@@ -116,7 +116,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                     OAuth2AuthorizedClient authorizedClient = tuple.getT2();
 
                     return sessionService.createSessionWithMemberAccess(
-                            userId, oidcUser, clientInfo, memberAccess, permissions)
+                            hsidUuid, oidcUser, clientInfo, memberAccess, permissions)
                             .flatMap(sessionId -> {
                                 // Trigger background health data fetch (fire-and-forget)
                                 triggerHealthDataFetch(memberAccess);
@@ -128,20 +128,20 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     }
 
     @NonNull
-    private Mono<PermissionSet> fetchPermissions(@NonNull String userId, @NonNull MemberAccess memberAccess) {
+    private Mono<PermissionSet> fetchPermissions(@NonNull String hsidUuid, @NonNull MemberAccess memberAccess) {
         String persona = memberAccess.getEffectivePersona();
 
         if (permissionsFetchService == null) {
             log.debug("PermissionsFetchService not available, using empty permissions");
-            return Mono.just(PermissionSet.empty(userId, persona));
+            return Mono.just(PermissionSet.empty(hsidUuid, persona));
         }
 
-        return permissionsFetchService.fetchPermissions(userId)
-                .doOnSuccess(p -> log.info("Fetched {} dependents for user {} on login",
-                        p.dependents() != null ? p.dependents().size() : 0, userId))
+        return permissionsFetchService.fetchPermissions(hsidUuid)
+                .doOnSuccess(p -> log.info("Fetched {} dependents for hsidUuid {} on login",
+                        p.dependents() != null ? p.dependents().size() : 0, hsidUuid))
                 .onErrorResume(e -> {
-                    log.error("Failed to fetch permissions for user {}: {}", userId, e.getMessage());
-                    return Mono.just(PermissionSet.empty(userId, persona));
+                    log.error("Failed to fetch permissions for hsidUuid {}: {}", hsidUuid, e.getMessage());
+                    return Mono.just(PermissionSet.empty(hsidUuid, persona));
                 });
     }
 

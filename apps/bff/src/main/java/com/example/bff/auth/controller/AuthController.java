@@ -73,7 +73,7 @@ public class AuthController {
                 .map(session -> {
                     Map<String, Object> response = new HashMap<>();
                     response.put("valid", true);
-                    response.put("userId", session.userId());
+                    response.put("userId", session.hsidUuid());  // API response key stays "userId" for compatibility
                     response.put("persona", session.persona());
                     response.put("name", session.name());
                     response.put("email", session.email());

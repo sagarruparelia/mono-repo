@@ -44,11 +44,11 @@ public class SessionEventPublisher {
     @NonNull
     public Mono<Void> publishInvalidation(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason) {
 
         SessionEventMessage message = SessionEventMessage.invalidated(
-                sessionId, userId, reason, instanceId);
+                sessionId, hsidUuid, reason, instanceId);
         return publish(message);
     }
 
@@ -57,11 +57,11 @@ public class SessionEventPublisher {
      */
     @NonNull
     public Mono<Void> publishForceLogout(
-            @NonNull String userId,
+            @NonNull String hsidUuid,
             @NonNull String reason) {
 
         SessionEventMessage message = SessionEventMessage.forceLogout(
-                userId, reason, instanceId);
+                hsidUuid, reason, instanceId);
         return publish(message);
     }
 
@@ -72,10 +72,10 @@ public class SessionEventPublisher {
     public Mono<Void> publishRotation(
             @NonNull String oldSessionId,
             @NonNull String newSessionId,
-            @Nullable String userId) {
+            @Nullable String hsidUuid) {
 
         SessionEventMessage message = SessionEventMessage.rotated(
-                oldSessionId, newSessionId, userId, instanceId);
+                oldSessionId, newSessionId, hsidUuid, instanceId);
         return publish(message);
     }
 
@@ -83,10 +83,10 @@ public class SessionEventPublisher {
     private Mono<Void> publish(@NonNull SessionEventMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);
-            log.debug("Publishing session event: type={}, session={}, user={}",
+            log.debug("Publishing session event: type={}, session={}, hsidUuid={}",
                     message.eventType(),
                     StringSanitizer.forLog(message.sessionId()),
-                    StringSanitizer.forLog(message.userId()));
+                    StringSanitizer.forLog(message.hsidUuid()));
 
             return redisOps.convertAndSend(channel, json)
                     .doOnSuccess(count -> log.debug("Session event published to {} subscribers", count))

@@ -12,7 +12,7 @@ import java.time.Instant;
 public record SessionEventMessage(
         @NonNull EventType eventType,
         @NonNull String sessionId,
-        @Nullable String userId,
+        @Nullable String hsidUuid,
         @Nullable String reason,
         @NonNull Instant timestamp,
         @NonNull String originInstance
@@ -43,13 +43,13 @@ public record SessionEventMessage(
     @NonNull
     public static SessionEventMessage invalidated(
             @NonNull String sessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String reason,
             @NonNull String originInstance) {
         return new SessionEventMessage(
                 EventType.INVALIDATED,
                 sessionId,
-                userId,
+                hsidUuid,
                 reason,
                 Instant.now(),
                 originInstance
@@ -61,13 +61,13 @@ public record SessionEventMessage(
      */
     @NonNull
     public static SessionEventMessage forceLogout(
-            @NonNull String userId,
+            @NonNull String hsidUuid,
             @NonNull String reason,
             @NonNull String originInstance) {
         return new SessionEventMessage(
                 EventType.FORCE_LOGOUT,
                 "",  // No specific session
-                userId,
+                hsidUuid,
                 reason,
                 Instant.now(),
                 originInstance
@@ -81,12 +81,12 @@ public record SessionEventMessage(
     public static SessionEventMessage rotated(
             @NonNull String oldSessionId,
             @NonNull String newSessionId,
-            @Nullable String userId,
+            @Nullable String hsidUuid,
             @NonNull String originInstance) {
         return new SessionEventMessage(
                 EventType.ROTATED,
                 oldSessionId,
-                userId,
+                hsidUuid,
                 "Rotated to: " + newSessionId,
                 Instant.now(),
                 originInstance

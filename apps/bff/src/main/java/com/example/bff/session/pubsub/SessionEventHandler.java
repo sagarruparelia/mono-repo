@@ -38,21 +38,21 @@ public class SessionEventHandler {
      * Handles force logout event - invalidates all sessions for a user.
      */
     public void handleForceLogout(@NonNull SessionEventMessage message) {
-        if (message.userId() == null || message.userId().isBlank()) {
-            log.warn("Force logout event missing user ID");
+        if (message.hsidUuid() == null || message.hsidUuid().isBlank()) {
+            log.warn("Force logout event missing hsidUuid");
             return;
         }
 
-        log.info("Processing remote force logout: user={}, reason={}",
-                StringSanitizer.forLog(message.userId()),
+        log.info("Processing remote force logout: hsidUuid={}, reason={}",
+                StringSanitizer.forLog(message.hsidUuid()),
                 StringSanitizer.forLog(message.reason()));
 
         // Invalidate all sessions for the user
-        sessionService.invalidateExistingSessions(message.userId())
-                .doOnSuccess(v -> log.debug("Force logout completed for user: {}",
-                        StringSanitizer.forLog(message.userId())))
-                .doOnError(e -> log.error("Force logout failed for user {}: {}",
-                        StringSanitizer.forLog(message.userId()),
+        sessionService.invalidateExistingSessions(message.hsidUuid())
+                .doOnSuccess(v -> log.debug("Force logout completed for hsidUuid: {}",
+                        StringSanitizer.forLog(message.hsidUuid())))
+                .doOnError(e -> log.error("Force logout failed for hsidUuid {}: {}",
+                        StringSanitizer.forLog(message.hsidUuid()),
                         StringSanitizer.forLog(e.getMessage())))
                 .subscribe();
     }
@@ -62,9 +62,9 @@ public class SessionEventHandler {
      * In a future enhancement, this could update local session caches.
      */
     public void handleRotation(@NonNull SessionEventMessage message) {
-        log.debug("Processing remote session rotation: oldSession={}, user={}",
+        log.debug("Processing remote session rotation: oldSession={}, hsidUuid={}",
                 StringSanitizer.forLog(message.sessionId()),
-                StringSanitizer.forLog(message.userId()));
+                StringSanitizer.forLog(message.hsidUuid()));
 
         // Redis handles the rotation atomically - this is for future local cache invalidation
     }
