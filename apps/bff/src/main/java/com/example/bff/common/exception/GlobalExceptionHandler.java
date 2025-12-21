@@ -1,9 +1,9 @@
 package com.example.bff.common.exception;
 
 import com.example.bff.common.util.StringSanitizer;
-import com.example.bff.identity.exception.AgeRestrictionException;
-import com.example.bff.identity.exception.IdentityServiceException;
-import com.example.bff.identity.exception.NoAccessException;
+import com.example.bff.authz.exception.AgeRestrictionException;
+import com.example.bff.authz.exception.IdentityServiceException;
+import com.example.bff.authz.exception.NoAccessException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;

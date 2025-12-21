@@ -1,4 +1,4 @@
-package com.example.bff.identity.model;
+package com.example.bff.authz.model;
 
 /**
  * Eligibility status for a member.

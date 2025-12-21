@@ -4,7 +4,7 @@ import com.example.bff.config.properties.HealthDataCacheProperties;
 import com.example.bff.health.model.AllergyEntity;
 import com.example.bff.health.model.ConditionEntity;
 import com.example.bff.health.model.ImmunizationEntity;
-import com.example.bff.identity.model.ManagedMember;
+import com.example.bff.authz.model.ManagedMember;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;

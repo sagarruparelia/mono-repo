@@ -1,12 +1,12 @@
-package com.example.bff.identity.controller;
+package com.example.bff.authz.controller;
 
 import com.example.bff.auth.model.AuthPrincipal;
 import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.annotation.RequirePersona;
 import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
-import com.example.bff.identity.dto.ManagedMemberDetailResponse;
-import com.example.bff.identity.model.ManagedMember;
+import com.example.bff.authz.dto.ManagedMemberDetailResponse;
+import com.example.bff.authz.model.ManagedMember;
 import com.example.bff.session.service.SessionService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

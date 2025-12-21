@@ -1,4 +1,4 @@
-package com.example.bff.identity.service;
+package com.example.bff.authz.service;
 
 import com.example.bff.config.properties.IdentityCacheProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;

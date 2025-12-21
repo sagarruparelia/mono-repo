@@ -1,4 +1,4 @@
-package com.example.bff.identity.dto;
+package com.example.bff.authz.dto;
 
 import com.example.bff.auth.model.DelegatePermission;
 import com.example.bff.auth.model.DelegateType;

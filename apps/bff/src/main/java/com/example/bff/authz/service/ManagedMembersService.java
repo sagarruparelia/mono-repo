@@ -1,11 +1,11 @@
-package com.example.bff.identity.service;
+package com.example.bff.authz.service;
 
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
-import com.example.bff.identity.dto.ManagedMembersResponse;
-import com.example.bff.identity.dto.ManagedMembersResponse.ManagedMemberEntry;
-import com.example.bff.identity.exception.IdentityServiceException;
-import com.example.bff.identity.model.ManagedMember;
+import com.example.bff.authz.dto.ManagedMembersResponse;
+import com.example.bff.authz.dto.ManagedMembersResponse.ManagedMemberEntry;
+import com.example.bff.authz.exception.IdentityServiceException;
+import com.example.bff.authz.model.ManagedMember;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;

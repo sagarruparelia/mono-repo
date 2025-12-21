@@ -1,10 +1,10 @@
-package com.example.bff.identity.service;
+package com.example.bff.authz.service;
 
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
-import com.example.bff.identity.dto.EligibilityResponse;
-import com.example.bff.identity.exception.IdentityServiceException;
-import com.example.bff.identity.model.EligibilityResult;
+import com.example.bff.authz.dto.EligibilityResponse;
+import com.example.bff.authz.exception.IdentityServiceException;
+import com.example.bff.authz.model.EligibilityResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -22,7 +22,7 @@ import java.time.LocalDate;
 import java.util.Map;
 
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
-import static com.example.bff.identity.model.EligibilityResult.GRACE_PERIOD_MONTHS;
+import static com.example.bff.authz.model.EligibilityResult.GRACE_PERIOD_MONTHS;
 
 /**
  * Service for checking member eligibility via the Graph API.

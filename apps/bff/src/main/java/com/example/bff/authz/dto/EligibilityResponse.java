@@ -1,4 +1,4 @@
-package com.example.bff.identity.dto;
+package com.example.bff.authz.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

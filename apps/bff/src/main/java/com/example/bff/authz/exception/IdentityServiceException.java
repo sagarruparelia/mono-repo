@@ -1,4 +1,4 @@
-package com.example.bff.identity.exception;
+package com.example.bff.authz.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;

@@ -1,4 +1,4 @@
-package com.example.bff.identity.model;
+package com.example.bff.authz.model;
 
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;

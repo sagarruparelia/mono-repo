@@ -1,13 +1,13 @@
-package com.example.bff.identity.service;
+package com.example.bff.authz.service;
 
 import com.example.bff.common.util.StringSanitizer;
-import com.example.bff.identity.dto.UserInfoResponse;
-import com.example.bff.identity.exception.AgeRestrictionException;
-import com.example.bff.identity.exception.IdentityServiceException;
-import com.example.bff.identity.exception.NoAccessException;
-import com.example.bff.identity.model.ManagedMember;
-import com.example.bff.identity.model.EligibilityResult;
-import com.example.bff.identity.model.MemberAccess;
+import com.example.bff.authz.dto.UserInfoResponse;
+import com.example.bff.authz.exception.AgeRestrictionException;
+import com.example.bff.authz.exception.IdentityServiceException;
+import com.example.bff.authz.exception.NoAccessException;
+import com.example.bff.authz.model.ManagedMember;
+import com.example.bff.authz.model.EligibilityResult;
+import com.example.bff.authz.model.MemberAccess;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
@@ -19,8 +19,8 @@ import java.time.Period;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
-import static com.example.bff.identity.model.MemberAccess.ADULT_AGE;
-import static com.example.bff.identity.model.MemberAccess.MINIMUM_ACCESS_AGE;
+import static com.example.bff.authz.model.MemberAccess.ADULT_AGE;
+import static com.example.bff.authz.model.MemberAccess.MINIMUM_ACCESS_AGE;
 
 /**
  * Orchestrates the member access enrichment flow after HSID login.
