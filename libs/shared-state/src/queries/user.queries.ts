@@ -27,17 +27,6 @@ export interface UserProfile {
 }
 
 /**
- * @deprecated Use SessionInfoResponse from types/session.ts
- */
-export interface SessionInfo {
-  sessionId: string;
-  userId: string;
-  persona: string;
-  expiresAt: number;
-  createdAt: number;
-}
-
-/**
  * User info response type - common data needed across dashboard and MFEs
  */
 export interface UserInfo {

@@ -45,7 +45,7 @@ export {
   useUserInfo,
   useDependentsMetadata,
 } from './queries/user.queries';
-export type { UserProfile, SessionInfo, UserInfo, DependentMetadata } from './queries/user.queries';
+export type { UserProfile, UserInfo, DependentMetadata } from './queries/user.queries';
 
 // Summary Queries (MFE)
 export { summaryKeys, useSummary } from './queries/summary.queries';

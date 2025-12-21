@@ -187,31 +187,6 @@ public record AuthPrincipal(
     }
 
     /**
-     * Check if user has a specific delegate type for the default enterpriseId.
-     * Always returns false for non-DELEGATE personas.
-     *
-     * @deprecated Use {@link #hasValidPermissionsFor(String, Set)} for proper date validation
-     */
-    @Deprecated
-    public boolean hasDelegate(DelegateType type) {
-        return activeDelegateTypes.contains(type);
-    }
-
-    /**
-     * Check if user has all specified delegate types for the default enterpriseId.
-     * Always returns false for non-DELEGATE personas unless types is empty.
-     *
-     * @deprecated Use {@link #hasValidPermissionsFor(String, Set)} for proper date validation
-     */
-    @Deprecated
-    public boolean hasAllDelegates(Set<DelegateType> types) {
-        if (types == null || types.isEmpty()) {
-            return true;
-        }
-        return activeDelegateTypes.containsAll(types);
-    }
-
-    /**
      * Check if user has all required delegate types for a specific dependent with date validation.
      *
      * <p>This method validates permissions from the PermissionSet, checking:
@@ -230,38 +205,6 @@ public record AuthPrincipal(
             return false;
         }
         return permissions.hasAllValidPermissions(dependentId, requiredTypes);
-    }
-
-    /**
-     * Check if a session ID is available.
-     */
-    public boolean hasSessionId() {
-        return sessionId != null && !sessionId.isBlank();
-    }
-
-    /**
-     * Check if this user can view data (has basic access).
-     * For DELEGATE: requires valid DAA + RPR for the default enterpriseId.
-     * For others: always true (authorization handled elsewhere).
-     */
-    public boolean canView() {
-        if (persona == Persona.DELEGATE) {
-            return hasValidPermissionsFor(enterpriseId, Set.of(DelegateType.DAA, DelegateType.RPR));
-        }
-        return true;
-    }
-
-    /**
-     * Check if this user can access sensitive data.
-     * For DELEGATE: requires valid DAA + RPR + ROI for the default enterpriseId.
-     * For CONFIG_SPECIALIST: always true.
-     * For others: always false.
-     */
-    public boolean canAccessSensitive() {
-        if (persona == Persona.DELEGATE) {
-            return hasValidPermissionsFor(enterpriseId, Set.of(DelegateType.DAA, DelegateType.RPR, DelegateType.ROI));
-        }
-        return persona == Persona.CONFIG_SPECIALIST;
     }
 
     // ==================== Helper Methods ====================
