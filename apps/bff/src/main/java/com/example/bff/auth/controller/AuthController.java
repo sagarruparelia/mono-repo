@@ -1,12 +1,8 @@
 package com.example.bff.auth.controller;
 
-import com.example.bff.auth.dto.DependentDto;
 import com.example.bff.auth.dto.SessionInfoResponse;
 import com.example.bff.config.properties.SessionProperties;
-import com.example.bff.identity.model.ManagedMember;
 import com.example.bff.session.service.SessionService;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpCookie;
@@ -31,7 +27,6 @@ import java.util.Map;
  * <ul>
  *   <li>GET /login - Initiate OAuth2 PKCE flow with HSID</li>
  *   <li>GET /session - Get full session info</li>
- *   <li>GET /dependents - List dependents with actual names (parent only)</li>
  *   <li>GET /check - Quick session validity check</li>
  *   <li>POST /refresh - Extend session TTL</li>
  * </ul>
@@ -45,7 +40,6 @@ public class AuthController {
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
     private final SessionService sessionService;
-    private final ObjectMapper objectMapper;
     private final SessionProperties sessionProperties;
 
     /**
@@ -83,52 +77,12 @@ public class AuthController {
                             session.email(),
                             session.persona(),
                             session.isParent(),
-                            session.hasDependents() ? session.dependents() : List.of(),
+                            session.hasManagedMembers() ? session.managedMemberIds() : List.of(),
                             expiresAt,
                             session.lastAccessedAt()
                     ));
                 })
                 .defaultIfEmpty(ResponseEntity.ok(SessionInfoResponse.invalid("session_not_found")));
-    }
-
-    /**
-     * List dependents with actual names (parent persona only).
-     */
-    @GetMapping("/dependents")
-    public Mono<ResponseEntity<List<DependentDto>>> getDependents(ServerWebExchange exchange) {
-        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
-
-        if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
-            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
-        }
-
-        String sessionId = sessionCookie.getValue();
-
-        return sessionService.getSession(sessionId)
-                .map(session -> {
-                    if (!session.isParent()) {
-                        return ResponseEntity.status(HttpStatus.FORBIDDEN).<List<DependentDto>>build();
-                    }
-
-                    // Parse managed members JSON to get actual member info
-                    List<ManagedMember> managedMembers = parseManagedMembers(session.managedMembersJson());
-
-                    if (managedMembers.isEmpty()) {
-                        return ResponseEntity.ok(List.<DependentDto>of());
-                    }
-
-                    List<DependentDto> dependentDtos = managedMembers.stream()
-                            .filter(ManagedMember::isActive)
-                            .map(member -> new DependentDto(
-                                    member.enterpriseId(),
-                                    member.getFullName(),
-                                    member.birthDate() != null ? member.birthDate().toString() : null
-                            ))
-                            .toList();
-
-                    return ResponseEntity.ok(dependentDtos);
-                })
-                .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
     /**
@@ -179,18 +133,4 @@ public class AuthController {
                 .map(refreshed -> ResponseEntity.ok(Map.of("refreshed", refreshed)));
     }
 
-    /**
-     * Parse managed members JSON from session to get actual member details.
-     */
-    private List<ManagedMember> parseManagedMembers(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<List<ManagedMember>>() {});
-        } catch (Exception e) {
-            log.warn("Failed to parse managed members JSON: {}", e.getMessage());
-            return List.of();
-        }
-    }
 }

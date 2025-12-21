@@ -137,8 +137,8 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         }
 
         return permissionsFetchService.fetchPermissions(hsidUuid)
-                .doOnSuccess(p -> log.info("Fetched {} dependents for hsidUuid {} on login",
-                        p.dependents() != null ? p.dependents().size() : 0, hsidUuid))
+                .doOnSuccess(p -> log.info("Fetched {} managed members for hsidUuid {} on login",
+                        p.managedMembers() != null ? p.managedMembers().size() : 0, hsidUuid))
                 .onErrorResume(e -> {
                     log.error("Failed to fetch permissions for hsidUuid {}: {}", hsidUuid, e.getMessage());
                     return Mono.just(PermissionSet.empty(hsidUuid, persona));

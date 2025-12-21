@@ -417,7 +417,7 @@ public class SessionService {
     public Mono<String> createSessionWithPermissions(
             @NonNull String hsidUuid, @NonNull OidcUser user, @Nullable String persona,
             @NonNull ClientInfo clientInfo, @NonNull PermissionSet permissions) {
-        return createSession(hsidUuid, user, persona, permissions.getViewableDependentIds(), clientInfo)
+        return createSession(hsidUuid, user, persona, permissions.getViewableManagedMemberIds(), clientInfo)
                 .flatMap(sessionId -> storePermissions(sessionId, permissions).thenReturn(sessionId));
     }
 

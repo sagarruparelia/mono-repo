@@ -1,6 +1,6 @@
 package com.example.bff.auth.model;
 
-import com.example.bff.authz.model.DependentAccess;
+import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
@@ -229,9 +229,9 @@ public record AuthPrincipal(
     }
 
     /**
-     * Convert DependentAccess permissions to Set of currently valid DelegateTypes.
+     * Convert ManagedMemberAccess permissions to Set of currently valid DelegateTypes.
      */
-    private static Set<DelegateType> toValidDelegateTypes(DependentAccess access) {
+    private static Set<DelegateType> toValidDelegateTypes(ManagedMemberAccess access) {
         if (access == null || access.permissions() == null) {
             return Set.of();
         }

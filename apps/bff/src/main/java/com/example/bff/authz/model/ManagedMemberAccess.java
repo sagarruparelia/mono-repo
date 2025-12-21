@@ -8,19 +8,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Access permissions for a single dependent.
- * Represents the relationship tuple: parent has permissions on dependent.
+ * Access permissions for a single managed member.
+ * Represents the relationship tuple: user has permissions on managed member.
  *
  * <p>Each permission (DAA, RPR, ROI) has its own temporal validity via {@link DelegatePermission}.
  *
- * @param dependentId   Unique identifier for the dependent (enterprise ID)
- * @param dependentName Display name of the dependent
- * @param permissions   Map of delegate type to permission with temporal validity
- * @param relationship  Type of relationship (e.g., "child", "ward")
+ * @param memberId     Unique identifier for the managed member (enterprise ID)
+ * @param memberName   Display name of the managed member
+ * @param permissions  Map of delegate type to permission with temporal validity
+ * @param relationship Type of relationship (e.g., "child", "ward")
  */
-public record DependentAccess(
-        String dependentId,
-        String dependentName,
+public record ManagedMemberAccess(
+        String memberId,
+        String memberName,
         Map<DelegateType, DelegatePermission> permissions,
         String relationship
 ) {
@@ -52,7 +52,7 @@ public record DependentAccess(
     }
 
     /**
-     * Check if user can view this dependent (requires valid DAA AND RPR).
+     * Check if user can view this managed member (requires valid DAA AND RPR).
      */
     @JsonIgnore
     public boolean canView() {
@@ -61,7 +61,7 @@ public record DependentAccess(
     }
 
     /**
-     * Check if user can access sensitive data for this dependent (requires valid DAA AND RPR AND ROI).
+     * Check if user can access sensitive data for this managed member (requires valid DAA AND RPR AND ROI).
      */
     @JsonIgnore
     public boolean canAccessSensitive() {

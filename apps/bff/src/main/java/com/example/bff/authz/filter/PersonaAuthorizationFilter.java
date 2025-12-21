@@ -4,7 +4,7 @@ import com.example.bff.auth.model.AuthPrincipal;
 import com.example.bff.auth.model.DelegateType;
 import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.annotation.RequirePersona;
-import com.example.bff.authz.model.DependentAccess;
+import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.MfeProxyProperties;
@@ -144,17 +144,17 @@ public class PersonaAuthorizationFilter implements WebFilter {
                     "No permissions available for delegate");
         }
 
-        // Look up permissions for target dependent
-        Optional<DependentAccess> accessOpt = permissions.getAccessFor(targetEnterpriseId);
+        // Look up permissions for target managed member
+        Optional<ManagedMemberAccess> accessOpt = permissions.getAccessFor(targetEnterpriseId);
         if (accessOpt.isEmpty()) {
-            log.warn("No access found for dependent {} by user {}",
+            log.warn("No access found for managed member {} by user {}",
                     StringSanitizer.forLog(targetEnterpriseId),
                     StringSanitizer.forLog(principal.loggedInMemberIdValue()));
-            return forbiddenResponse(exchange, "NO_DEPENDENT_ACCESS",
-                    String.format("No access permissions for dependent %s", targetEnterpriseId));
+            return forbiddenResponse(exchange, "NO_MANAGED_MEMBER_ACCESS",
+                    String.format("No access permissions for managed member %s", targetEnterpriseId));
         }
 
-        DependentAccess access = accessOpt.get();
+        ManagedMemberAccess access = accessOpt.get();
 
         // Validate all required delegate types with date checking
         if (!access.hasAllValidPermissions(requiredTypes)) {
@@ -200,7 +200,7 @@ public class PersonaAuthorizationFilter implements WebFilter {
     /**
      * Determine specific error reason for permission failure.
      */
-    private String determinePermissionError(DependentAccess access, Set<DelegateType> missingTypes) {
+    private String determinePermissionError(ManagedMemberAccess access, Set<DelegateType> missingTypes) {
         for (DelegateType type : missingTypes) {
             var perm = access.getPermission(type);
             if (perm == null) {

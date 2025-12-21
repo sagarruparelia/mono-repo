@@ -17,7 +17,7 @@ public record SessionInfoResponse(
         @Nullable String email,
         @Nullable String persona,
         boolean isParent,
-        @Nullable List<String> dependentIds,
+        @Nullable List<String> managedMemberIds,
         @Nullable Instant expiresAt,
         @Nullable Instant lastActivity
 ) {
@@ -40,14 +40,14 @@ public record SessionInfoResponse(
             String email,
             String persona,
             boolean isParent,
-            List<String> dependentIds,
+            List<String> managedMemberIds,
             Instant expiresAt,
             Instant lastActivity
     ) {
         return new SessionInfoResponse(
                 true, null,
                 hsidUuid, name, email, persona, isParent,
-                dependentIds, expiresAt, lastActivity
+                managedMemberIds, expiresAt, lastActivity
         );
     }
 }

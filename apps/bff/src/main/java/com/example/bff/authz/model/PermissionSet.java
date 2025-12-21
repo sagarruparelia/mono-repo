@@ -11,23 +11,23 @@ import java.util.stream.Collectors;
 
 /**
  * All permissions for a user session.
- * Contains the complete set of dependent access permissions with temporal validity.
+ * Contains the complete set of managed member access permissions with temporal validity.
  *
- * @param userId     The user's unique identifier (HSID UUID)
- * @param persona    The user's persona (e.g., "parent", "individual")
- * @param dependents List of dependents with their access permissions
- * @param fetchedAt  When permissions were fetched from the backend
- * @param expiresAt  When permissions should be refreshed
+ * @param userId         The user's unique identifier (HSID UUID)
+ * @param persona        The user's persona (e.g., "parent", "individual")
+ * @param managedMembers List of managed members with their access permissions
+ * @param fetchedAt      When permissions were fetched from the backend
+ * @param expiresAt      When permissions should be refreshed
  */
 public record PermissionSet(
         String userId,
         String persona,
-        List<DependentAccess> dependents,
+        List<ManagedMemberAccess> managedMembers,
         Instant fetchedAt,
         Instant expiresAt
 ) {
     /**
-     * Create an empty permission set for a user with no dependents.
+     * Create an empty permission set for a user with no managed members.
      */
     public static PermissionSet empty(String userId, String persona) {
         return new PermissionSet(
@@ -48,66 +48,66 @@ public record PermissionSet(
     }
 
     /**
-     * Get access for a specific dependent.
+     * Get access for a specific managed member.
      *
-     * @param dependentId The dependent's enterprise ID
-     * @return Optional containing the DependentAccess if found
+     * @param memberId The managed member's enterprise ID
+     * @return Optional containing the ManagedMemberAccess if found
      */
-    public Optional<DependentAccess> getAccessFor(String dependentId) {
-        if (dependents == null || dependentId == null) {
+    public Optional<ManagedMemberAccess> getAccessFor(String memberId) {
+        if (managedMembers == null || memberId == null) {
             return Optional.empty();
         }
-        return dependents.stream()
-                .filter(d -> dependentId.equals(d.dependentId()))
+        return managedMembers.stream()
+                .filter(m -> memberId.equals(m.memberId()))
                 .findFirst();
     }
 
     /**
-     * Check if user has a valid (currently active) delegate type for a dependent.
+     * Check if user has a valid (currently active) delegate type for a managed member.
      *
-     * @param dependentId The dependent's enterprise ID
-     * @param type        The delegate type to check
+     * @param memberId The managed member's enterprise ID
+     * @param type     The delegate type to check
      * @return true if the permission exists and is currently valid
      */
-    public boolean hasValidPermission(String dependentId, DelegateType type) {
-        return getAccessFor(dependentId)
+    public boolean hasValidPermission(String memberId, DelegateType type) {
+        return getAccessFor(memberId)
                 .map(access -> access.hasValidPermission(type))
                 .orElse(false);
     }
 
     /**
-     * Check if user has all required valid delegate types for a dependent.
+     * Check if user has all required valid delegate types for a managed member.
      *
-     * @param dependentId   The dependent's enterprise ID
+     * @param memberId      The managed member's enterprise ID
      * @param requiredTypes The delegate types required
      * @return true if all permissions exist and are currently valid
      */
-    public boolean hasAllValidPermissions(String dependentId, Set<DelegateType> requiredTypes) {
-        return getAccessFor(dependentId)
+    public boolean hasAllValidPermissions(String memberId, Set<DelegateType> requiredTypes) {
+        return getAccessFor(memberId)
                 .map(access -> access.hasAllValidPermissions(requiredTypes))
                 .orElse(false);
     }
 
     /**
-     * Get list of dependents that user can currently view (have valid DAA and RPR).
+     * Get list of managed members that user can currently view (have valid DAA and RPR).
      */
     @JsonIgnore
-    public List<DependentAccess> getViewableDependents() {
-        if (dependents == null) {
+    public List<ManagedMemberAccess> getViewableManagedMembers() {
+        if (managedMembers == null) {
             return List.of();
         }
-        return dependents.stream()
-                .filter(DependentAccess::canView)
+        return managedMembers.stream()
+                .filter(ManagedMemberAccess::canView)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get list of dependent IDs that user can currently view.
+     * Get list of managed member IDs that user can currently view.
      */
     @JsonIgnore
-    public List<String> getViewableDependentIds() {
-        return getViewableDependents().stream()
-                .map(DependentAccess::dependentId)
+    public List<String> getViewableManagedMemberIds() {
+        return getViewableManagedMembers().stream()
+                .map(ManagedMemberAccess::memberId)
                 .collect(Collectors.toList());
     }
 
@@ -120,22 +120,22 @@ public record PermissionSet(
     }
 
     /**
-     * Check if the user has any dependents.
+     * Check if the user has any managed members.
      */
     @JsonIgnore
-    public boolean hasDependents() {
-        return dependents != null && !dependents.isEmpty();
+    public boolean hasManagedMembers() {
+        return managedMembers != null && !managedMembers.isEmpty();
     }
 
     /**
-     * Check if user has any dependent with valid DAA + RPR permissions.
+     * Check if user has any managed member with valid DAA + RPR permissions.
      * This determines if the user qualifies as a DELEGATE persona.
      */
     @JsonIgnore
     public boolean hasAnyValidDelegate() {
-        if (dependents == null) {
+        if (managedMembers == null) {
             return false;
         }
-        return dependents.stream().anyMatch(DependentAccess::canView);
+        return managedMembers.stream().anyMatch(ManagedMemberAccess::canView);
     }
 }

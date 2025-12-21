@@ -4,7 +4,7 @@ import com.example.bff.auth.model.DelegatePermission;
 import com.example.bff.auth.model.DelegateType;
 import com.example.bff.authz.dto.PermissionsApiResponse;
 import com.example.bff.authz.dto.PermissionsApiResponse.DelegatePermissionEntry;
-import com.example.bff.authz.model.DependentAccess;
+import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.AuthzProperties;
@@ -75,8 +75,8 @@ public class PermissionsFetchService {
                 .bodyToMono(PermissionsApiResponse.class)
                 .map(response -> toPermissionSet(hsidUuid, response))
                 .doOnSuccess(p -> log.info(
-                        "Fetched permissions for {} dependents for hsidUuid {} (correlationId={})",
-                        p.dependents() != null ? p.dependents().size() : 0,
+                        "Fetched permissions for {} managed members for hsidUuid {} (correlationId={})",
+                        p.managedMembers() != null ? p.managedMembers().size() : 0,
                         StringSanitizer.forLog(hsidUuid),
                         correlationId))
                 .onErrorResume(WebClientResponseException.class, e -> {
@@ -98,42 +98,42 @@ public class PermissionsFetchService {
     /**
      * Convert the flat API response to a grouped PermissionSet.
      *
-     * <p>Groups permissions by dependent enterpriseId and creates Map<DelegateType, DelegatePermission> for each.
+     * <p>Groups permissions by managed member enterpriseId and creates Map<DelegateType, DelegatePermission> for each.
      */
     private PermissionSet toPermissionSet(String hsidUuid, PermissionsApiResponse response) {
         if (response == null || response.permissions() == null || response.permissions().isEmpty()) {
             return PermissionSet.empty(hsidUuid, "individual");
         }
 
-        // Group permissions by enterpriseId (dependent)
-        Map<String, List<DelegatePermissionEntry>> groupedByDependent = response.permissions().stream()
+        // Group permissions by enterpriseId (managed member)
+        Map<String, List<DelegatePermissionEntry>> groupedByMember = response.permissions().stream()
                 .filter(Objects::nonNull)
                 .filter(entry -> entry.enterpriseId() != null && !entry.enterpriseId().isBlank())
                 .collect(Collectors.groupingBy(DelegatePermissionEntry::enterpriseId));
 
-        // Convert each group to DependentAccess
-        List<DependentAccess> dependents = groupedByDependent.entrySet().stream()
-                .map(entry -> toDependentAccess(entry.getKey(), entry.getValue()))
+        // Convert each group to ManagedMemberAccess
+        List<ManagedMemberAccess> managedMembers = groupedByMember.entrySet().stream()
+                .map(entry -> toManagedMemberAccess(entry.getKey(), entry.getValue()))
                 .collect(Collectors.toList());
 
-        // Determine persona based on dependents
-        String persona = dependents.isEmpty() ? "individual" : "parent";
+        // Determine persona based on managed members
+        String persona = managedMembers.isEmpty() ? "individual" : "parent";
 
         Instant expiresAt = Instant.now().plusSeconds(DEFAULT_CACHE_TTL_SECONDS);
 
         return new PermissionSet(
                 hsidUuid,
                 persona,
-                dependents,
+                managedMembers,
                 Instant.now(),
                 expiresAt
         );
     }
 
     /**
-     * Convert a list of permission entries for one dependent to DependentAccess.
+     * Convert a list of permission entries for one managed member to ManagedMemberAccess.
      */
-    private DependentAccess toDependentAccess(String enterpriseId, List<DelegatePermissionEntry> entries) {
+    private ManagedMemberAccess toManagedMemberAccess(String enterpriseId, List<DelegatePermissionEntry> entries) {
         Map<DelegateType, DelegatePermission> permissions = new EnumMap<>(DelegateType.class);
 
         for (DelegatePermissionEntry entry : entries) {
@@ -148,9 +148,9 @@ public class PermissionsFetchService {
             }
         }
 
-        return new DependentAccess(
+        return new ManagedMemberAccess(
                 enterpriseId,
-                null,  // dependentName not provided by delegate-graph API
+                null,  // memberName not provided by delegate-graph API
                 permissions,
                 null   // relationship not provided by delegate-graph API
         );

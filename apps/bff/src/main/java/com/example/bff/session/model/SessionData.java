@@ -22,7 +22,7 @@ public record SessionData(
         @NonNull String email,
         @NonNull String name,
         @NonNull String persona,
-        @NonNull List<String> dependents,
+        @NonNull List<String> managedMemberIds,
         @NonNull String ipAddress,
         @NonNull String userAgentHash,
         @NonNull Instant createdAt,
@@ -45,7 +45,7 @@ public record SessionData(
                 map.getOrDefault("email", ""),
                 map.getOrDefault("name", ""),
                 map.getOrDefault("persona", "individual"),
-                parseDependents(map.get("dependents")),
+                parseManagedMemberIds(map.get("dependents")),  // Redis key stays "dependents" for backward compat
                 map.getOrDefault("ipAddress", ""),
                 map.getOrDefault("userAgentHash", ""),
                 parseInstant(map.get("createdAt")),
@@ -74,8 +74,8 @@ public record SessionData(
         map.put("email", email);
         map.put("name", name);
         map.put("persona", persona);
-        if (dependents != null && !dependents.isEmpty()) {
-            map.put("dependents", String.join(",", dependents));
+        if (managedMemberIds != null && !managedMemberIds.isEmpty()) {
+            map.put("dependents", String.join(",", managedMemberIds));  // Redis key stays "dependents" for backward compat
         }
         map.put("ipAddress", ipAddress);
         map.put("userAgentHash", userAgentHash);
@@ -104,11 +104,11 @@ public record SessionData(
             String email,
             String name,
             String persona,
-            List<String> dependents,
+            List<String> managedMemberIds,
             String ipAddress,
             String userAgentHash) {
         return new SessionData(
-                hsidUuid, email, name, persona, dependents,
+                hsidUuid, email, name, persona, managedMemberIds,
                 ipAddress, userAgentHash,
                 Instant.now(), Instant.now(),
                 null, null, false, null, null, null, null,
@@ -116,7 +116,7 @@ public record SessionData(
         );
     }
 
-    private static List<String> parseDependents(String value) {
+    private static List<String> parseManagedMemberIds(String value) {
         if (value == null || value.isBlank()) {
             return List.of();
         }
@@ -150,8 +150,8 @@ public record SessionData(
         return "parent".equals(persona);
     }
 
-    public boolean hasDependents() {
-        return dependents != null && !dependents.isEmpty();
+    public boolean hasManagedMembers() {
+        return managedMemberIds != null && !managedMemberIds.isEmpty();
     }
 
     /**
