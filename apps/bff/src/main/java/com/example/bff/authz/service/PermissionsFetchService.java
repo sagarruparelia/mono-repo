@@ -1,10 +1,12 @@
 package com.example.bff.authz.service;
 
+import com.example.bff.auth.model.DelegatePermission;
+import com.example.bff.auth.model.DelegateType;
 import com.example.bff.authz.dto.PermissionsApiResponse;
+import com.example.bff.authz.dto.PermissionsApiResponse.DelegatePermissionEntry;
 import com.example.bff.authz.model.DependentAccess;
-import com.example.bff.common.util.StringSanitizer;
-import com.example.bff.authz.model.Permission;
 import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.AuthzProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,15 +19,15 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Fetches user permissions from the backend Permissions API with fail-closed behavior.
+ * Fetches user permissions from the delegate-graph API with fail-closed behavior.
+ *
+ * <p>The API returns a flat list of permissions with temporal validity (startDate, stopDate, active).
+ * This service groups them by dependent (eid) and converts to the internal PermissionSet structure.
  */
 @Slf4j
 @Service
@@ -48,6 +50,12 @@ public class PermissionsFetchService {
                 .build();
     }
 
+    /**
+     * Fetch permissions for a user from the delegate-graph API.
+     *
+     * @param userId The user's ID (HSID UUID)
+     * @return PermissionSet with all dependents and their permissions
+     */
     @NonNull
     public Mono<PermissionSet> fetchPermissions(@NonNull String userId) {
         if (!isValidUserId(userId)) {
@@ -65,9 +73,9 @@ public class PermissionsFetchService {
                 .header("X-Correlation-Id", correlationId)
                 .retrieve()
                 .bodyToMono(PermissionsApiResponse.class)
-                .map(this::toPermissionSet)
+                .map(response -> toPermissionSet(userId, response))
                 .doOnSuccess(p -> log.info(
-                        "Fetched {} dependents for user {} (correlationId={})",
+                        "Fetched permissions for {} dependents for user {} (correlationId={})",
                         p.dependents() != null ? p.dependents().size() : 0,
                         StringSanitizer.forLog(userId),
                         correlationId))
@@ -87,51 +95,79 @@ public class PermissionsFetchService {
                 });
     }
 
-    private PermissionSet toPermissionSet(PermissionsApiResponse response) {
-        List<DependentAccess> dependents = response.dependents() != null
-                ? response.dependents().stream()
-                    .filter(java.util.Objects::nonNull)  // Filter out null elements
-                    .map(this::toDependentAccess)
-                    .collect(Collectors.toList())
-                : List.of();
+    /**
+     * Convert the flat API response to a grouped PermissionSet.
+     *
+     * <p>Groups permissions by dependent eid and creates Map<DelegateType, DelegatePermission> for each.
+     */
+    private PermissionSet toPermissionSet(String userId, PermissionsApiResponse response) {
+        if (response == null || response.permissions() == null || response.permissions().isEmpty()) {
+            return PermissionSet.empty(userId, "individual");
+        }
 
-        int ttlSeconds = response.cacheTTL() != null ? response.cacheTTL() : DEFAULT_CACHE_TTL_SECONDS;
-        Instant expiresAt = Instant.now().plusSeconds(ttlSeconds);
+        // Group permissions by eid (dependent)
+        Map<String, List<DelegatePermissionEntry>> groupedByDependent = response.permissions().stream()
+                .filter(Objects::nonNull)
+                .filter(entry -> entry.eid() != null && !entry.eid().isBlank())
+                .collect(Collectors.groupingBy(DelegatePermissionEntry::eid));
+
+        // Convert each group to DependentAccess
+        List<DependentAccess> dependents = groupedByDependent.entrySet().stream()
+                .map(entry -> toDependentAccess(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toList());
+
+        // Determine persona based on dependents
+        String persona = dependents.isEmpty() ? "individual" : "parent";
+
+        Instant expiresAt = Instant.now().plusSeconds(DEFAULT_CACHE_TTL_SECONDS);
 
         return new PermissionSet(
-                response.userId(),
-                response.persona(),
+                userId,
+                persona,
                 dependents,
-                response.fetchedAt() != null ? response.fetchedAt() : Instant.now(),
+                Instant.now(),
                 expiresAt
         );
     }
 
-    private DependentAccess toDependentAccess(PermissionsApiResponse.DependentPermission dp) {
-        Set<Permission> permissions = dp.permissions() != null
-                ? dp.permissions().stream()
-                    .map(this::toPermission)
-                    .flatMap(Optional::stream)
-                    .collect(Collectors.toSet())
-                : Set.of();
+    /**
+     * Convert a list of permission entries for one dependent to DependentAccess.
+     */
+    private DependentAccess toDependentAccess(String eid, List<DelegatePermissionEntry> entries) {
+        Map<DelegateType, DelegatePermission> permissions = new EnumMap<>(DelegateType.class);
+
+        for (DelegatePermissionEntry entry : entries) {
+            Optional<DelegateType> typeOpt = toDelegateType(entry.delegateType());
+            if (typeOpt.isPresent()) {
+                DelegatePermission permission = new DelegatePermission(
+                        entry.startDate(),
+                        entry.stopDate(),
+                        entry.active()
+                );
+                permissions.put(typeOpt.get(), permission);
+            }
+        }
 
         return new DependentAccess(
-                dp.dependentId(),
-                dp.dependentName(),
+                eid,
+                null,  // dependentName not provided by delegate-graph API
                 permissions,
-                dp.relationship()
+                null   // relationship not provided by delegate-graph API
         );
     }
 
-    private Optional<Permission> toPermission(String permission) {
-        if (permission == null || permission.isBlank()) {
+    /**
+     * Convert string delegate type to enum.
+     */
+    private Optional<DelegateType> toDelegateType(String delegateType) {
+        if (delegateType == null || delegateType.isBlank()) {
             return Optional.empty();
         }
 
         try {
-            return Optional.of(Permission.valueOf(permission.toUpperCase()));
+            return Optional.of(DelegateType.valueOf(delegateType.toUpperCase()));
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown permission type: {}", StringSanitizer.forLog(permission));
+            log.warn("Unknown delegate type: {}", StringSanitizer.forLog(delegateType));
             return Optional.empty();
         }
     }

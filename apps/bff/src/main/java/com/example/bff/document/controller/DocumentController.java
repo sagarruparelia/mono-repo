@@ -3,11 +3,6 @@ package com.example.bff.document.controller;
 import com.example.bff.auth.model.AuthPrincipal;
 import com.example.bff.auth.model.DelegateType;
 import com.example.bff.auth.model.Persona;
-import com.example.bff.authz.abac.model.Action;
-import com.example.bff.authz.abac.model.PolicyDecision;
-import com.example.bff.authz.abac.model.ResourceAttributes;
-import com.example.bff.authz.abac.model.SubjectAttributes;
-import com.example.bff.authz.abac.service.AbacAuthorizationService;
 import com.example.bff.authz.annotation.RequirePersona;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.document.dto.DocumentDto;
@@ -39,11 +34,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentController {
 
+    private static final String VALIDATED_ENTERPRISE_ID = "VALIDATED_ENTERPRISE_ID";
+
     private final DocumentService documentService;
-    private final AbacAuthorizationService authorizationService;
 
     /**
      * List all documents for the authenticated member.
+     *
+     * <p>Authorization handled by {@link RequirePersona} + PersonaAuthorizationFilter.</p>
      */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
@@ -52,10 +50,12 @@ public class DocumentController {
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(principal, exchange, Action.LIST, "list",
-                () -> documentService.listDocuments(principal.enterpriseId())
-                        .collectList()
-                        .map(ResponseEntity::ok));
+        String enterpriseId = getTargetEnterpriseId(exchange, principal);
+        log.debug("Listing documents for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
+
+        return documentService.listDocuments(enterpriseId)
+                .collectList()
+                .map(ResponseEntity::ok);
     }
 
     /**
@@ -69,14 +69,17 @@ public class DocumentController {
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(principal, exchange, Action.VIEW, documentId,
-                () -> documentService.getDocument(principal.enterpriseId(), documentId)
-                        .map(ResponseEntity::ok)
-                        .defaultIfEmpty(ResponseEntity.notFound().build()));
+        String enterpriseId = getTargetEnterpriseId(exchange, principal);
+        log.debug("Getting document {} for enterpriseId={}",
+                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+
+        return documentService.getDocument(enterpriseId, documentId)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     /**
-     * Download a document (requires sensitive access for DELEGATE).
+     * Download a document (requires sensitive access for DELEGATE - ROI permission).
      */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT, Persona.CONFIG_SPECIALIST},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR, DelegateType.ROI})
@@ -86,16 +89,19 @@ public class DocumentController {
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(principal, exchange, Action.VIEW_SENSITIVE, documentId,
-                () -> documentService.getDocument(principal.enterpriseId(), documentId)
-                        .flatMap(doc -> documentService.downloadDocument(principal.enterpriseId(), documentId)
-                                .map(content -> ResponseEntity.ok()
-                                        .header(HttpHeaders.CONTENT_DISPOSITION,
-                                                "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
-                                        .contentType(MediaType.parseMediaType(doc.contentType()))
-                                        .contentLength(content.length)
-                                        .body(content)))
-                        .defaultIfEmpty(ResponseEntity.notFound().build()));
+        String enterpriseId = getTargetEnterpriseId(exchange, principal);
+        log.debug("Downloading document {} for enterpriseId={}",
+                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+
+        return documentService.getDocument(enterpriseId, documentId)
+                .flatMap(doc -> documentService.downloadDocument(enterpriseId, documentId)
+                        .map(content -> ResponseEntity.ok()
+                                .header(HttpHeaders.CONTENT_DISPOSITION,
+                                        "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
+                                .contentType(MediaType.parseMediaType(doc.contentType()))
+                                .contentLength(content.length)
+                                .body(content)))
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     /**
@@ -111,12 +117,20 @@ public class DocumentController {
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
+        String enterpriseId = getTargetEnterpriseId(exchange, principal);
+        log.debug("Uploading document for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
+
         DocumentUploadRequest request = new DocumentUploadRequest(
                 description,
                 parseDocumentType(documentType)
         );
 
-        return authorizeUpload(principal, exchange, file, request);
+        return documentService.uploadDocument(
+                        enterpriseId, file, request,
+                        principal.loggedInMemberIdValue(), principal.persona().toLegacy())
+                .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.badRequest().body(null)));
     }
 
     /**
@@ -130,98 +144,28 @@ public class DocumentController {
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
-        return authorizeAndExecute(principal, exchange, Action.DELETE, documentId,
-                () -> documentService.deleteDocument(principal.enterpriseId(), documentId)
-                        .then(Mono.just(ResponseEntity.noContent().<Void>build()))
-                        .onErrorResume(IllegalArgumentException.class,
-                                e -> Mono.just(ResponseEntity.notFound().build())));
+        String enterpriseId = getTargetEnterpriseId(exchange, principal);
+        log.debug("Deleting document {} for enterpriseId={}",
+                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+
+        return documentService.deleteDocument(enterpriseId, documentId)
+                .then(Mono.just(ResponseEntity.noContent().<Void>build()))
+                .onErrorResume(IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
     /**
-     * Authorize and execute an operation.
-     * - PROXY: Skip ABAC (authorization delegated to consumer)
-     * - HSID: Apply ABAC authorization using SubjectAttributes
+     * Get target enterprise ID from exchange attributes or principal.
+     *
+     * <p>For DELEGATE persona, PersonaAuthorizationFilter validates permissions
+     * and stores the validated enterprise ID in exchange attributes.</p>
      */
-    private <T> Mono<ResponseEntity<T>> authorizeAndExecute(
-            AuthPrincipal principal,
-            ServerWebExchange exchange,
-            Action action,
-            String documentId,
-            java.util.function.Supplier<Mono<ResponseEntity<T>>> operation) {
-
-        log.debug("Document access: persona={}, enterpriseId={}, action={}, documentId={}",
-                principal.persona(), StringSanitizer.forLog(principal.enterpriseId()),
-                action, StringSanitizer.forLog(documentId));
-
-        // PROXY: Skip ABAC - authorization delegated to consumer
-        if (principal.isProxyAuth()) {
-            log.debug("Proxy auth - skipping ABAC, authZ delegated to consumer");
-            return operation.get();
+    private String getTargetEnterpriseId(ServerWebExchange exchange, AuthPrincipal principal) {
+        String validatedId = exchange.getAttribute(VALIDATED_ENTERPRISE_ID);
+        if (validatedId != null && !validatedId.isBlank()) {
+            return validatedId;
         }
-
-        // HSID: Apply ABAC authorization
-        SubjectAttributes subject = SubjectAttributes.fromPrincipal(principal);
-        ResourceAttributes resource = ResourceAttributes.document(documentId, principal.enterpriseId());
-
-        return authorizationService.authorize(subject, resource, action, exchange.getRequest())
-                .<ResponseEntity<T>>flatMap(decision -> {
-                    if (decision.isAllowed()) {
-                        return operation.get();
-                    }
-                    log.warn("Authorization denied for action {} on document {} for member {}: {}",
-                            action, StringSanitizer.forLog(documentId),
-                            StringSanitizer.forLog(principal.enterpriseId()), decision.reason());
-                    return Mono.just(buildForbiddenResponse(decision));
-                })
-                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()));
-    }
-
-    private Mono<ResponseEntity<DocumentDto>> authorizeUpload(
-            AuthPrincipal principal,
-            ServerWebExchange exchange,
-            FilePart file,
-            DocumentUploadRequest request) {
-
-        log.debug("Document upload: persona={}, enterpriseId={}",
-                principal.persona(), StringSanitizer.forLog(principal.enterpriseId()));
-
-        // PROXY: Skip ABAC - authorization delegated to consumer
-        if (principal.isProxyAuth()) {
-            log.debug("Proxy auth - skipping ABAC for upload");
-            return documentService.uploadDocument(
-                            principal.enterpriseId(), file, request,
-                            principal.loggedInMemberIdValue(), principal.persona().toLegacy())
-                    .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
-                    .onErrorResume(IllegalArgumentException.class,
-                            e -> Mono.just(ResponseEntity.badRequest().body(null)));
-        }
-
-        // HSID: Apply ABAC authorization
-        SubjectAttributes subject = SubjectAttributes.fromPrincipal(principal);
-        ResourceAttributes resource = ResourceAttributes.document("new", principal.enterpriseId());
-
-        return authorizationService.authorize(subject, resource, Action.UPLOAD, exchange.getRequest())
-                .flatMap(decision -> {
-                    if (decision.isAllowed()) {
-                        return documentService.uploadDocument(
-                                        principal.enterpriseId(), file, request,
-                                        principal.loggedInMemberIdValue(), principal.persona().toLegacy())
-                                .map(doc -> ResponseEntity.status(HttpStatus.CREATED).body(doc))
-                                .onErrorResume(IllegalArgumentException.class,
-                                        e -> Mono.just(ResponseEntity.badRequest().body(null)));
-                    }
-                    log.warn("Authorization denied for upload to member {}: {}",
-                            StringSanitizer.forLog(principal.enterpriseId()), decision.reason());
-                    return Mono.<ResponseEntity<DocumentDto>>just(buildForbiddenResponse(decision));
-                })
-                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()));
-    }
-
-    private <T> ResponseEntity<T> buildForbiddenResponse(PolicyDecision decision) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .header("X-Policy-Id", decision.policyId())
-                .header("X-Policy-Reason", sanitizeHeader(decision.reason()))
-                .build();
+        return principal.enterpriseId();
     }
 
     private DocumentType parseDocumentType(String documentType) {
@@ -240,13 +184,5 @@ public class DocumentController {
             return "download";
         }
         return filename.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
-
-    private String sanitizeHeader(String value) {
-        if (value == null) {
-            return "";
-        }
-        String sanitized = value.replace("\n", " ").replace("\r", " ");
-        return sanitized.substring(0, Math.min(sanitized.length(), 200));
     }
 }

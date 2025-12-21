@@ -4,6 +4,10 @@ import com.example.bff.auth.model.AuthPrincipal;
 import com.example.bff.auth.model.DelegateType;
 import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.annotation.RequirePersona;
+import com.example.bff.authz.model.DependentAccess;
+import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.common.util.StringSanitizer;
+import com.example.bff.config.properties.MfeProxyProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -12,6 +16,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.reactive.result.method.annotation.RequestMappingHandlerMapping;
@@ -22,6 +27,7 @@ import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -31,6 +37,13 @@ import java.util.stream.Collectors;
  * <p>This filter runs after {@link com.example.bff.auth.filter.DualAuthWebFilter}
  * (which creates AuthPrincipal) and validates that the authenticated user's
  * persona matches the requirements.</p>
+ *
+ * <h3>Authorization Flow:</h3>
+ * <ul>
+ *   <li><b>PROXY:</b> Skip permission validation (trust caller)</li>
+ *   <li><b>INDIVIDUAL_SELF:</b> Use principal.enterpriseId() as target (own data)</li>
+ *   <li><b>DELEGATE:</b> Read X-Enterprise-Id header, validate permissions for that dependent</li>
+ * </ul>
  *
  * <p>Order: HIGHEST_PRECEDENCE + 30 (after DualAuthWebFilter at +20)</p>
  */
@@ -42,6 +55,7 @@ import java.util.stream.Collectors;
 public class PersonaAuthorizationFilter implements WebFilter {
 
     private final RequestMappingHandlerMapping handlerMapping;
+    private final MfeProxyProperties proxyProperties;
 
     @Override
     @NonNull
@@ -80,26 +94,129 @@ public class PersonaAuthorizationFilter implements WebFilter {
                     String.format("Persona '%s' is not authorized for this resource", principal.persona()));
         }
 
-        // For DELEGATE persona, check required delegate types
-        if (principal.persona() == Persona.DELEGATE && annotation.requiredDelegates().length > 0) {
-            Set<DelegateType> requiredTypes = Arrays.stream(annotation.requiredDelegates())
-                    .collect(Collectors.toSet());
-
-            if (!principal.hasAllDelegates(requiredTypes)) {
-                Set<DelegateType> missing = requiredTypes.stream()
-                        .filter(type -> !principal.hasDelegate(type))
-                        .collect(Collectors.toSet());
-
-                log.warn("Missing delegate types for DELEGATE persona: {}", missing);
-                return forbiddenResponse(exchange, "MISSING_DELEGATE_PERMISSIONS",
-                        String.format("Missing required delegate permissions: %s", missing));
-            }
+        // PROXY: Skip permission validation (trust caller)
+        if (principal.isProxyAuth()) {
+            log.debug("Proxy auth - skipping permission validation for {}",
+                    exchange.getRequest().getPath());
+            return chain.filter(exchange);
         }
 
-        // Authorization passed
+        // For DELEGATE persona, validate permissions for target dependent
+        if (principal.persona() == Persona.DELEGATE && annotation.requiredDelegates().length > 0) {
+            return validateDelegatePermissions(exchange, principal, annotation, chain);
+        }
+
+        // Authorization passed (INDIVIDUAL_SELF or DELEGATE with no required delegates)
         log.debug("Persona authorization passed for {} on {}",
                 principal.persona(), exchange.getRequest().getPath());
         return chain.filter(exchange);
+    }
+
+    /**
+     * Validate DELEGATE permissions for the target dependent.
+     *
+     * <p>Reads X-Enterprise-Id header to determine target dependent,
+     * then validates permissions from PermissionSet with date checking.
+     */
+    private Mono<Void> validateDelegatePermissions(
+            ServerWebExchange exchange,
+            AuthPrincipal principal,
+            RequirePersona annotation,
+            WebFilterChain chain) {
+
+        Set<DelegateType> requiredTypes = Arrays.stream(annotation.requiredDelegates())
+                .collect(Collectors.toSet());
+
+        // Get target enterprise ID from header (for DELEGATE accessing dependent data)
+        String targetEnterpriseId = getTargetEnterpriseId(exchange, principal);
+
+        if (targetEnterpriseId == null || targetEnterpriseId.isBlank()) {
+            log.warn("Missing target enterprise ID for DELEGATE persona");
+            return forbiddenResponse(exchange, "MISSING_ENTERPRISE_ID",
+                    "X-Enterprise-Id header is required for delegate access");
+        }
+
+        // Get permissions from principal
+        PermissionSet permissions = principal.permissions();
+        if (permissions == null) {
+            log.warn("No permissions found for DELEGATE persona");
+            return forbiddenResponse(exchange, "NO_PERMISSIONS",
+                    "No permissions available for delegate");
+        }
+
+        // Look up permissions for target dependent
+        Optional<DependentAccess> accessOpt = permissions.getAccessFor(targetEnterpriseId);
+        if (accessOpt.isEmpty()) {
+            log.warn("No access found for dependent {} by user {}",
+                    StringSanitizer.forLog(targetEnterpriseId),
+                    StringSanitizer.forLog(principal.loggedInMemberIdValue()));
+            return forbiddenResponse(exchange, "NO_DEPENDENT_ACCESS",
+                    String.format("No access permissions for dependent %s", targetEnterpriseId));
+        }
+
+        DependentAccess access = accessOpt.get();
+
+        // Validate all required delegate types with date checking
+        if (!access.hasAllValidPermissions(requiredTypes)) {
+            Set<DelegateType> missing = requiredTypes.stream()
+                    .filter(type -> !access.hasValidPermission(type))
+                    .collect(Collectors.toSet());
+
+            // Determine specific error reason
+            String reason = determinePermissionError(access, missing);
+
+            log.warn("Permission validation failed for dependent {}: missing={}, reason={}",
+                    StringSanitizer.forLog(targetEnterpriseId), missing, reason);
+            return forbiddenResponse(exchange, "MISSING_DELEGATE_PERMISSIONS",
+                    String.format("Missing or invalid delegate permissions: %s. %s", missing, reason));
+        }
+
+        // Store validated enterprise ID in exchange for controller use
+        exchange.getAttributes().put("VALIDATED_ENTERPRISE_ID", targetEnterpriseId);
+
+        log.debug("Delegate permission validation passed for {} accessing {}",
+                StringSanitizer.forLog(principal.loggedInMemberIdValue()),
+                StringSanitizer.forLog(targetEnterpriseId));
+        return chain.filter(exchange);
+    }
+
+    /**
+     * Get target enterprise ID from header or fall back to principal.
+     */
+    @Nullable
+    private String getTargetEnterpriseId(ServerWebExchange exchange, AuthPrincipal principal) {
+        // Try to get from header first
+        String headerName = proxyProperties.headers().enterpriseId();
+        String headerValue = exchange.getRequest().getHeaders().getFirst(headerName);
+
+        if (headerValue != null && !headerValue.isBlank()) {
+            return StringSanitizer.headerValue(headerValue);
+        }
+
+        // Fall back to principal's enterprise ID (for backward compatibility)
+        return principal.enterpriseId();
+    }
+
+    /**
+     * Determine specific error reason for permission failure.
+     */
+    private String determinePermissionError(DependentAccess access, Set<DelegateType> missingTypes) {
+        for (DelegateType type : missingTypes) {
+            var perm = access.getPermission(type);
+            if (perm == null) {
+                return String.format("Permission %s not granted", type);
+            }
+            if (!perm.active()) {
+                return String.format("Permission %s is deactivated", type);
+            }
+            if (perm.isExpired()) {
+                return String.format("Permission %s has expired", type);
+            }
+            if (perm.isNotYetActive()) {
+                return String.format("Permission %s is not yet active", type);
+            }
+        }
+        return "Permission validation failed";
     }
 
     @NonNull

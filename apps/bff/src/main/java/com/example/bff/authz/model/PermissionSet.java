@@ -1,5 +1,6 @@
 package com.example.bff.authz.model;
 
+import com.example.bff.auth.model.DelegateType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.Instant;
@@ -10,9 +11,9 @@ import java.util.stream.Collectors;
 
 /**
  * All permissions for a user session.
- * Contains the complete set of dependent access permissions.
+ * Contains the complete set of dependent access permissions with temporal validity.
  *
- * @param userId     The user's unique identifier
+ * @param userId     The user's unique identifier (HSID UUID)
  * @param persona    The user's persona (e.g., "parent", "individual")
  * @param dependents List of dependents with their access permissions
  * @param fetchedAt  When permissions were fetched from the backend
@@ -48,6 +49,9 @@ public record PermissionSet(
 
     /**
      * Get access for a specific dependent.
+     *
+     * @param dependentId The dependent's enterprise ID
+     * @return Optional containing the DependentAccess if found
      */
     public Optional<DependentAccess> getAccessFor(String dependentId) {
         if (dependents == null || dependentId == null) {
@@ -59,25 +63,33 @@ public record PermissionSet(
     }
 
     /**
-     * Check if user has a specific permission for a dependent.
+     * Check if user has a valid (currently active) delegate type for a dependent.
+     *
+     * @param dependentId The dependent's enterprise ID
+     * @param type        The delegate type to check
+     * @return true if the permission exists and is currently valid
      */
-    public boolean hasPermission(String dependentId, Permission permission) {
+    public boolean hasValidPermission(String dependentId, DelegateType type) {
         return getAccessFor(dependentId)
-                .map(access -> access.hasPermission(permission))
+                .map(access -> access.hasValidPermission(type))
                 .orElse(false);
     }
 
     /**
-     * Check if user has all required permissions for a dependent.
+     * Check if user has all required valid delegate types for a dependent.
+     *
+     * @param dependentId   The dependent's enterprise ID
+     * @param requiredTypes The delegate types required
+     * @return true if all permissions exist and are currently valid
      */
-    public boolean hasAllPermissions(String dependentId, Set<Permission> permissions) {
+    public boolean hasAllValidPermissions(String dependentId, Set<DelegateType> requiredTypes) {
         return getAccessFor(dependentId)
-                .map(access -> access.hasAllPermissions(permissions))
+                .map(access -> access.hasAllValidPermissions(requiredTypes))
                 .orElse(false);
     }
 
     /**
-     * Get list of dependents that user can view (have both DAA and RPR).
+     * Get list of dependents that user can currently view (have valid DAA and RPR).
      */
     @JsonIgnore
     public List<DependentAccess> getViewableDependents() {
@@ -90,7 +102,7 @@ public record PermissionSet(
     }
 
     /**
-     * Get list of dependent IDs that user can view.
+     * Get list of dependent IDs that user can currently view.
      */
     @JsonIgnore
     public List<String> getViewableDependentIds() {
@@ -113,5 +125,17 @@ public record PermissionSet(
     @JsonIgnore
     public boolean hasDependents() {
         return dependents != null && !dependents.isEmpty();
+    }
+
+    /**
+     * Check if user has any dependent with valid DAA + RPR permissions.
+     * This determines if the user qualifies as a DELEGATE persona.
+     */
+    @JsonIgnore
+    public boolean hasAnyValidDelegate() {
+        if (dependents == null) {
+            return false;
+        }
+        return dependents.stream().anyMatch(DependentAccess::canView);
     }
 }
