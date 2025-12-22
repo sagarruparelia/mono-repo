@@ -179,7 +179,7 @@ public class ExternalAuthFilter implements WebFilter {
 
         String body = String.format(
                 "{\"error\":\"unauthorized\",\"code\":\"%s\",\"message\":\"%s\"}",
-                escapeJson(code), escapeJson(message));
+                StringSanitizer.escapeJson(code), StringSanitizer.escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
@@ -195,21 +195,11 @@ public class ExternalAuthFilter implements WebFilter {
 
         String body = String.format(
                 "{\"error\":\"access_denied\",\"code\":\"%s\",\"message\":\"%s\"}",
-                escapeJson(code), escapeJson(message));
+                StringSanitizer.escapeJson(code), StringSanitizer.escapeJson(message));
 
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse()
                         .bufferFactory()
                         .wrap(body.getBytes(StandardCharsets.UTF_8))));
-    }
-
-    @NonNull
-    private String escapeJson(@NonNull String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 }

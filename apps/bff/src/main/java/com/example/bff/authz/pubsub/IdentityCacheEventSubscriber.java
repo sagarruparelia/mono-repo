@@ -89,10 +89,11 @@ public class IdentityCacheEventSubscriber {
     }
 
     private Mono<Void> handleEvict(IdentityCacheEventMessage message) {
+        // Use local eviction methods to prevent infinite pub/sub loops
         return switch (message.cacheName()) {
-            case USER_SERVICE_CACHE -> cacheOperations.evictUserInfo(message.key()).then();
-            case ELIGIBILITY_CACHE -> cacheOperations.evictEligibility(message.key()).then();
-            case PERMISSIONS_CACHE -> cacheOperations.evictPermissions(message.key()).then();
+            case USER_SERVICE_CACHE -> cacheOperations.evictUserInfoLocal(message.key()).then();
+            case ELIGIBILITY_CACHE -> cacheOperations.evictEligibilityLocal(message.key()).then();
+            case PERMISSIONS_CACHE -> cacheOperations.evictPermissionsLocal(message.key()).then();
             default -> {
                 log.warn("Unknown cache name in event: {}", message.cacheName());
                 yield Mono.empty();

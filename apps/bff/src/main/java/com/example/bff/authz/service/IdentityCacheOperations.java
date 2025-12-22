@@ -50,4 +50,31 @@ public interface IdentityCacheOperations {
      */
     @NonNull
     Mono<Boolean> evictPermissions(@NonNull String eid);
+
+    /**
+     * Evicts user info cache entry locally without publishing events.
+     * Used by cache event subscribers to avoid infinite loops.
+     */
+    @NonNull
+    default Mono<Boolean> evictUserInfoLocal(@NonNull String hsidUuid) {
+        return evictUserInfo(hsidUuid);
+    }
+
+    /**
+     * Evicts eligibility cache entry locally without publishing events.
+     * Used by cache event subscribers to avoid infinite loops.
+     */
+    @NonNull
+    default Mono<Boolean> evictEligibilityLocal(@NonNull String eid) {
+        return evictEligibility(eid);
+    }
+
+    /**
+     * Evicts permissions cache entry locally without publishing events.
+     * Used by cache event subscribers to avoid infinite loops.
+     */
+    @NonNull
+    default Mono<Boolean> evictPermissionsLocal(@NonNull String eid) {
+        return evictPermissions(eid);
+    }
 }

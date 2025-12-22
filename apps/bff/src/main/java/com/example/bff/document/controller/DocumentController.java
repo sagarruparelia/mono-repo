@@ -24,13 +24,13 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 
+import static com.example.bff.common.BffConstants.VALIDATED_ENTERPRISE_ID;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
 public class DocumentController {
-
-    private static final String VALIDATED_ENTERPRISE_ID = "VALIDATED_ENTERPRISE_ID";
 
     private final DocumentService documentService;
 

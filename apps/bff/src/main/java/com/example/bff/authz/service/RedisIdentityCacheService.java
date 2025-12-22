@@ -146,4 +146,38 @@ public class RedisIdentityCacheService implements IdentityCacheOperations {
     public Mono<Boolean> evictPermissions(@NonNull String eid) {
         return evict(PERMISSIONS_CACHE, eid);
     }
+
+    /**
+     * Evicts locally without publishing events to prevent infinite loops.
+     */
+    @NonNull
+    private Mono<Boolean> evictLocal(@NonNull String cacheName, @NonNull String key) {
+        String fullKey = cacheName + ":" + key;
+        return redisTemplate.delete(fullKey)
+                .map(count -> {
+                    if (count > 0) {
+                        metricsService.recordEviction(cacheName, CACHE_TYPE);
+                        log.debug("Evicted cache entry (local): {}", fullKey);
+                    }
+                    return count > 0;
+                });
+    }
+
+    @Override
+    @NonNull
+    public Mono<Boolean> evictUserInfoLocal(@NonNull String hsidUuid) {
+        return evictLocal(USER_SERVICE_CACHE, hsidUuid);
+    }
+
+    @Override
+    @NonNull
+    public Mono<Boolean> evictEligibilityLocal(@NonNull String eid) {
+        return evictLocal(ELIGIBILITY_CACHE, eid);
+    }
+
+    @Override
+    @NonNull
+    public Mono<Boolean> evictPermissionsLocal(@NonNull String eid) {
+        return evictLocal(PERMISSIONS_CACHE, eid);
+    }
 }

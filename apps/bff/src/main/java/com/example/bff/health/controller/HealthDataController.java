@@ -18,14 +18,14 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import static com.example.bff.common.BffConstants.VALIDATED_ENTERPRISE_ID;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/health")
 @Validated
 @RequiredArgsConstructor
 public class HealthDataController {
-
-    private static final String VALIDATED_ENTERPRISE_ID = "VALIDATED_ENTERPRISE_ID";
 
     private final HealthDataOrchestrator orchestrator;
 

@@ -25,13 +25,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import static com.example.bff.common.BffConstants.SESSION_COOKIE_NAME;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
-
-    private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
     private final SessionOperations sessionService;
     private final SessionProperties sessionProperties;

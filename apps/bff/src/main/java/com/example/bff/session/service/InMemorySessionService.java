@@ -1,6 +1,5 @@
 package com.example.bff.session.service;
 
-import com.example.bff.authz.model.ManagedMember;
 import com.example.bff.authz.model.MemberAccess;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.util.StringSanitizer;
@@ -9,7 +8,7 @@ import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.example.bff.session.util.SessionUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -444,7 +443,7 @@ public class InMemorySessionService implements SessionOperations {
         sessionMap.put("email", user.getEmail() != null ? user.getEmail() : "");
         sessionMap.put("name", user.getFullName() != null ? user.getFullName() : "");
         sessionMap.put("persona", memberAccess.getEffectivePersona());
-        sessionMap.put("dependents", buildManagedMembersString(memberAccess));
+        sessionMap.put("dependents", SessionUtils.buildManagedMembersString(memberAccess));
         sessionMap.put("ipAddress", clientInfo.ipAddress());
         sessionMap.put("userAgentHash", clientInfo.userAgentHash());
         sessionMap.put("deviceFingerprint", clientInfo.deviceFingerprint());
@@ -458,7 +457,7 @@ public class InMemorySessionService implements SessionOperations {
             sessionMap.put("termDate", memberAccess.termDate().toString());
         }
         if (memberAccess.hasManagedMembers()) {
-            sessionMap.put("managedMembersJson", serializeManagedMembers(memberAccess.managedMembers()));
+            sessionMap.put("managedMembersJson", SessionUtils.serializeManagedMembers(memberAccess.managedMembers(), objectMapper));
             if (memberAccess.getEarliestPermissionEndDate() != null) {
                 sessionMap.put("earliestPermissionEndDate", memberAccess.getEarliestPermissionEndDate().toString());
             }
@@ -481,24 +480,4 @@ public class InMemorySessionService implements SessionOperations {
         return Mono.just(sessionId);
     }
 
-    @NonNull
-    private String buildManagedMembersString(@NonNull MemberAccess memberAccess) {
-        if (!memberAccess.hasManagedMembers()) {
-            return "";
-        }
-        return memberAccess.managedMembers().stream()
-                .map(ManagedMember::enterpriseId)
-                .reduce((a, b) -> a + "," + b)
-                .orElse("");
-    }
-
-    @NonNull
-    private String serializeManagedMembers(@NonNull List<ManagedMember> managedMembers) {
-        try {
-            return objectMapper.writeValueAsString(managedMembers);
-        } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize managed members: {}", e.getMessage());
-            return "[]";
-        }
-    }
 }

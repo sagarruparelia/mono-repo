@@ -3,12 +3,12 @@ package com.example.bff.session.service;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
-import com.example.bff.authz.model.ManagedMember;
 import com.example.bff.authz.model.MemberAccess;
 import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
 import com.example.bff.session.pubsub.SessionEventPublisher;
+import com.example.bff.session.util.SessionUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -414,7 +414,7 @@ public class RedisSessionService implements SessionOperations {
         sessionData.put("email", user.getEmail() != null ? user.getEmail() : "");
         sessionData.put("name", user.getFullName() != null ? user.getFullName() : "");
         sessionData.put("persona", memberAccess.getEffectivePersona());
-        sessionData.put("dependents", buildManagedMembersString(memberAccess));
+        sessionData.put("dependents", SessionUtils.buildManagedMembersString(memberAccess));
         sessionData.put("ipAddress", clientInfo.ipAddress());
         sessionData.put("userAgentHash", clientInfo.userAgentHash());
         sessionData.put("deviceFingerprint", clientInfo.deviceFingerprint());
@@ -428,7 +428,7 @@ public class RedisSessionService implements SessionOperations {
             sessionData.put("termDate", memberAccess.termDate().toString());
         }
         if (memberAccess.hasManagedMembers()) {
-            sessionData.put("managedMembersJson", serializeManagedMembers(memberAccess.managedMembers()));
+            sessionData.put("managedMembersJson", SessionUtils.serializeManagedMembers(memberAccess.managedMembers(), objectMapper));
             if (memberAccess.getEarliestPermissionEndDate() != null) {
                 sessionData.put("earliestPermissionEndDate", memberAccess.getEarliestPermissionEndDate().toString());
             }
@@ -453,24 +453,4 @@ public class RedisSessionService implements SessionOperations {
     }
 
 
-    @NonNull
-    private String buildManagedMembersString(@NonNull MemberAccess memberAccess) {
-        if (!memberAccess.hasManagedMembers()) {
-            return "";
-        }
-        return memberAccess.managedMembers().stream()
-                .map(ManagedMember::enterpriseId)
-                .reduce((a, b) -> a + "," + b)
-                .orElse("");
-    }
-
-    @NonNull
-    private String serializeManagedMembers(@NonNull List<ManagedMember> managedMembers) {
-        try {
-            return objectMapper.writeValueAsString(managedMembers);
-        } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize managed members: {}", e.getMessage());
-            return "[]";
-        }
-    }
 }
