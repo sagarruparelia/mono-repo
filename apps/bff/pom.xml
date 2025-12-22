@@ -189,6 +189,33 @@
 					</execution>
 				</executions>
 			</plugin>
+			<!-- GraphQL Codegen for Delegate Graph client models -->
+			<plugin>
+				<groupId>io.github.kobylynskyi</groupId>
+				<artifactId>graphql-codegen-maven-plugin</artifactId>
+				<version>5.10.0</version>
+				<executions>
+					<execution>
+						<id>delegate-graph-api</id>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+						<configuration>
+							<graphqlSchemas>
+								<includePattern>src/main/resources/graphql/schema/delegate-graph\.graphqls</includePattern>
+							</graphqlSchemas>
+							<outputDir>${project.build.directory}/generated-sources/graphql</outputDir>
+							<packageName>${project.groupId}.client.delegategraph.model</packageName>
+							<generateApis>false</generateApis>
+							<generateClient>false</generateClient>
+							<generateDataFetchingEnvironmentArgumentInApis>false</generateDataFetchingEnvironmentArgumentInApis>
+							<generateEqualsAndHashCode>true</generateEqualsAndHashCode>
+							<generateToString>true</generateToString>
+							<modelValidationAnnotation>@jakarta.validation.constraints.NotNull</modelValidationAnnotation>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
