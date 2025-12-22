@@ -1,14 +1,10 @@
-# Security Path Configuration
-# Externalized security rules for config-over-code approach
-
 security:
   paths:
-    # Public endpoints (no authentication required)
     public-paths:
       - pattern: "/"
         description: "Landing page"
-      - pattern: "/api/auth/**"
-        description: "Auth endpoints (login, callback, logout)"
+      - pattern: "/api/v1/auth/**"
+        description: "Auth endpoints (login, session)"
       - pattern: "/oauth2/**"
         description: "OAuth2 authorization flow"
       - pattern: "/login/oauth2/**"
@@ -18,26 +14,12 @@ security:
       - pattern: "/actuator/info"
         description: "App info"
 
-    # HSID session-only endpoints (browser only)
     session-auth:
-      - pattern: "/api/user/**"
-        description: "User info endpoints"
-      - pattern: "/api/dashboard/**"
-        description: "Dashboard endpoints"
+      - pattern: "/api/v1/members/**"
+        description: "Member endpoints"
 
-    # Dual-auth endpoints (session OR proxy)
-    # Accessible via browser session (HSID) or partner headers (PROXY via mTLS ALB)
     dual-auth:
-      - pattern: "/api/1.0.0/health/**"
-        description: "Health data API v1.0.0 (immunization, allergy, condition)"
-      - pattern: "/api/1.0.0/documents/**"
-        description: "Document management API v1.0.0"
-      - pattern: "/api/profile/**"
-        description: "Member profile endpoints"
-
-    # Admin endpoints (future use)
-    admin:
-      - pattern: "/api/admin/**"
-        description: "Admin endpoints"
-        required-roles:
-          - ADMIN
+      - pattern: "/api/v1/health/**"
+        description: "Health data API v1"
+      - pattern: "/api/v1/documents/**"
+        description: "Document management API v1"

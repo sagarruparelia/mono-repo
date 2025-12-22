@@ -20,20 +20,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST controller for authentication endpoints.
- *
- * <p>Endpoints:
- * <ul>
- *   <li>GET /login - Initiate OAuth2 PKCE flow with HSID</li>
- *   <li>GET /session - Get full session info</li>
- *   <li>GET /check - Quick session validity check</li>
- *   <li>POST /refresh - Extend session TTL</li>
- * </ul>
- */
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -42,9 +31,6 @@ public class AuthController {
     private final SessionService sessionService;
     private final SessionProperties sessionProperties;
 
-    /**
-     * Initiate OAuth2 PKCE flow with HSID.
-     */
     @GetMapping("/login")
     public Mono<Void> login(ServerWebExchange exchange) {
         exchange.getResponse().setStatusCode(HttpStatus.FOUND);
@@ -53,10 +39,7 @@ public class AuthController {
         return exchange.getResponse().setComplete();
     }
 
-    /**
-     * Get full session info for the authenticated user.
-     */
-    @GetMapping("/session")
+    @PostMapping("/session")
     public Mono<ResponseEntity<SessionInfoResponse>> getSessionInfo(ServerWebExchange exchange) {
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
 
@@ -68,7 +51,6 @@ public class AuthController {
 
         return sessionService.getSession(sessionId)
                 .map(session -> {
-                    // Calculate session expiry
                     Instant expiresAt = session.lastAccessedAt().plus(sessionProperties.timeout());
 
                     return ResponseEntity.ok(SessionInfoResponse.valid(
@@ -85,10 +67,7 @@ public class AuthController {
                 .defaultIfEmpty(ResponseEntity.ok(SessionInfoResponse.invalid("session_not_found")));
     }
 
-    /**
-     * Quick session validity check for SPA route guards.
-     */
-    @GetMapping("/check")
+    @PostMapping("/session/status")
     public Mono<ResponseEntity<Map<String, Object>>> checkSession(ServerWebExchange exchange) {
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
 
@@ -113,16 +92,13 @@ public class AuthController {
                 .defaultIfEmpty(ResponseEntity.ok(Map.of("valid", false)));
     }
 
-    /**
-     * Refresh session TTL.
-     */
-    @PostMapping("/refresh")
-    public Mono<ResponseEntity<Map<String, Object>>> refreshSession(ServerWebExchange exchange) {
+    @PostMapping("/session/extend")
+    public Mono<ResponseEntity<Map<String, Object>>> extendSession(ServerWebExchange exchange) {
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
 
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
             return Mono.just(ResponseEntity.ok(Map.of(
-                    "refreshed", false,
+                    "extended", false,
                     "reason", "no_session"
             )));
         }
@@ -130,7 +106,6 @@ public class AuthController {
         String sessionId = sessionCookie.getValue();
 
         return sessionService.refreshSession(sessionId)
-                .map(refreshed -> ResponseEntity.ok(Map.of("refreshed", refreshed)));
+                .map(refreshed -> ResponseEntity.ok(Map.of("extended", refreshed)));
     }
-
 }

@@ -20,7 +20,7 @@ import reactor.core.publisher.Mono;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/1.0.0/health")
+@RequestMapping("/api/v1/health")
 @Validated
 @RequiredArgsConstructor
 public class HealthDataController {
@@ -31,7 +31,7 @@ public class HealthDataController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @GetMapping("/immunization")
+    @PostMapping("/immunizations")
     public Mono<ResponseEntity<HealthDataApiResponse<ImmunizationResponse.ImmunizationDto>>> getImmunizations(
             AuthPrincipal principal,
             ServerWebExchange exchange) {
@@ -47,7 +47,7 @@ public class HealthDataController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @GetMapping("/allergy")
+    @PostMapping("/allergies")
     public Mono<ResponseEntity<HealthDataApiResponse<AllergyResponse.AllergyDto>>> getAllergies(
             AuthPrincipal principal,
             ServerWebExchange exchange) {
@@ -63,7 +63,7 @@ public class HealthDataController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @GetMapping("/condition")
+    @PostMapping("/conditions")
     public Mono<ResponseEntity<HealthDataApiResponse<ConditionResponse.ConditionDto>>> getConditions(
             AuthPrincipal principal,
             ServerWebExchange exchange) {
@@ -79,13 +79,13 @@ public class HealthDataController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @PostMapping("/refresh")
-    public Mono<ResponseEntity<Void>> refreshHealthData(
+    @PostMapping("/cache/invalidate")
+    public Mono<ResponseEntity<Void>> invalidateCache(
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
-        log.debug("Refreshing health data for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
+        log.debug("Invalidating health data cache for enterpriseId={}", StringSanitizer.forLog(enterpriseId));
 
         return orchestrator.refreshAllHealthData(enterpriseId)
                 .thenReturn(ResponseEntity.ok().<Void>build());

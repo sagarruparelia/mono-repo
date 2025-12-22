@@ -9,8 +9,7 @@ public record SecurityPathsProperties(
         List<PathConfig> publicPaths,
         List<PathConfig> proxyAuth,
         List<PathConfig> sessionAuth,
-        List<PathConfig> dualAuth,
-        List<PathConfig> admin
+        List<PathConfig> dualAuth
 ) {
     public record PathConfig(
             String pattern,

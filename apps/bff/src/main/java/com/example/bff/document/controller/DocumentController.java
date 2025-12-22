@@ -6,9 +6,11 @@ import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.annotation.RequirePersona;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.document.dto.DocumentDto;
+import com.example.bff.document.dto.DocumentIdRequest;
 import com.example.bff.document.dto.DocumentUploadRequest;
 import com.example.bff.document.model.DocumentEntity.DocumentType;
 import com.example.bff.document.service.DocumentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -24,7 +26,7 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/1.0.0/documents")
+@RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
 public class DocumentController {
 
@@ -34,7 +36,7 @@ public class DocumentController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @GetMapping
+    @PostMapping("/list")
     public Mono<ResponseEntity<List<DocumentDto>>> listDocuments(
             AuthPrincipal principal,
             ServerWebExchange exchange) {
@@ -49,35 +51,35 @@ public class DocumentController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @GetMapping("/{documentId}")
+    @PostMapping("/get")
     public Mono<ResponseEntity<DocumentDto>> getDocument(
-            @PathVariable String documentId,
+            @Valid @RequestBody DocumentIdRequest request,
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Getting document {} for enterpriseId={}",
-                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+                StringSanitizer.forLog(request.documentId()), StringSanitizer.forLog(enterpriseId));
 
-        return documentService.getDocument(enterpriseId, documentId)
+        return documentService.getDocument(enterpriseId, request.documentId())
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT, Persona.CONFIG_SPECIALIST},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR, DelegateType.ROI})
-    @GetMapping("/{documentId}/download")
+    @PostMapping("/download")
     public Mono<ResponseEntity<byte[]>> downloadDocument(
-            @PathVariable String documentId,
+            @Valid @RequestBody DocumentIdRequest request,
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Downloading document {} for enterpriseId={}",
-                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+                StringSanitizer.forLog(request.documentId()), StringSanitizer.forLog(enterpriseId));
 
-        return documentService.getDocument(enterpriseId, documentId)
-                .flatMap(doc -> documentService.downloadDocument(enterpriseId, documentId)
+        return documentService.getDocument(enterpriseId, request.documentId())
+                .flatMap(doc -> documentService.downloadDocument(enterpriseId, request.documentId())
                         .map(content -> ResponseEntity.ok()
                                 .header(HttpHeaders.CONTENT_DISPOSITION,
                                         "attachment; filename=\"" + sanitizeFilename(doc.fileName()) + "\"")
@@ -89,7 +91,7 @@ public class DocumentController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<DocumentDto>> uploadDocument(
             @RequestPart("file") FilePart file,
             @RequestPart(value = "description", required = false) String description,
@@ -115,17 +117,17 @@ public class DocumentController {
 
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
-    @DeleteMapping("/{documentId}")
+    @PostMapping("/delete")
     public Mono<ResponseEntity<Void>> deleteDocument(
-            @PathVariable String documentId,
+            @Valid @RequestBody DocumentIdRequest request,
             AuthPrincipal principal,
             ServerWebExchange exchange) {
 
         String enterpriseId = getTargetEnterpriseId(exchange, principal);
         log.debug("Deleting document {} for enterpriseId={}",
-                StringSanitizer.forLog(documentId), StringSanitizer.forLog(enterpriseId));
+                StringSanitizer.forLog(request.documentId()), StringSanitizer.forLog(enterpriseId));
 
-        return documentService.deleteDocument(enterpriseId, documentId)
+        return documentService.deleteDocument(enterpriseId, request.documentId())
                 .then(Mono.just(ResponseEntity.noContent().<Void>build()))
                 .onErrorResume(IllegalArgumentException.class,
                         e -> Mono.just(ResponseEntity.notFound().build()));

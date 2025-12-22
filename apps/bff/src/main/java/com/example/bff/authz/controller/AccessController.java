@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
@@ -27,7 +27,7 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/access")
+@RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
 public class AccessController {
 
@@ -36,7 +36,7 @@ public class AccessController {
     private final SessionService sessionService;
     private final ObjectMapper objectMapper;
 
-    @GetMapping("/managed-members")
+    @PostMapping("/managed")
     @RequirePersona(Persona.DELEGATE)
     public Mono<ResponseEntity<List<ManagedMemberDetailResponse>>> getManagedMembers(
             ServerWebExchange exchange) {
