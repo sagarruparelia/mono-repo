@@ -6,6 +6,7 @@ import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.annotation.RequirePersona;
 import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
+import com.example.bff.common.filter.FilterResponseUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.MfeProxyProperties;
 import lombok.RequiredArgsConstructor;
@@ -13,8 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
@@ -25,7 +24,6 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
@@ -224,18 +222,7 @@ public class PersonaAuthorizationFilter implements WebFilter {
             @NonNull ServerWebExchange exchange,
             @NonNull String code,
             @NonNull String message) {
-
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        String body = String.format(
-                "{\"error\":\"unauthorized\",\"code\":\"%s\",\"message\":\"%s\"}",
-                escapeJson(code), escapeJson(message));
-
-        return exchange.getResponse()
-                .writeWith(Mono.just(exchange.getResponse()
-                        .bufferFactory()
-                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
+        return FilterResponseUtils.unauthorized(exchange, code, message, null);
     }
 
     @NonNull
@@ -243,27 +230,6 @@ public class PersonaAuthorizationFilter implements WebFilter {
             @NonNull ServerWebExchange exchange,
             @NonNull String code,
             @NonNull String message) {
-
-        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        String body = String.format(
-                "{\"error\":\"forbidden\",\"code\":\"%s\",\"message\":\"%s\"}",
-                escapeJson(code), escapeJson(message));
-
-        return exchange.getResponse()
-                .writeWith(Mono.just(exchange.getResponse()
-                        .bufferFactory()
-                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
-    }
-
-    @NonNull
-    private String escapeJson(@NonNull String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        return FilterResponseUtils.forbidden(exchange, code, message, null);
     }
 }

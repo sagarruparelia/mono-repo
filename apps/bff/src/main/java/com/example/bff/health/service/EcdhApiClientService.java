@@ -1,5 +1,6 @@
 package com.example.bff.health.service;
 
+import com.example.bff.common.util.RetryUtils;
 import com.example.bff.config.properties.EcdhApiProperties;
 import com.example.bff.health.dto.AllergyResponse;
 import com.example.bff.health.dto.ConditionResponse;
@@ -15,7 +16,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 import static com.example.bff.config.EcdhApiWebClientConfig.ECDH_API_WEBCLIENT;
 
@@ -171,7 +171,7 @@ public class EcdhApiClientService {
                 .timeout(apiProperties.timeout())
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
-                        .filter(this::isRetryable)
+                        .filter(ecdhRetryPredicate())
                         .doBeforeRetry(signal -> log.warn(
                                 "Retrying ECDH API call, attempt {}: {}",
                                 signal.totalRetries() + 1, signal.failure().getMessage())));
@@ -188,14 +188,13 @@ public class EcdhApiClientService {
         return null;
     }
 
-    private boolean isRetryable(Throwable throwable) {
-        if (throwable instanceof WebClientResponseException ex) {
-            return ex.getStatusCode().is5xxServerError();
-        }
-        if (throwable instanceof EcdhApiException ex) {
-            return ex.isRetryable();
-        }
-        return throwable instanceof TimeoutException;
+    private static Predicate<Throwable> ecdhRetryPredicate() {
+        return RetryUtils.retryablePredicateWith(t -> {
+            if (t instanceof EcdhApiException ex) {
+                return ex.isRetryable();
+            }
+            return null; // Fall back to standard checks
+        });
     }
 
     private ImmunizationEntity.ImmunizationRecord mapToImmunizationRecord(

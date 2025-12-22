@@ -1,5 +1,6 @@
 package com.example.bff.observability.filter;
 
+import com.example.bff.common.util.ClientIpExtractor;
 import com.example.bff.common.util.StringSanitizer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -43,7 +44,7 @@ public class RequestLoggingFilter implements WebFilter {
         Instant startTime = Instant.now();
         String method = exchange.getRequest().getMethod().name();
         String userAgent = exchange.getRequest().getHeaders().getFirst("User-Agent");
-        String clientIp = getClientIp(exchange);
+        String clientIp = ClientIpExtractor.extractSimple(exchange);
 
         return chain.filter(exchange)
                 .doFirst(() -> {
@@ -117,23 +118,6 @@ public class RequestLoggingFilter implements WebFilter {
         if (statusCode < 400) return "REDIRECTION";
         if (statusCode < 500) return "CLIENT_ERROR";
         return "SERVER_ERROR";
-    }
-
-    private String getClientIp(ServerWebExchange exchange) {
-        // Check X-Forwarded-For first (for load balancer/proxy scenarios)
-        String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            // X-Forwarded-For can contain multiple IPs, take the first one
-            return forwardedFor.split(",")[0].trim();
-        }
-
-        // Fallback to remote address
-        var remoteAddress = exchange.getRequest().getRemoteAddress();
-        if (remoteAddress != null && remoteAddress.getAddress() != null) {
-            return remoteAddress.getAddress().getHostAddress();
-        }
-
-        return "unknown";
     }
 
     private String truncate(String value, int maxLength) {

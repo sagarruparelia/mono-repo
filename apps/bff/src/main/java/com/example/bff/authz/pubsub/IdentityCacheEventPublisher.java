@@ -46,15 +46,6 @@ public class IdentityCacheEventPublisher {
         return publish(message);
     }
 
-    /**
-     * Publish an event to evict all entries for a cache.
-     */
-    @NonNull
-    public Mono<Void> publishEvictAll(@NonNull String cacheName) {
-        IdentityCacheEventMessage message = IdentityCacheEventMessage.evictAll(cacheName, instanceId);
-        return publish(message);
-    }
-
     private Mono<Void> publish(IdentityCacheEventMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);

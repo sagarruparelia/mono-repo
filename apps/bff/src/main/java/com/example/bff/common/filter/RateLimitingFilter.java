@@ -1,5 +1,6 @@
 package com.example.bff.common.filter;
 
+import com.example.bff.common.util.ClientIpExtractor;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.RateLimitProperties;
 import com.example.bff.config.properties.RateLimitProperties.PersonaRule;
@@ -45,7 +46,7 @@ public class RateLimitingFilter implements WebFilter {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
-        String clientIp = extractClientIp(exchange);
+        String clientIp = ClientIpExtractor.extract(exchange);
 
         // Check path-specific rules first
         for (RateLimitRule rule : rateLimitProperties.rules()) {
@@ -92,53 +93,6 @@ public class RateLimitingFilter implements WebFilter {
                     }
                     return chain.filter(exchange);
                 }));
-    }
-
-    private String extractClientIp(ServerWebExchange exchange) {
-        var remoteAddress = exchange.getRequest().getRemoteAddress();
-        String directIp = remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
-
-        // Only trust forwarded headers if request came through trusted proxy
-        // In production, ALB sets X-Forwarded-For; direct requests should use remote address
-        if (isTrustedProxy(directIp)) {
-            String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-            if (forwardedFor != null && !forwardedFor.isBlank()) {
-                // Take the rightmost untrusted IP (client IP added by first proxy)
-                String[] ips = forwardedFor.split(",");
-                for (int i = ips.length - 1; i >= 0; i--) {
-                    String ip = ips[i].trim();
-                    if (!isTrustedProxy(ip)) {
-                        return ip;
-                    }
-                }
-            }
-        }
-        return directIp;
-    }
-
-    private boolean isTrustedProxy(String ip) {
-        // Private network ranges and localhost are trusted (ALB, internal proxies)
-        // IPv4 private ranges: 10.0.0.0/8, 172.16.0.0/12 (172.16-31.x.x), 192.168.0.0/16
-        if (ip.startsWith("10.") || ip.startsWith("192.168.") ||
-                ip.equals("127.0.0.1") || ip.equals("::1")) {
-            return true;
-        }
-
-        // Check 172.16.0.0/12 range (172.16.x.x - 172.31.x.x)
-        if (ip.startsWith("172.")) {
-            String[] octets = ip.split("\\.");
-            if (octets.length >= 2) {
-                try {
-                    int secondOctet = Integer.parseInt(octets[1]);
-                    return secondOctet >= 16 && secondOctet <= 31;
-                } catch (NumberFormatException e) {
-                    return false;
-                }
-            }
-        }
-
-        // IPv6 private ranges (link-local and unique local)
-        return ip.startsWith("fe80:") || ip.startsWith("fc") || ip.startsWith("fd");
     }
 
     private String createBucketKey(RateLimitRule rule, String clientIp, ServerWebExchange exchange) {

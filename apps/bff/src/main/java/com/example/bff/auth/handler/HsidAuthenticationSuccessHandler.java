@@ -4,6 +4,8 @@ import com.example.bff.auth.model.TokenData;
 import com.example.bff.auth.service.TokenOperations;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
+import com.example.bff.common.util.ClientIpExtractor;
+import com.example.bff.common.util.SessionCookieUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.health.service.HealthDataOrchestrator;
@@ -43,7 +45,6 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuccessHandler {
 
-    private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
     private static final String REDIRECT_URI_COOKIE = "redirect_uri";
     private static final String AGE_RESTRICTED_PATH = "/error/age-restricted";
     private static final String NO_ACCESS_PATH = "/error/no-access";
@@ -220,46 +221,24 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     @NonNull
     private ClientInfo extractClientInfo(@NonNull ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
-
-        String ipAddress = request.getHeaders().getFirst("X-Forwarded-For");
-        if (ipAddress == null || ipAddress.isBlank()) {
-            ipAddress = request.getRemoteAddress() != null
-                    ? request.getRemoteAddress().getAddress().getHostAddress()
-                    : "unknown";
-        } else {
-            ipAddress = ipAddress.split(",")[0].trim();
-        }
-
+        String ipAddress = ClientIpExtractor.extractSimple(request);
         String userAgent = request.getHeaders().getFirst("User-Agent");
-
         return ClientInfo.of(ipAddress, userAgent != null ? userAgent : "unknown");
     }
 
     @NonNull
     private Mono<Void> setSessionCookieAndRedirect(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
-        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(sessionProperties.timeout())
-                .sameSite(sessionProperties.cookie().sameSite());
-
-        String domain = sessionProperties.cookie().domain();
-        if (domain != null && !domain.isBlank()) {
-            builder.domain(domain);
-        }
-
-        exchange.getResponse().addCookie(builder.build());
+        SessionCookieUtils.addSessionCookie(exchange, sessionId, sessionProperties);
 
         String redirectUri = getRedirectUri(exchange);
 
+        // Clear redirect cookie
         ResponseCookie clearRedirectCookie = ResponseCookie.from(REDIRECT_URI_COOKIE, "")
                 .httpOnly(true)
                 .secure(true)
                 .path("/")
                 .maxAge(0)
                 .build();
-
         exchange.getResponse().addCookie(clearRedirectCookie);
 
         exchange.getResponse().setStatusCode(HttpStatus.FOUND);

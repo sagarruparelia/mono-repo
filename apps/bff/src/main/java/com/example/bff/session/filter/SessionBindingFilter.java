@@ -1,6 +1,8 @@
 package com.example.bff.session.filter;
 
 import com.example.bff.common.exception.SessionBindingException;
+import com.example.bff.common.util.ClientIpExtractor;
+import com.example.bff.common.util.SessionCookieUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.audit.SessionAuditService;
@@ -13,7 +15,6 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
@@ -23,11 +24,7 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.time.Duration;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 /**
  * Zero Trust session binding filter that validates device fingerprint and handles session rotation.
@@ -40,9 +37,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class SessionBindingFilter implements WebFilter {
 
-    private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
-    private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile(
-            "^([0-9]{1,3}\\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
     private static final int MAX_HEADER_LENGTH = 500;
 
     private final SessionOperations sessionService;
@@ -59,7 +53,7 @@ public class SessionBindingFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
-        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
+        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SessionCookieUtils.SESSION_COOKIE_NAME);
 
         // No session cookie - let Spring Security handle
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
@@ -154,7 +148,7 @@ public class SessionBindingFilter implements WebFilter {
     private ClientInfo extractClientInfo(@NonNull ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
 
-        String ipAddress = extractClientIp(request);
+        String ipAddress = ClientIpExtractor.extractSimple(request);
         String userAgent = extractHeader(request, "User-Agent");
         String acceptLanguage = null;
         String acceptEncoding = null;
@@ -170,38 +164,6 @@ public class SessionBindingFilter implements WebFilter {
         }
 
         return ClientInfo.of(ipAddress, userAgent, acceptLanguage, acceptEncoding);
-    }
-
-    @NonNull
-    private String extractClientIp(@NonNull ServerHttpRequest request) {
-        String forwardedFor = request.getHeaders().getFirst("X-Forwarded-For");
-
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            // Take first IP from comma-separated list
-            String firstIp = forwardedFor.split(",")[0].trim();
-            if (isValidIpAddress(firstIp)) {
-                return firstIp;
-            }
-            log.debug("Invalid IP in X-Forwarded-For header, falling back to remote address");
-        }
-
-        // Fall back to direct remote address
-        InetSocketAddress remoteAddress = request.getRemoteAddress();
-        if (remoteAddress != null) {
-            InetAddress address = remoteAddress.getAddress();
-            if (address != null) {
-                return address.getHostAddress();
-            }
-        }
-
-        return "unknown";
-    }
-
-    private boolean isValidIpAddress(@Nullable String ip) {
-        if (ip == null || ip.isBlank()) {
-            return false;
-        }
-        return IP_ADDRESS_PATTERN.matcher(ip).matches();
     }
 
     @Nullable
@@ -229,41 +191,13 @@ public class SessionBindingFilter implements WebFilter {
      * Sets session cookie with secure attributes including domain for subdomain protection.
      */
     private void setSessionCookie(@NonNull ServerWebExchange exchange, @NonNull String sessionId) {
-        Duration timeout = sessionProperties.timeout();
-        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, sessionId)
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(timeout)
-                .sameSite(sessionProperties.cookie().sameSite());
-
-        // Set domain if configured (prevents subdomain takeover attacks)
-        String domain = sessionProperties.cookie().domain();
-        if (domain != null && !domain.isBlank()) {
-            builder.domain(domain);
-        }
-
-        exchange.getResponse().addCookie(builder.build());
+        SessionCookieUtils.addSessionCookie(exchange, sessionId, sessionProperties);
     }
 
     @NonNull
     private Mono<Void> invalidateAndRespond(@NonNull ServerWebExchange exchange) {
-        // Clear session cookie with same attributes for proper deletion
-        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, "")
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(0);
-
-        // Set domain if configured (must match the set cookie for proper deletion)
-        String domain = sessionProperties.cookie().domain();
-        if (domain != null && !domain.isBlank()) {
-            builder.domain(domain);
-        }
-
-        exchange.getResponse().addCookie(builder.build());
+        SessionCookieUtils.clearSessionCookie(exchange, sessionProperties);
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-
         return exchange.getResponse().setComplete();
     }
 }

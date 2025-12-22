@@ -1,5 +1,6 @@
 package com.example.bff.external.filter;
 
+import com.example.bff.common.filter.FilterResponseUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import lombok.RequiredArgsConstructor;
@@ -8,19 +9,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
-import org.springframework.stereotype.Component;
-import org.springframework.web.server.ServerWebExchange;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
@@ -173,33 +171,11 @@ public class ExternalAuthFilter implements WebFilter {
 
     @NonNull
     private Mono<Void> unauthorizedResponse(@NonNull ServerWebExchange exchange, @NonNull String code, @NonNull String message) {
-
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        String body = String.format(
-                "{\"error\":\"unauthorized\",\"code\":\"%s\",\"message\":\"%s\"}",
-                StringSanitizer.escapeJson(code), StringSanitizer.escapeJson(message));
-
-        return exchange.getResponse()
-                .writeWith(Mono.just(exchange.getResponse()
-                        .bufferFactory()
-                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
+        return FilterResponseUtils.unauthorized(exchange, code, message, null);
     }
 
     @NonNull
     private Mono<Void> forbiddenResponse(@NonNull ServerWebExchange exchange, @NonNull String code, @NonNull String message) {
-
-        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        String body = String.format(
-                "{\"error\":\"access_denied\",\"code\":\"%s\",\"message\":\"%s\"}",
-                StringSanitizer.escapeJson(code), StringSanitizer.escapeJson(message));
-
-        return exchange.getResponse()
-                .writeWith(Mono.just(exchange.getResponse()
-                        .bufferFactory()
-                        .wrap(body.getBytes(StandardCharsets.UTF_8))));
+        return FilterResponseUtils.forbidden(exchange, code, message, null);
     }
 }

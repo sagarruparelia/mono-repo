@@ -6,6 +6,7 @@ import com.example.bff.auth.model.LoggedInMemberIdType;
 import com.example.bff.auth.model.Persona;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.common.dto.ErrorResponse;
+import com.example.bff.common.filter.FilterResponseUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import com.example.bff.config.properties.IdpProperties;
@@ -17,10 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
@@ -28,9 +26,6 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -270,9 +265,7 @@ public class DualAuthWebFilter implements WebFilter {
             @NonNull String correlationId,
             @NonNull String code,
             @NonNull String message) {
-
-        return errorResponse(exchange, HttpStatus.UNAUTHORIZED, correlationId,
-                ErrorResponse.Categories.AUTHENTICATION_REQUIRED, code, message, null);
+        return FilterResponseUtils.unauthorized(exchange, correlationId, code, message, objectMapper);
     }
 
     @NonNull
@@ -281,50 +274,7 @@ public class DualAuthWebFilter implements WebFilter {
             @NonNull String correlationId,
             @NonNull String code,
             @NonNull String message) {
-
-        return errorResponse(exchange, HttpStatus.FORBIDDEN, correlationId,
-                ErrorResponse.Categories.ACCESS_DENIED, code, message, null);
-    }
-
-    @NonNull
-    private Mono<Void> errorResponse(
-            @NonNull ServerWebExchange exchange,
-            @NonNull HttpStatus status,
-            @NonNull String correlationId,
-            @NonNull String error,
-            @NonNull String code,
-            @NonNull String message,
-            @Nullable Map<String, Object> details) {
-
-        exchange.getResponse().setStatusCode(status);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        ErrorResponse errorResponse = new ErrorResponse(
-                error,
-                code,
-                message,
-                correlationId,
-                Instant.now(),
-                exchange.getRequest().getPath().value(),
-                details
-        );
-
-        try {
-            String body = objectMapper.writeValueAsString(errorResponse);
-            return exchange.getResponse()
-                    .writeWith(Mono.just(exchange.getResponse()
-                            .bufferFactory()
-                            .wrap(body.getBytes(StandardCharsets.UTF_8))));
-        } catch (Exception e) {
-            log.warn("Failed to serialize error response: {}", e.getMessage());
-            String fallback = String.format(
-                    "{\"error\":\"%s\",\"code\":\"%s\",\"message\":\"%s\"}",
-                    error, code, StringSanitizer.escapeJson(message));
-            return exchange.getResponse()
-                    .writeWith(Mono.just(exchange.getResponse()
-                            .bufferFactory()
-                            .wrap(fallback.getBytes(StandardCharsets.UTF_8))));
-        }
+        return FilterResponseUtils.forbidden(exchange, correlationId, code, message, objectMapper);
     }
 
     @NonNull

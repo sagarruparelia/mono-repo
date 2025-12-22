@@ -1,5 +1,6 @@
 package com.example.bff.authz.service;
 
+import com.example.bff.common.util.RetryUtils;
 import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalApiProperties;
 import com.example.bff.authz.dto.UserInfoResponse;
@@ -11,11 +12,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
-
-import java.time.Duration;
 
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
 
@@ -74,7 +72,7 @@ public class UserInfoService {
                 .timeout(timeout)
                 .retryWhen(Retry.backoff(retryConfig.maxAttempts(), retryConfig.initialBackoff())
                         .maxBackoff(retryConfig.maxBackoff())
-                        .filter(this::isRetryable)
+                        .filter(RetryUtils::isRetryable)
                         .doBeforeRetry(signal -> log.warn(
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
@@ -82,15 +80,5 @@ public class UserInfoService {
                         "Successfully fetched user info for hsidUuid: {}", StringSanitizer.forLog(hsidUuid)))
                 .doOnError(e -> log.error(
                         "Failed to fetch user info for hsidUuid {}: {}", StringSanitizer.forLog(hsidUuid), e.getMessage()));
-    }
-
-    private boolean isRetryable(Throwable throwable) {
-        if (throwable instanceof WebClientResponseException ex) {
-            return ex.getStatusCode().is5xxServerError();
-        }
-        if (throwable instanceof IdentityServiceException ex) {
-            return ex.getStatusCode() >= 500;
-        }
-        return throwable instanceof java.util.concurrent.TimeoutException;
     }
 }
