@@ -1,0 +1,21 @@
+openapi: 3.0.3
+info:
+  title: User Service API
+  description: API for user identity operations
+  version: 1.0.0
+
+paths: {}
+
+components:
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User identifier
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string

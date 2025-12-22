@@ -202,7 +202,8 @@
 						</goals>
 						<configuration>
 							<graphqlSchemas>
-								<includePattern>src/main/resources/graphql/schema/delegate-graph\.graphqls</includePattern>
+								<rootDir>${project.basedir}/src/main/resources/graphql/schema</rootDir>
+								<includePattern>delegate-graph\.graphqls</includePattern>
 							</graphqlSchemas>
 							<outputDir>${project.build.directory}/generated-sources/graphql</outputDir>
 							<packageName>${project.groupId}.client.delegategraph.model</packageName>

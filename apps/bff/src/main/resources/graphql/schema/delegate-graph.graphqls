@@ -1,0 +1,9 @@
+type Query {
+  placeholder: String
+}
+
+type DelegateInfo {
+  id: ID!
+  name: String
+  permissions: [String!]
+}

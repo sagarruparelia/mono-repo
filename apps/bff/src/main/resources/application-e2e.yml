@@ -4,30 +4,43 @@
 # =============================================================================
 
 spring:
-  # Disable session store and external dependencies
+  # Enable Redis session for E2E testing
   session:
-    store-type: none
+    store-type: redis
 
-  # Override OAuth2 with empty values (triggers test security config)
+  # Override OAuth2 with mock values for E2E testing
   security:
     oauth2:
       client:
         registration:
           hsid:
-            client-id: ""  # Empty disables OAuth2 security filter
+            client-id: "e2e-client"
+          external-api:
+            client-id: "e2e-external-client"
+            client-secret: "e2e-secret"
+            authorization-grant-type: client_credentials
+            scope: openid
+          ecdh-api:
+            client-id: "e2e-ecdh-client"
+            client-secret: "e2e-secret"
+            authorization-grant-type: client_credentials
+            scope: openid,health.read
         provider:
           hsid:
-            issuer-uri: http://localhost:9999
-            authorization-uri: http://localhost:9999/authorize
-            token-uri: http://localhost:9999/token
-            jwk-set-uri: http://localhost:9999/.well-known/jwks.json
-            user-info-uri: http://localhost:9999/userinfo
+            issuer-uri: http://mock-idp
+            authorization-uri: http://mock-idp/authorize
+            token-uri: http://mock-idp/token
+            jwk-set-uri: http://mock-idp/.well-known/jwks.json
+            user-info-uri: http://mock-idp/userinfo
+          external-api:
+            token-uri: http://mock-idp/token
+          ecdh-api:
+            token-uri: http://mock-idp/token
 
-  # Disable OAuth2 for E2E (no IDP available) - keep MongoDB and Redis for Docker
+  # Disable OAuth2 Resource Server for E2E (no JWT validation needed)
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
-      - org.springframework.boot.autoconfigure.security.oauth2.client.reactive.ReactiveOAuth2ClientAutoConfiguration
 
   # Optional config imports
   config:
@@ -113,6 +126,23 @@ app:
     trusted-idp-types:
       - OHID
       - MSID
+
+  # External API configuration for E2E testing (mock endpoints)
+  external-api:
+    base-url: http://mock-idp
+    user-service:
+      path: /api/identity/user/individual/v1/read
+      timeout: 5s
+    eligibility:
+      path: /graph/1.0.0
+      timeout: 5s
+    permissions:
+      path: /api/consumer/prefs/del-gr/1.0.0
+      timeout: 5s
+    retry:
+      max-attempts: 3
+      initial-backoff: 100ms
+      max-backoff: 1s
 
 # Actuator - expose all for E2E debugging
 management:
