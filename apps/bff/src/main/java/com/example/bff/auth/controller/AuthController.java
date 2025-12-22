@@ -1,20 +1,25 @@
 package com.example.bff.auth.controller;
 
 import com.example.bff.auth.dto.SessionInfoResponse;
+import com.example.bff.auth.service.TokenService;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -30,14 +35,13 @@ public class AuthController {
 
     private final SessionService sessionService;
     private final SessionProperties sessionProperties;
+    @Nullable private final TokenService tokenService;
 
-    @GetMapping("/login")
-    public Mono<Void> login(ServerWebExchange exchange) {
-        exchange.getResponse().setStatusCode(HttpStatus.FOUND);
-        exchange.getResponse().getHeaders().setLocation(
-                java.net.URI.create("/oauth2/authorization/hsid"));
-        return exchange.getResponse().setComplete();
-    }
+    @Value("${app.auth.hsid.logout-uri}")
+    private String hsidLogoutUri;
+
+    @Value("${app.auth.hsid.post-logout-redirect-uri:#{null}}")
+    private String postLogoutRedirectUri;
 
     @PostMapping("/session")
     public Mono<ResponseEntity<SessionInfoResponse>> getSessionInfo(ServerWebExchange exchange) {
@@ -107,5 +111,70 @@ public class AuthController {
 
         return sessionService.refreshSession(sessionId)
                 .map(refreshed -> ResponseEntity.ok(Map.of("extended", refreshed)));
+    }
+
+    @PostMapping("/logout")
+    public Mono<ResponseEntity<Map<String, Object>>> logout(ServerWebExchange exchange) {
+        HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
+
+        if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
+            return Mono.just(ResponseEntity.ok(Map.of(
+                    "loggedOut", false,
+                    "reason", "no_session"
+            )));
+        }
+
+        String sessionId = sessionCookie.getValue();
+
+        Mono<String> idTokenMono = tokenService != null
+                ? tokenService.getTokens(sessionId).map(t -> t.idToken()).defaultIfEmpty("")
+                : Mono.just("");
+
+        Mono<Void> revokeTokenMono = tokenService != null
+                ? tokenService.revokeRefreshToken(sessionId)
+                : Mono.empty();
+
+        return idTokenMono.flatMap(idToken ->
+                revokeTokenMono
+                        .then(sessionService.invalidateSession(sessionId))
+                        .then(Mono.fromRunnable(() -> clearSessionCookie(exchange)))
+                        .then(Mono.just(ResponseEntity.ok(buildLogoutResponse(idToken))))
+        );
+    }
+
+    private void clearSessionCookie(ServerWebExchange exchange) {
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(SESSION_COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0);
+
+        String domain = sessionProperties.cookie().domain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+
+        exchange.getResponse().addCookie(builder.build());
+    }
+
+    private Map<String, Object> buildLogoutResponse(String idToken) {
+        UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromHttpUrl(hsidLogoutUri);
+
+        if (idToken != null && !idToken.isBlank()) {
+            uriBuilder.queryParam("id_token_hint", idToken);
+        }
+
+        if (postLogoutRedirectUri != null && !postLogoutRedirectUri.isBlank()) {
+            uriBuilder.queryParam("post_logout_redirect_uri",
+                    URLEncoder.encode(postLogoutRedirectUri, StandardCharsets.UTF_8));
+        }
+
+        String logoutUrl = uriBuilder.build().toUriString();
+        log.info("Logout initiated, redirecting to HSID logout");
+
+        return Map.of(
+                "loggedOut", true,
+                "redirectUrl", logoutUrl
+        );
     }
 }

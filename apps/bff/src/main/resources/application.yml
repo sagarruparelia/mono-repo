@@ -35,12 +35,10 @@ spring:
             scope: openid,health.read
         provider:
           hsid:
-            # HSID base URL - set this to switch environments
-
             issuer-uri: ${HSID_BASE_URL}
             authorization-uri: ${HSID_BASE_URL}/oidc/authorize
             token-uri: ${HSID_BASE_URL}/oidc/token
-            jwk-set-uri: ${HSID_BASE_URL}/.well-known/jwks.json
+            jwk-set-uri: ${HSID_BASE_URL}/oidc/jwks
             user-info-uri: ${HSID_BASE_URL}/oidc/userinfo
             user-name-attribute: sub
           external-api:
@@ -108,13 +106,13 @@ management:
       environment: ${spring.profiles.active:local}
     distribution:
       percentiles-histogram:
-        http.server.requests: true
-        http.client.requests: true
+        "[http.server.requests]": true
+        "[http.client.requests]": true
       percentiles:
-        http.server.requests: 0.5, 0.75, 0.95, 0.99
-        http.client.requests: 0.5, 0.75, 0.95, 0.99
+        "[http.server.requests]": 0.5, 0.75, 0.95, 0.99
+        "[http.client.requests]": 0.5, 0.75, 0.95, 0.99
       slo:
-        http.server.requests: 50ms, 100ms, 200ms, 500ms, 1s, 5s
+        "[http.server.requests]": 50ms, 100ms, 200ms, 500ms, 1s, 5s
     enable:
       jvm: true
       process: true
@@ -157,6 +155,12 @@ logging:
 
 # Custom application properties
 app:
+  auth:
+    hsid:
+      logout-uri: ${HSID_BASE_URL}/oidc/logout
+      revocation-uri: ${HSID_BASE_URL}/oidc/token/revoke
+      post-logout-redirect-uri: ${APP_POST_LOGOUT_REDIRECT_URI:}
+
   session:
     timeout: 30m
     binding:
@@ -309,20 +313,20 @@ idp:
       - agent
       - config_specialist
 
-  # Document Management Configuration
-  documents:
-    s3:
-      bucket-name: ${DOCUMENT_S3_BUCKET:documents-bucket}
-      region: ${DOCUMENT_S3_REGION:us-east-1}
-      endpoint: ${DOCUMENT_S3_ENDPOINT:}
-      access-key-id: ${DOCUMENT_S3_ACCESS_KEY:}
-      secret-access-key: ${DOCUMENT_S3_SECRET_KEY:}
-    limits:
-      max-file-size: 10485760  # 10MB
-      max-files-per-member: 50
-      allowed-content-types:
-        - application/pdf
-        - image/jpeg
-        - image/png
-        - application/msword
-        - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+# Document Management Configuration
+documents:
+  s3:
+    bucket-name: ${DOCUMENT_S3_BUCKET:documents-bucket}
+    region: ${DOCUMENT_S3_REGION:us-east-1}
+    endpoint: ${DOCUMENT_S3_ENDPOINT:}
+    access-key-id: ${DOCUMENT_S3_ACCESS_KEY:}
+    secret-access-key: ${DOCUMENT_S3_SECRET_KEY:}
+  limits:
+    max-file-size: 10485760  # 10MB
+    max-files-per-member: 50
+    allowed-content-types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document

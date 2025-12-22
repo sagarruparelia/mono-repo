@@ -47,11 +47,13 @@ security:
 rate-limiting:
   enabled: false
 
-zero-trust:
-  audit:
-    enabled: false
-
 app:
+  auth:
+    hsid:
+      logout-uri: http://localhost:8180/realms/test/protocol/openid-connect/logout
+      revocation-uri: http://localhost:8180/realms/test/protocol/openid-connect/revoke
+      post-logout-redirect-uri:
+
   session:
     timeout: 30m
     binding:

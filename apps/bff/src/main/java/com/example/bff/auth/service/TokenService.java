@@ -37,6 +37,9 @@ public class TokenService {
     @Value("${spring.security.oauth2.client.registration.hsid.client-id}")
     private String clientId;
 
+    @Value("${app.auth.hsid.revocation-uri:#{null}}")
+    private String revocationUri;
+
     public TokenService(
             @NonNull ReactiveRedisOperations<String, String> redisOps,
             @NonNull ObjectMapper objectMapper,
@@ -173,5 +176,41 @@ public class TokenService {
         return redisOps.opsForHash()
                 .remove(sessionKey, TOKEN_FIELD)
                 .then();
+    }
+
+    @NonNull
+    public Mono<Void> revokeRefreshToken(@NonNull String sessionId) {
+        if (revocationUri == null || revocationUri.isBlank()) {
+            log.debug("Token revocation skipped - no revocation URI configured");
+            return Mono.empty();
+        }
+
+        if (!StringSanitizer.isValidSessionId(sessionId)) {
+            return Mono.empty();
+        }
+
+        return getTokens(sessionId)
+                .filter(tokenData -> tokenData.refreshToken() != null)
+                .flatMap(tokenData -> {
+                    MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+                    formData.add("token", tokenData.refreshToken());
+                    formData.add("token_type_hint", "refresh_token");
+                    formData.add("client_id", clientId);
+
+                    return webClient.post()
+                            .uri(revocationUri)
+                            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                            .body(BodyInserters.fromFormData(formData))
+                            .retrieve()
+                            .toBodilessEntity()
+                            .doOnSuccess(r -> log.info("Refresh token revoked for session {}",
+                                    StringSanitizer.forLog(sessionId)))
+                            .then();
+                })
+                .onErrorResume(e -> {
+                    log.warn("Token revocation failed for session {}: {}",
+                            StringSanitizer.forLog(sessionId), e.getMessage());
+                    return Mono.empty();
+                });
     }
 }
