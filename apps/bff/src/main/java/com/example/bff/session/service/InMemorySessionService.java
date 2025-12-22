@@ -8,7 +8,6 @@ import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
 import com.example.bff.session.model.SessionData;
-import com.example.bff.session.util.SessionUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,7 +20,6 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,29 +34,24 @@ import java.util.concurrent.locks.ReentrantLock;
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "app.cache.type", havingValue = "memory", matchIfMissing = true)
-public class InMemorySessionService implements SessionOperations {
+public class InMemorySessionService extends AbstractSessionService {
 
     private final ConcurrentHashMap<String, SessionEntry> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> userSessionMapping = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PermissionSet> permissionsStore = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ReentrantLock> rotationLocks = new ConcurrentHashMap<>();
 
-    private final SessionProperties sessionProperties;
     private final MemoryCacheProperties memoryCacheProperties;
-    private final ObjectMapper objectMapper;
-    private final Optional<SessionAuditService> auditService;
 
     public InMemorySessionService(
             SessionProperties sessionProperties,
             MemoryCacheProperties memoryCacheProperties,
             ObjectMapper objectMapper,
             Optional<SessionAuditService> auditService) {
-        this.sessionProperties = sessionProperties;
+        super(sessionProperties, objectMapper, auditService);
         this.memoryCacheProperties = memoryCacheProperties != null
                 ? memoryCacheProperties
                 : MemoryCacheProperties.defaults();
-        this.objectMapper = objectMapper;
-        this.auditService = auditService;
         log.info("In-memory session service initialized (single-pod mode, max-sessions={})",
                 this.memoryCacheProperties.maxSessions());
     }
@@ -69,7 +62,6 @@ public class InMemorySessionService implements SessionOperations {
     private void enforceMaxSessions() {
         int maxSessions = memoryCacheProperties.maxSessions();
         while (sessions.size() >= maxSessions) {
-            // Find and remove the oldest session
             String oldestSessionId = sessions.entrySet().stream()
                     .min((a, b) -> a.getValue().data().lastAccessedAt()
                             .compareTo(b.getValue().data().lastAccessedAt()))
@@ -112,7 +104,6 @@ public class InMemorySessionService implements SessionOperations {
                 removed++;
             }
         }
-        // Also cleanup user mappings for expired sessions
         userSessionMapping.entrySet().removeIf(entry -> !sessions.containsKey(entry.getValue()));
         if (removed > 0) {
             log.debug("Cleaned up {} expired sessions", removed);
@@ -212,10 +203,10 @@ public class InMemorySessionService implements SessionOperations {
             return Mono.just(false);
         }
 
-        // Update expiry
         Duration ttl = sessionProperties.timeout();
         Instant newExpiry = Instant.now().plus(ttl);
-        sessions.put(sessionId, new SessionEntry(entry.data(), newExpiry));
+        SessionData refreshed = entry.data().withRefresh();
+        sessions.put(sessionId, new SessionEntry(refreshed, newExpiry));
 
         return Mono.just(true);
     }
@@ -259,58 +250,6 @@ public class InMemorySessionService implements SessionOperations {
 
     @Override
     @NonNull
-    public Mono<Boolean> validateSessionBinding(@NonNull String sessionId, @NonNull ClientInfo clientInfo) {
-        if (!sessionProperties.binding().enabled()) {
-            return Mono.just(true);
-        }
-
-        if (!StringSanitizer.isValidSessionId(sessionId)) {
-            return Mono.just(false);
-        }
-
-        return getSession(sessionId)
-                .map(session -> validateBinding(session, clientInfo, sessionId))
-                .defaultIfEmpty(false);
-    }
-
-    private boolean validateBinding(@NonNull SessionData session, @NonNull ClientInfo clientInfo, @NonNull String sessionId) {
-        if (sessionProperties.fingerprint().enabled() && session.hasDeviceFingerprint()) {
-            if (!session.deviceFingerprint().equals(clientInfo.deviceFingerprint())) {
-                log.warn("Session fingerprint mismatch for session {}", StringSanitizer.forLog(sessionId));
-                return false;
-            }
-            return true;
-        }
-
-        boolean valid = true;
-        if (sessionProperties.binding().ipAddress()) {
-            valid = session.ipAddress().equals(clientInfo.ipAddress());
-            if (!valid) {
-                log.warn("Session IP mismatch for session {}", StringSanitizer.forLog(sessionId));
-            }
-        }
-
-        if (valid && sessionProperties.binding().userAgent()) {
-            valid = session.userAgentHash().equals(clientInfo.userAgentHash());
-            if (!valid) {
-                log.warn("Session User-Agent mismatch for session {}", StringSanitizer.forLog(sessionId));
-            }
-        }
-
-        return valid;
-    }
-
-    @Override
-    public boolean needsRotation(@NonNull SessionData session) {
-        if (!sessionProperties.rotation().enabled()) {
-            return false;
-        }
-        Duration sinceRotation = Duration.between(session.getEffectiveRotatedAt(), Instant.now());
-        return sinceRotation.compareTo(sessionProperties.rotation().interval()) > 0;
-    }
-
-    @Override
-    @NonNull
     public Mono<String> rotateSession(@NonNull String oldSessionId, @NonNull ClientInfo clientInfo) {
         if (!StringSanitizer.isValidSessionId(oldSessionId)) {
             return Mono.error(new IllegalArgumentException("Invalid session ID"));
@@ -330,7 +269,6 @@ public class InMemorySessionService implements SessionOperations {
                 lock.unlock();
             }
         } else {
-            // Lock held by another thread - return current session
             SessionEntry entry = sessions.get(oldSessionId);
             if (entry != null && !needsRotation(entry.data())) {
                 String newSessionId = userSessionMapping.get(entry.data().hsidUuid());
@@ -347,15 +285,7 @@ public class InMemorySessionService implements SessionOperations {
 
         String newSessionId = UUID.randomUUID().toString();
 
-        // Build updated session data with rotation timestamp
-        Map<String, String> sessionMap = session.toMap();
-        sessionMap.put("rotatedAt", String.valueOf(Instant.now().toEpochMilli()));
-        sessionMap.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
-        sessionMap.put("deviceFingerprint", clientInfo.deviceFingerprint());
-        sessionMap.put("ipAddress", clientInfo.ipAddress());
-        sessionMap.put("userAgentHash", clientInfo.userAgentHash());
-
-        SessionData newSessionData = SessionData.fromMap(sessionMap);
+        SessionData rotatedSession = session.withRotation(clientInfo);
         Duration ttl = sessionProperties.timeout();
         Instant expiresAt = Instant.now().plus(ttl);
 
@@ -366,7 +296,7 @@ public class InMemorySessionService implements SessionOperations {
         }
 
         // Store new session
-        sessions.put(newSessionId, new SessionEntry(newSessionData, expiresAt));
+        sessions.put(newSessionId, new SessionEntry(rotatedSession, expiresAt));
         userSessionMapping.put(session.hsidUuid(), newSessionId);
 
         // Keep old session for grace period
@@ -408,22 +338,6 @@ public class InMemorySessionService implements SessionOperations {
 
     @Override
     @NonNull
-    public Mono<Void> updatePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
-        log.debug("Updating permissions for session {}", StringSanitizer.forLog(sessionId));
-        return storePermissions(sessionId, permissions);
-    }
-
-    @Override
-    @NonNull
-    public Mono<String> createSessionWithPermissions(
-            @NonNull String hsidUuid, @NonNull OidcUser user, @Nullable String persona,
-            @NonNull ClientInfo clientInfo, @NonNull PermissionSet permissions) {
-        return createSession(hsidUuid, user, persona, permissions.getViewableManagedMemberIds(), clientInfo)
-                .flatMap(sessionId -> storePermissions(sessionId, permissions).thenReturn(sessionId));
-    }
-
-    @Override
-    @NonNull
     public Mono<String> createSessionWithMemberAccess(
             @NonNull String hsidUuid, @NonNull OidcUser user, @NonNull ClientInfo clientInfo,
             @NonNull MemberAccess memberAccess, @NonNull PermissionSet permissions) {
@@ -437,33 +351,7 @@ public class InMemorySessionService implements SessionOperations {
 
         String sessionId = UUID.randomUUID().toString();
 
-        // Build session map with member access data
-        Map<String, String> sessionMap = new HashMap<>();
-        sessionMap.put("userId", hsidUuid);
-        sessionMap.put("email", user.getEmail() != null ? user.getEmail() : "");
-        sessionMap.put("name", user.getFullName() != null ? user.getFullName() : "");
-        sessionMap.put("persona", memberAccess.getEffectivePersona());
-        sessionMap.put("dependents", SessionUtils.buildManagedMembersString(memberAccess));
-        sessionMap.put("ipAddress", clientInfo.ipAddress());
-        sessionMap.put("userAgentHash", clientInfo.userAgentHash());
-        sessionMap.put("deviceFingerprint", clientInfo.deviceFingerprint());
-        sessionMap.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
-        sessionMap.put("lastAccessedAt", String.valueOf(Instant.now().toEpochMilli()));
-        sessionMap.put("eid", memberAccess.enterpriseId());
-        sessionMap.put("birthdate", memberAccess.birthdate().toString());
-        sessionMap.put("isResponsibleParty", String.valueOf(memberAccess.isResponsibleParty()));
-        sessionMap.put("eligibilityStatus", memberAccess.eligibilityStatus().name());
-        if (memberAccess.termDate() != null) {
-            sessionMap.put("termDate", memberAccess.termDate().toString());
-        }
-        if (memberAccess.hasManagedMembers()) {
-            sessionMap.put("managedMembersJson", SessionUtils.serializeManagedMembers(memberAccess.managedMembers(), objectMapper));
-            if (memberAccess.getEarliestPermissionEndDate() != null) {
-                sessionMap.put("earliestPermissionEndDate", memberAccess.getEarliestPermissionEndDate().toString());
-            }
-        }
-
-        SessionData sessionData = SessionData.fromMap(sessionMap);
+        SessionData sessionData = SessionData.withMemberAccess(hsidUuid, user, memberAccess, clientInfo, objectMapper);
         Duration ttl = sessionProperties.timeout();
         Instant expiresAt = Instant.now().plus(ttl);
 
@@ -479,5 +367,4 @@ public class InMemorySessionService implements SessionOperations {
 
         return Mono.just(sessionId);
     }
-
 }

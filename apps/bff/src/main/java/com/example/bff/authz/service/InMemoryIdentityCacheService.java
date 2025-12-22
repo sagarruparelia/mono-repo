@@ -1,5 +1,6 @@
 package com.example.bff.authz.service;
 
+import com.example.bff.common.util.CacheKeyUtils;
 import com.example.bff.config.properties.IdentityCacheProperties;
 import com.example.bff.config.properties.MemoryCacheProperties;
 import com.example.bff.observability.CacheMetricsService;
@@ -89,7 +90,7 @@ public class InMemoryIdentityCacheService implements IdentityCacheOperations {
             Mono<T> loader,
             Class<T> type) {
 
-        String sanitizedKey = sanitizeKey(key);
+        String sanitizedKey = CacheKeyUtils.sanitize(key);
 
         return Mono.fromCallable(() -> {
             Object cached = cache.getIfPresent(sanitizedKey);
@@ -121,17 +122,10 @@ public class InMemoryIdentityCacheService implements IdentityCacheOperations {
         });
     }
 
-    private String sanitizeKey(String key) {
-        if (key == null || key.isBlank()) {
-            throw new IllegalArgumentException("Cache key cannot be null or blank");
-        }
-        return key.replaceAll("[:\\s\\n\\r\\t]", "_");
-    }
-
     @Override
     @NonNull
     public Mono<Boolean> evict(@NonNull String cacheName, @NonNull String key) {
-        String sanitizedKey = sanitizeKey(key);
+        String sanitizedKey = CacheKeyUtils.sanitize(key);
         Cache<String, Object> cache = getCacheByName(cacheName);
         if (cache != null) {
             cache.invalidate(sanitizedKey);

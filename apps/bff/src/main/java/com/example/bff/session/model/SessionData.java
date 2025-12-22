@@ -1,21 +1,22 @@
 package com.example.bff.session.model;
 
+import com.example.bff.authz.model.ManagedMember;
+import com.example.bff.authz.model.MemberAccess;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * Session data stored in Redis.
+ * Session data stored as JSON in Redis/memory.
  * Contains user identity, eligibility, managed member information, and Zero Trust metadata.
- *
- * Note: hsidUuid is the OIDC subject claim from HSID authentication.
- * The Redis key uses "userId" for backward compatibility with existing sessions.
+ * Jackson handles serialization directly - no manual map conversion needed.
  */
 public record SessionData(
         @NonNull String hsidUuid,
@@ -39,65 +40,8 @@ public record SessionData(
         @Nullable String deviceFingerprint,
         @Nullable Instant rotatedAt
 ) {
-    public static SessionData fromMap(Map<String, String> map) {
-        return new SessionData(
-                map.getOrDefault("userId", ""),  // Redis key "userId" maps to hsidUuid field
-                map.getOrDefault("email", ""),
-                map.getOrDefault("name", ""),
-                map.getOrDefault("persona", "individual"),
-                parseManagedMemberIds(map.get("dependents")),  // Redis key stays "dependents" for backward compat
-                map.getOrDefault("ipAddress", ""),
-                map.getOrDefault("userAgentHash", ""),
-                parseInstant(map.get("createdAt")),
-                parseInstant(map.get("lastAccessedAt")),
-                // Member access fields (Redis key "eid" maps to enterpriseId field)
-                map.get("eid"),
-                map.get("birthdate"),
-                "true".equals(map.get("isResponsibleParty")),
-                map.get("eligibilityStatus"),
-                map.get("termDate"),
-                map.get("managedMembersJson"),
-                map.get("earliestPermissionEndDate"),
-                // Zero Trust fields (null-safe for existing sessions)
-                map.get("deviceFingerprint"),
-                parseInstantNullable(map.get("rotatedAt"))
-        );
-    }
-
-    /**
-     * Converts this SessionData to a map for Redis storage.
-     */
-    @NonNull
-    public Map<String, String> toMap() {
-        Map<String, String> map = new HashMap<>();
-        map.put("userId", hsidUuid);  // Redis key "userId" stores hsidUuid value
-        map.put("email", email);
-        map.put("name", name);
-        map.put("persona", persona);
-        if (managedMemberIds != null && !managedMemberIds.isEmpty()) {
-            map.put("dependents", String.join(",", managedMemberIds));  // Redis key stays "dependents" for backward compat
-        }
-        map.put("ipAddress", ipAddress);
-        map.put("userAgentHash", userAgentHash);
-        map.put("createdAt", String.valueOf(createdAt.toEpochMilli()));
-        map.put("lastAccessedAt", String.valueOf(lastAccessedAt.toEpochMilli()));
-        // Member access fields (Redis key "eid" stores enterpriseId value)
-        if (enterpriseId != null) map.put("eid", enterpriseId);
-        if (birthdate != null) map.put("birthdate", birthdate);
-        map.put("isResponsibleParty", String.valueOf(isResponsibleParty));
-        if (eligibilityStatus != null) map.put("eligibilityStatus", eligibilityStatus);
-        if (termDate != null) map.put("termDate", termDate);
-        if (managedMembersJson != null) map.put("managedMembersJson", managedMembersJson);
-        if (earliestPermissionEndDate != null) map.put("earliestPermissionEndDate", earliestPermissionEndDate);
-        // Zero Trust fields
-        if (deviceFingerprint != null) map.put("deviceFingerprint", deviceFingerprint);
-        if (rotatedAt != null) map.put("rotatedAt", String.valueOf(rotatedAt.toEpochMilli()));
-        return map;
-    }
-
     /**
      * Creates a basic SessionData without member access enrichment.
-     * Used for backwards compatibility.
      */
     public static SessionData basic(
             String hsidUuid,
@@ -112,38 +56,87 @@ public record SessionData(
                 ipAddress, userAgentHash,
                 Instant.now(), Instant.now(),
                 null, null, false, null, null, null, null,
-                null, null  // Zero Trust fields
+                null, null
         );
     }
 
-    private static List<String> parseManagedMemberIds(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
+    /**
+     * Creates a SessionData with full member access data.
+     */
+    public static SessionData withMemberAccess(
+            @NonNull String hsidUuid,
+            @NonNull OidcUser user,
+            @NonNull MemberAccess memberAccess,
+            @NonNull ClientInfo clientInfo,
+            @NonNull ObjectMapper objectMapper) {
+
+        List<String> managedMemberIds = memberAccess.hasManagedMembers()
+                ? memberAccess.managedMembers().stream()
+                        .map(ManagedMember::enterpriseId)
+                        .collect(Collectors.toList())
+                : List.of();
+
+        String managedMembersJson = null;
+        String earliestPermissionEndDate = null;
+        if (memberAccess.hasManagedMembers()) {
+            try {
+                managedMembersJson = objectMapper.writeValueAsString(memberAccess.managedMembers());
+            } catch (JsonProcessingException e) {
+                managedMembersJson = "[]";
+            }
+            if (memberAccess.getEarliestPermissionEndDate() != null) {
+                earliestPermissionEndDate = memberAccess.getEarliestPermissionEndDate().toString();
+            }
         }
-        return Arrays.asList(value.split(","));
+
+        return new SessionData(
+                hsidUuid,
+                user.getEmail() != null ? user.getEmail() : "",
+                user.getFullName() != null ? user.getFullName() : "",
+                memberAccess.getEffectivePersona(),
+                managedMemberIds,
+                clientInfo.ipAddress(),
+                clientInfo.userAgentHash(),
+                Instant.now(),
+                Instant.now(),
+                memberAccess.enterpriseId(),
+                memberAccess.birthdate().toString(),
+                memberAccess.isResponsibleParty(),
+                memberAccess.eligibilityStatus().name(),
+                memberAccess.termDate() != null ? memberAccess.termDate().toString() : null,
+                managedMembersJson,
+                earliestPermissionEndDate,
+                clientInfo.deviceFingerprint(),
+                null
+        );
     }
 
-    private static Instant parseInstant(String value) {
-        if (value == null || value.isBlank()) {
-            return Instant.now();
-        }
-        try {
-            return Instant.ofEpochMilli(Long.parseLong(value));
-        } catch (NumberFormatException e) {
-            return Instant.now();
-        }
+    /**
+     * Creates a new SessionData with updated client info and rotation timestamp.
+     */
+    public SessionData withRotation(ClientInfo clientInfo) {
+        return new SessionData(
+                hsidUuid, email, name, persona, managedMemberIds,
+                clientInfo.ipAddress(), clientInfo.userAgentHash(),
+                createdAt, Instant.now(),
+                enterpriseId, birthdate, isResponsibleParty, eligibilityStatus, termDate,
+                managedMembersJson, earliestPermissionEndDate,
+                clientInfo.deviceFingerprint(), Instant.now()
+        );
     }
 
-    @Nullable
-    private static Instant parseInstantNullable(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Instant.ofEpochMilli(Long.parseLong(value));
-        } catch (NumberFormatException e) {
-            return null;
-        }
+    /**
+     * Creates a new SessionData with updated lastAccessedAt.
+     */
+    public SessionData withRefresh() {
+        return new SessionData(
+                hsidUuid, email, name, persona, managedMemberIds,
+                ipAddress, userAgentHash,
+                createdAt, Instant.now(),
+                enterpriseId, birthdate, isResponsibleParty, eligibilityStatus, termDate,
+                managedMembersJson, earliestPermissionEndDate,
+                deviceFingerprint, rotatedAt
+        );
     }
 
     public boolean isParent() {

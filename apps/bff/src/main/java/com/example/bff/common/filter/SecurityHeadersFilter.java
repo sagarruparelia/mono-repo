@@ -27,16 +27,17 @@ import reactor.core.publisher.Mono;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class SecurityHeadersFilter implements WebFilter {
 
+    // Strict CSP for API-only BFF - no inline scripts/styles needed
     private static final String CONTENT_SECURITY_POLICY =
-        "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-        "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: https:; " +
-        "font-src 'self' data:; " +
+        "default-src 'none'; " +
+        "script-src 'none'; " +
+        "style-src 'none'; " +
+        "img-src 'none'; " +
+        "font-src 'none'; " +
         "connect-src 'self'; " +
-        "frame-ancestors 'self'; " +
-        "form-action 'self'; " +
-        "base-uri 'self'; " +
+        "frame-ancestors 'none'; " +
+        "form-action 'none'; " +
+        "base-uri 'none'; " +
         "object-src 'none'";
 
     private static final String PERMISSIONS_POLICY =

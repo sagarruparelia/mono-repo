@@ -1,6 +1,7 @@
 package com.example.bff.authz.service;
 
 import com.example.bff.authz.pubsub.IdentityCacheEventPublisher;
+import com.example.bff.common.util.CacheKeyUtils;
 import com.example.bff.config.properties.IdentityCacheProperties;
 import com.example.bff.observability.CacheMetricsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,7 +68,7 @@ public class RedisIdentityCacheService implements IdentityCacheOperations {
             Class<T> type,
             Duration ttl) {
 
-        String sanitizedKey = sanitizeKey(key);
+        String sanitizedKey = CacheKeyUtils.sanitize(key);
         String fullKey = cacheName + ":" + sanitizedKey;
 
         return redisTemplate.opsForValue().get(fullKey)
@@ -103,13 +104,6 @@ public class RedisIdentityCacheService implements IdentityCacheOperations {
                     metricsService.recordMiss(cacheName, CACHE_TYPE);
                     return loader;
                 });
-    }
-
-    private String sanitizeKey(String key) {
-        if (key == null || key.isBlank()) {
-            throw new IllegalArgumentException("Cache key cannot be null or blank");
-        }
-        return key.replaceAll("[:\\s\\n\\r\\t]", "_");
     }
 
     @NonNull

@@ -1,7 +1,10 @@
 package com.example.bff.config.properties;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.lang.NonNull;
+import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
 
@@ -10,7 +13,10 @@ import java.time.Duration;
  * Used for User Service, Eligibility, and Permission APIs.
  */
 @ConfigurationProperties(prefix = "app.external-api")
+@Validated
 public record ExternalApiProperties(
+        @NotBlank(message = "External API base URL is required")
+        @Pattern(regexp = "^https://.*", message = "External API base URL must use HTTPS")
         @NonNull String baseUrl,
         @NonNull UserServiceProperties userService,
         @NonNull EligibilityProperties eligibility,
