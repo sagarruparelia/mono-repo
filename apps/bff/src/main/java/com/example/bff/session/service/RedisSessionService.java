@@ -32,8 +32,8 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.session.store-type", havingValue = "redis")
-public class SessionService {
+@ConditionalOnProperty(name = "app.cache.type", havingValue = "redis")
+public class RedisSessionService implements SessionOperations {
 
     private static final String USER_SESSION_KEY = "bff:user_session:";
     private static final String SESSION_KEY = "bff:session:";

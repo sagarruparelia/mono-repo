@@ -155,6 +155,12 @@ logging:
 
 # Custom application properties
 app:
+  # Cache type: "memory" (default, single-pod) or "redis" (multi-pod)
+  cache:
+    type: ${CACHE_TYPE:memory}
+    memory:
+      max-sessions: ${CACHE_MAX_SESSIONS:10000}
+      max-identity-entries: ${CACHE_MAX_IDENTITY_ENTRIES:1000}
   auth:
     hsid:
       logout-uri: ${HSID_BASE_URL}/oidc/logout

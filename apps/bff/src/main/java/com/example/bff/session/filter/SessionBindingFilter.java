@@ -5,7 +5,7 @@ import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.SessionProperties;
 import com.example.bff.session.audit.SessionAuditService;
 import com.example.bff.session.model.ClientInfo;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -45,7 +45,7 @@ public class SessionBindingFilter implements WebFilter {
             "^([0-9]{1,3}\\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
     private static final int MAX_HEADER_LENGTH = 500;
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final SessionProperties sessionProperties;
     private final Optional<SessionAuditService> auditService;
 

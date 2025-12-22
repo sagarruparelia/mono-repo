@@ -89,6 +89,12 @@
 			<artifactId>spring-boot-starter-aop</artifactId>
 		</dependency>
 
+		<!-- Caffeine for in-memory caching (single-pod mode) -->
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
+
 		<!-- Configuration Processor -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

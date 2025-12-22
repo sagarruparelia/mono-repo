@@ -7,7 +7,7 @@ import com.example.bff.authz.model.ManagedMemberAccess;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.dto.ManagedMemberDetailResponse;
 import com.example.bff.authz.model.ManagedMember;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +33,7 @@ public class AccessController {
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final ObjectMapper objectMapper;
 
     @PostMapping("/managed")

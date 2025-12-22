@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,8 @@ import java.time.Instant;
 
 @Slf4j
 @Service
-public class TokenService {
+@ConditionalOnProperty(name = "app.cache.type", havingValue = "redis")
+public class RedisTokenService implements TokenOperations {
 
     private static final String SESSION_KEY = "bff:session:";
     private static final String TOKEN_FIELD = "tokenData";
@@ -40,7 +42,7 @@ public class TokenService {
     @Value("${app.auth.hsid.revocation-uri:#{null}}")
     private String revocationUri;
 
-    public TokenService(
+    public RedisTokenService(
             @NonNull ReactiveRedisOperations<String, String> redisOps,
             @NonNull ObjectMapper objectMapper,
             @NonNull WebClient.Builder webClientBuilder) {

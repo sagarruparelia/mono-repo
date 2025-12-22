@@ -4,9 +4,16 @@
 # =============================================================================
 
 spring:
-  # Enable Redis session for E2E testing
+  # Use in-memory session for E2E testing (no Redis dependency)
   session:
-    store-type: redis
+    store-type: none
+
+  # Exclude Redis autoconfiguration for memory mode
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
 
   # Override OAuth2 with mock values for E2E testing
   security:
@@ -37,11 +44,6 @@ spring:
           ecdh-api:
             token-uri: http://mock-idp/token
 
-  # Disable OAuth2 Resource Server for E2E (no JWT validation needed)
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration
-
   # Optional config imports
   config:
     import:
@@ -69,6 +71,10 @@ zero-trust:
 
 # App configuration
 app:
+  # Use in-memory caching for E2E testing (no Redis dependency)
+  cache:
+    type: memory
+
   # Disable OAuth2 security filter for E2E testing
   security:
     oauth2:
@@ -78,6 +84,8 @@ app:
     timeout: 30m
     binding:
       enabled: false
+    pubsub:
+      enabled: false  # Disable Redis pub/sub in memory mode
 
   persona:
     hsid:

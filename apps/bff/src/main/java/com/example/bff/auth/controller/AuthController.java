@@ -1,9 +1,9 @@
 package com.example.bff.auth.controller;
 
 import com.example.bff.auth.dto.SessionInfoResponse;
-import com.example.bff.auth.service.TokenService;
+import com.example.bff.auth.service.TokenOperations;
 import com.example.bff.config.properties.SessionProperties;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,9 +33,9 @@ public class AuthController {
 
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final SessionProperties sessionProperties;
-    @Nullable private final TokenService tokenService;
+    @Nullable private final TokenOperations tokenService;
 
     @Value("${app.auth.hsid.logout-uri}")
     private String hsidLogoutUri;

@@ -1,7 +1,7 @@
 package com.example.bff.session.pubsub;
 
 import com.example.bff.common.util.StringSanitizer;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "app.session.pubsub.enabled", havingValue = "true")
 public class SessionEventHandler {
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
 
     /**
      * Handles session invalidation from another instance.

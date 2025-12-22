@@ -30,12 +30,12 @@ public class ManagedMembersService {
 
     private final WebClient webClient;
     private final ExternalApiProperties apiProperties;
-    private final IdentityCacheService cacheService;
+    private final IdentityCacheOperations cacheService;
 
     public ManagedMembersService(
             @Qualifier(EXTERNAL_API_WEBCLIENT) WebClient webClient,
             ExternalApiProperties apiProperties,
-            IdentityCacheService cacheService) {
+            IdentityCacheOperations cacheService) {
         this.webClient = webClient;
         this.apiProperties = apiProperties;
         this.cacheService = cacheService;

@@ -10,7 +10,7 @@ import com.example.bff.common.util.StringSanitizer;
 import com.example.bff.config.properties.ExternalIntegrationProperties;
 import com.example.bff.config.properties.IdpProperties;
 import com.example.bff.config.properties.SecurityPathsProperties;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +43,7 @@ public class DualAuthWebFilter implements WebFilter {
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     private static final String AUTH_TYPE_HEADER = "X-Auth-Type";
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final SecurityPathsProperties securityPaths;
     private final IdpProperties idpProperties;
     private final ExternalIntegrationProperties externalProperties;

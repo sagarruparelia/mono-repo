@@ -1,7 +1,7 @@
 package com.example.bff.auth.handler;
 
 import com.example.bff.config.properties.SessionProperties;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpStatus;
@@ -22,11 +22,11 @@ public class HsidLogoutSuccessHandler implements ServerLogoutSuccessHandler {
     private static final String SESSION_COOKIE_NAME = "BFF_SESSION";
 
     @Nullable
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final SessionProperties sessionProperties;
 
     public HsidLogoutSuccessHandler(
-            @Nullable SessionService sessionService,
+            @Nullable SessionOperations sessionService,
             SessionProperties sessionProperties) {
         this.sessionService = sessionService;
         this.sessionProperties = sessionProperties;

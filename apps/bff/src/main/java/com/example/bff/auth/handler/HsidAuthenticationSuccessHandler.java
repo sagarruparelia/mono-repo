@@ -1,7 +1,7 @@
 package com.example.bff.auth.handler;
 
 import com.example.bff.auth.model.TokenData;
-import com.example.bff.auth.service.TokenService;
+import com.example.bff.auth.service.TokenOperations;
 import com.example.bff.authz.model.PermissionSet;
 import com.example.bff.authz.service.PermissionsFetchService;
 import com.example.bff.common.util.StringSanitizer;
@@ -12,7 +12,7 @@ import com.example.bff.authz.exception.NoAccessException;
 import com.example.bff.authz.model.MemberAccess;
 import com.example.bff.authz.service.MemberAccessOrchestrator;
 import com.example.bff.session.model.ClientInfo;
-import com.example.bff.session.service.SessionService;
+import com.example.bff.session.service.SessionOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpCookie;
@@ -49,11 +49,11 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     private static final String NO_ACCESS_PATH = "/error/no-access";
     private static final String ERROR_PATH = "/error";
 
-    private final SessionService sessionService;
+    private final SessionOperations sessionService;
     private final SessionProperties sessionProperties;
     private final MemberAccessOrchestrator memberAccessOrchestrator;
     @Nullable private final PermissionsFetchService permissionsFetchService;
-    @Nullable private final TokenService tokenService;
+    @Nullable private final TokenOperations tokenService;
     @Nullable private final ReactiveOAuth2AuthorizedClientService authorizedClientService;
     @Nullable private final HealthDataOrchestrator healthDataOrchestrator;
 
