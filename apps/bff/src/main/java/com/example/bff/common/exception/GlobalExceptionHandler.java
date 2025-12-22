@@ -21,9 +21,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Global exception handler for REST controllers.
- */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {

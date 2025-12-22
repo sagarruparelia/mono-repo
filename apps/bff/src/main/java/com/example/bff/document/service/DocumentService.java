@@ -17,9 +17,6 @@ import org.springframework.core.io.buffer.DataBufferUtils;
 
 import java.util.regex.Pattern;
 
-/**
- * Manages document upload, download, and deletion for youth members.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -90,12 +87,11 @@ public class DocumentService {
 
         String sanitizedFileName = sanitizeFileName(originalFileName);
 
-        // Use DataBufferUtils.join for efficient buffer aggregation (avoids O(n²) allocations)
         return DataBufferUtils.join(file.content())
                 .map(dataBuffer -> {
                     byte[] bytes = new byte[dataBuffer.readableByteCount()];
                     dataBuffer.read(bytes);
-                    DataBufferUtils.release(dataBuffer);  // Release pooled buffer
+                    DataBufferUtils.release(dataBuffer);
                     return bytes;
                 })
                 .flatMap(content -> {

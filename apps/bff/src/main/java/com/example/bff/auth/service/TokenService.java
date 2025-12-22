@@ -19,9 +19,6 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 
-/**
- * Manages HSID OAuth2 tokens with on-demand refresh for micro-products.
- */
 @Slf4j
 @Service
 public class TokenService {

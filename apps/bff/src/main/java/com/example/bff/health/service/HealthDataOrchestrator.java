@@ -17,7 +17,6 @@ import reactor.core.scheduler.Schedulers;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Orchestrates health data operations including cache-first fetching and proactive background loading. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -62,10 +61,6 @@ public class HealthDataOrchestrator {
                 .doOnSuccess(v -> log.info("Health data refresh completed for: {}", memberEid));
     }
 
-    /**
-     * Proactively fetch health data for the logged-in user and their managed members.
-     * Called after HSID session creation (fire-and-forget).
-     */
     public void triggerBackgroundFetchForSession(
             @NonNull String userEid,
             @Nullable List<ManagedMember> managedMembers) {
@@ -103,10 +98,6 @@ public class HealthDataOrchestrator {
                 );
     }
 
-    /**
-     * Proactively fetch health data for a single member.
-     * Called after OAuth2 proxy connection (fire-and-forget).
-     */
     public void triggerBackgroundFetchForMember(@NonNull String memberEid) {
         if (!cacheProperties.proactiveFetch().enabled()) {
             log.debug("Proactive fetch disabled, skipping for member: {}", memberEid);

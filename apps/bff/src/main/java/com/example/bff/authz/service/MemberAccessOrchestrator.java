@@ -22,9 +22,6 @@ import java.util.List;
 import static com.example.bff.authz.model.MemberAccess.ADULT_AGE;
 import static com.example.bff.authz.model.MemberAccess.MINIMUM_ACCESS_AGE;
 
-/**
- * Orchestrates the member access enrichment flow after HSID login.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -48,7 +45,6 @@ public class MemberAccessOrchestrator {
     }
 
     private Mono<MemberAccess> processUserInfo(String hsidUuid, UserInfoResponse userInfo) {
-        // Extract required fields
         String eid = userInfo.getEnterpriseId();
         if (eid == null || eid.isBlank()) {
             return Mono.error(new IdentityServiceException(
@@ -67,13 +63,11 @@ public class MemberAccessOrchestrator {
 
         log.debug("User info extracted - eid: {}, age: {}, isRP: {}", StringSanitizer.forLog(eid), age, isResponsibleParty);
 
-        // Age check (minimum 13)
         if (age < MINIMUM_ACCESS_AGE) {
             log.warn("User {} is under minimum age ({})", StringSanitizer.forLog(hsidUuid), age);
             return Mono.error(new AgeRestrictionException(age, MINIMUM_ACCESS_AGE));
         }
 
-        // Fetch eligibility and managed members in parallel
         return fetchEligibilityAndManagedMembers(hsidUuid, eid, apiIdentifier, age, isResponsibleParty, birthdate);
     }
 
@@ -85,11 +79,8 @@ public class MemberAccessOrchestrator {
             boolean isResponsibleParty,
             LocalDate birthdate) {
 
-        // Always check eligibility for users >= 13
-        Mono<EligibilityResult> eligibilityMono = eligibilityService
-                .checkEligibility(eid, apiIdentifier);
+        Mono<EligibilityResult> eligibilityMono = eligibilityService.checkEligibility(eid, apiIdentifier);
 
-        // Only check managed members if adult (>= 18) AND responsible party
         Mono<List<ManagedMember>> managedMembersMono;
         if (age >= ADULT_AGE && isResponsibleParty) {
             log.debug("User is adult RP, fetching managed members");
@@ -99,7 +90,6 @@ public class MemberAccessOrchestrator {
             managedMembersMono = Mono.just(List.of());
         }
 
-        // Execute in parallel and combine results
         return Mono.zip(eligibilityMono, managedMembersMono)
                 .flatMap(tuple -> {
                     EligibilityResult eligibility = tuple.getT1();
@@ -115,7 +105,6 @@ public class MemberAccessOrchestrator {
                             managedMembers
                     );
 
-                    // Validate access
                     if (!access.canAccessSystem()) {
                         log.warn("User {} has no access: eligibility={}, managedMembers={}",
                                 StringSanitizer.forLog(hsidUuid), eligibility.status(), managedMembers.size());

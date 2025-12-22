@@ -38,7 +38,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 
-/** Handles successful HSID authentication by enriching sessions with member access. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -118,9 +117,7 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                     return sessionService.createSessionWithMemberAccess(
                             hsidUuid, oidcUser, clientInfo, memberAccess, permissions)
                             .flatMap(sessionId -> {
-                                // Trigger background health data fetch (fire-and-forget)
                                 triggerHealthDataFetch(memberAccess);
-
                                 return storeTokensAndRedirect(
                                         exchange.getExchange(), sessionId, authorizedClient, oidcUser);
                             });
@@ -247,7 +244,6 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 .maxAge(sessionProperties.timeout())
                 .sameSite(sessionProperties.cookie().sameSite());
 
-        // Set domain if configured (prevents subdomain takeover attacks)
         String domain = sessionProperties.cookie().domain();
         if (domain != null && !domain.isBlank()) {
             builder.domain(domain);
@@ -287,53 +283,43 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return "/";
     }
 
-    /** Validates URI is a safe relative path to prevent open redirect attacks. */
     private boolean isValidRelativePath(@Nullable String uri) {
         if (uri == null || uri.isBlank()) {
             return false;
         }
 
-        // Length limit to prevent DoS via extremely long URIs
         if (uri.length() > 2048) {
             return false;
         }
 
-        // Recursively decode to catch multi-layer encoding attacks
         String decoded = fullyDecodeUri(uri);
         if (decoded == null) {
-            return false; // Decoding failed (malformed encoding)
+            return false;
         }
 
-        // Must start with single forward slash (not //)
         if (!decoded.startsWith("/") || decoded.startsWith("//")) {
             return false;
         }
 
-        // Check both original and decoded versions
         String lowerDecoded = decoded.toLowerCase();
         String lowerUri = uri.toLowerCase();
 
-        // Block protocol handlers (including encoded variants)
         if (containsProtocolHandler(lowerDecoded) || containsProtocolHandler(lowerUri)) {
             return false;
         }
 
-        // Block backslash variations (can be interpreted as // on some systems)
         if (decoded.contains("\\") || uri.contains("\\")) {
             return false;
         }
 
-        // Block control characters and null bytes
         if (containsControlCharacters(decoded) || containsControlCharacters(uri)) {
             return false;
         }
 
-        // Block double slashes anywhere in the decoded path
         if (decoded.contains("//")) {
             return false;
         }
 
-        // Block parent directory traversal
         if (decoded.contains("/../") || decoded.endsWith("/..")) {
             return false;
         }
@@ -341,7 +327,6 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return true;
     }
 
-    /** Recursively decodes URI to catch multi-layer encoding attacks. Returns null if malformed. */
     @Nullable
     private String fullyDecodeUri(@Nullable String uri) {
         if (uri == null) {
@@ -349,22 +334,20 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         }
 
         String current = uri;
-        int maxIterations = 10; // Prevent infinite loops on malicious input
+        int maxIterations = 10;
 
         for (int i = 0; i < maxIterations; i++) {
             try {
                 String decoded = java.net.URLDecoder.decode(current, java.nio.charset.StandardCharsets.UTF_8);
                 if (decoded.equals(current)) {
-                    return current; // No more decoding needed
+                    return current;
                 }
                 current = decoded;
             } catch (IllegalArgumentException e) {
-                // Malformed encoding
                 return null;
             }
         }
 
-        // Too many decoding iterations - likely malicious
         return null;
     }
 
@@ -375,7 +358,6 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
                 uri.startsWith("vbscript:") ||
                 uri.startsWith("file:") ||
                 uri.startsWith("blob:") ||
-                // Also check with whitespace variations (browser quirk)
                 uri.matches(".*\\s*javascript\\s*:.*") ||
                 uri.matches(".*\\s*data\\s*:.*");
     }
@@ -383,12 +365,9 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
     private boolean containsControlCharacters(@NonNull String str) {
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
-            // Block ASCII control characters (0x00-0x1F) except tab, newline, carriage return
-            // which are already filtered by other checks
             if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
                 return true;
             }
-            // Block DEL character
             if (c == 0x7F) {
                 return true;
             }
@@ -396,7 +375,6 @@ public class HsidAuthenticationSuccessHandler implements ServerAuthenticationSuc
         return false;
     }
 
-    /** Fire-and-forget health data fetch - errors don't affect login flow. */
     private void triggerHealthDataFetch(@NonNull MemberAccess memberAccess) {
         if (healthDataOrchestrator == null) {
             log.debug("HealthDataOrchestrator not available, skipping background fetch");

@@ -22,12 +22,6 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 
-/**
- * REST controller for document management.
- *
- * <p>Uses {@link RequirePersona} for declarative persona-based authorization.
- * Document access requires specific delegate permissions for DELEGATE persona.</p>
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/1.0.0/documents")
@@ -38,11 +32,6 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
-    /**
-     * List all documents for the authenticated member.
-     *
-     * <p>Authorization handled by {@link RequirePersona} + PersonaAuthorizationFilter.</p>
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping
@@ -58,9 +47,6 @@ public class DocumentController {
                 .map(ResponseEntity::ok);
     }
 
-    /**
-     * Get a specific document.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping("/{documentId}")
@@ -78,9 +64,6 @@ public class DocumentController {
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Download a document (requires sensitive access for DELEGATE - ROI permission).
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT, Persona.CONFIG_SPECIALIST},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR, DelegateType.ROI})
     @GetMapping("/{documentId}/download")
@@ -104,9 +87,6 @@ public class DocumentController {
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Upload a new document.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -133,9 +113,6 @@ public class DocumentController {
                         e -> Mono.just(ResponseEntity.badRequest().body(null)));
     }
 
-    /**
-     * Delete a document.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @DeleteMapping("/{documentId}")
@@ -154,12 +131,6 @@ public class DocumentController {
                         e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
-    /**
-     * Get target enterprise ID from exchange attributes or principal.
-     *
-     * <p>For DELEGATE persona, PersonaAuthorizationFilter validates permissions
-     * and stores the validated enterprise ID in exchange attributes.</p>
-     */
     private String getTargetEnterpriseId(ServerWebExchange exchange, AuthPrincipal principal) {
         String validatedId = exchange.getAttribute(VALIDATED_ENTERPRISE_ID);
         if (validatedId != null && !validatedId.isBlank()) {

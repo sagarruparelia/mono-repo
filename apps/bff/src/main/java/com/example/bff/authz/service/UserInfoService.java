@@ -19,12 +19,6 @@ import java.time.Duration;
 
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
 
-/**
- * Service for fetching user information from the User Service API.
- * Endpoint: /api/identity/user/individual/v1/read
- *
- * Responses are cached in Redis for improved performance.
- */
 @Slf4j
 @Service
 public class UserInfoService {
@@ -44,14 +38,6 @@ public class UserInfoService {
         this.cacheService = cacheService;
     }
 
-    /**
-     * Fetch user information by HSID UUID.
-     * Results are cached in Redis.
-     *
-     * @param hsidUuid The user's HSID UUID (from token sub claim)
-     * @return User information response
-     * @throws IdentityServiceException if API call fails after retries
-     */
     @NonNull
     public Mono<UserInfoResponse> getUserInfo(@NonNull String hsidUuid) {
         log.debug("Fetching user info for hsidUuid: {}", StringSanitizer.forLog(hsidUuid));
@@ -60,9 +46,6 @@ public class UserInfoService {
         return cacheService.getOrLoadUserInfo(hsidUuid, loader, UserInfoResponse.class);
     }
 
-    /**
-     * Fetch user info directly from API (bypassing cache).
-     */
     private Mono<UserInfoResponse> fetchFromApi(String hsidUuid) {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.userService().timeout();
@@ -101,9 +84,6 @@ public class UserInfoService {
                         "Failed to fetch user info for hsidUuid {}: {}", StringSanitizer.forLog(hsidUuid), e.getMessage()));
     }
 
-    /**
-     * Check if error is retryable (5xx errors and timeouts).
-     */
     private boolean isRetryable(Throwable throwable) {
         if (throwable instanceof WebClientResponseException ex) {
             return ex.getStatusCode().is5xxServerError();
@@ -111,7 +91,6 @@ public class UserInfoService {
         if (throwable instanceof IdentityServiceException ex) {
             return ex.getStatusCode() >= 500;
         }
-        // Retry on timeout
         return throwable instanceof java.util.concurrent.TimeoutException;
     }
 }

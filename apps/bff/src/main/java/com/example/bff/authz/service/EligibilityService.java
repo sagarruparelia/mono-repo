@@ -24,9 +24,6 @@ import java.util.Map;
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
 import static com.example.bff.authz.model.EligibilityResult.GRACE_PERIOD_MONTHS;
 
-/**
- * Service for checking member eligibility via the Graph API.
- */
 @Slf4j
 @Service
 public class EligibilityService {
@@ -61,7 +58,6 @@ public class EligibilityService {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.eligibility().timeout();
 
-        // GraphQL query with variables to prevent injection
         String query = """
                 query CheckEligibility($memberEid: String!) {
                     eligibility(memberEid: $memberEid) {
@@ -80,7 +76,6 @@ public class EligibilityService {
                 .uri(apiProperties.eligibility().path())
                 .body(BodyInserters.fromValue(requestBody));
 
-        // Add x-identifier header if available
         if (apiIdentifier != null && !apiIdentifier.isBlank()) {
             requestBuilder.header(X_IDENTIFIER_HEADER, apiIdentifier);
         }
@@ -89,7 +84,6 @@ public class EligibilityService {
                 .retrieve()
                 .onStatus(status -> status == HttpStatus.NOT_FOUND, response -> {
                     log.debug("No eligibility record found for memberEid: {}", StringSanitizer.forLog(memberEid));
-                    // Return empty to trigger NOT_ELIGIBLE handling
                     return Mono.empty();
                 })
                 .onStatus(HttpStatusCode::is4xxClientError, response ->
@@ -108,7 +102,7 @@ public class EligibilityService {
                         .doBeforeRetry(signal -> log.warn(
                                 "Retrying {} API call, attempt {}: {}",
                                 SERVICE_NAME, signal.totalRetries() + 1, signal.failure().getMessage())))
-                .switchIfEmpty(Mono.just(new EligibilityResponse(null))) // 404 case
+                .switchIfEmpty(Mono.just(new EligibilityResponse(null)))
                 .doOnSuccess(response -> log.debug(
                         "Eligibility check completed for memberEid: {}", StringSanitizer.forLog(memberEid)))
                 .onErrorResume(e -> {
@@ -122,27 +116,22 @@ public class EligibilityService {
         String status = response.getStatus();
         LocalDate termDate = response.getTermDate();
 
-        // No eligibility record (404 or empty response)
         if (status == null) {
             return EligibilityResult.notEligible();
         }
 
-        // Active eligibility
         if ("active".equalsIgnoreCase(status)) {
             return EligibilityResult.active(termDate);
         }
 
-        // Inactive - check if within grace period
         if (termDate != null) {
             LocalDate gracePeriodEnd = termDate.plusMonths(GRACE_PERIOD_MONTHS);
             if (LocalDate.now().isBefore(gracePeriodEnd)) {
                 return EligibilityResult.inactive(termDate);
-            } else {
-                return EligibilityResult.expired(termDate);
             }
+            return EligibilityResult.expired(termDate);
         }
 
-        // No term date but not active - treat as expired
         return EligibilityResult.notEligible();
     }
 

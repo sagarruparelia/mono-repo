@@ -25,12 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST controller for access-related endpoints.
- *
- * <p>Provides endpoints for retrieving information about members
- * the logged-in user has permission to act on behalf of.</p>
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/access")
@@ -42,15 +36,6 @@ public class AccessController {
     private final SessionService sessionService;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Get detailed information about managed members including permission details.
-     *
-     * <p>Returns a list of members the logged-in user can act on behalf of,
-     * with their personal information and permission validity dates.</p>
-     *
-     * @param exchange The server web exchange
-     * @return List of managed member details with permissions
-     */
     @GetMapping("/managed-members")
     @RequirePersona(Persona.DELEGATE)
     public Mono<ResponseEntity<List<ManagedMemberDetailResponse>>> getManagedMembers(
@@ -68,7 +53,6 @@ public class AccessController {
             return Mono.just(ResponseEntity.ok(List.of()));
         }
 
-        // Get session to retrieve detailed member info (firstName, lastName, birthDate)
         HttpCookie sessionCookie = exchange.getRequest().getCookies().getFirst(SESSION_COOKIE_NAME);
         if (sessionCookie == null || sessionCookie.getValue().isBlank()) {
             log.warn("No session cookie found");
@@ -79,11 +63,9 @@ public class AccessController {
 
         return sessionService.getSession(sessionId)
                 .map(session -> {
-                    // Parse managed members from session for detailed info
                     Map<String, ManagedMember> memberMap = parseManagedMembersToMap(
                             session.managedMembersJson());
 
-                    // Build response combining identity data with permission details
                     List<ManagedMemberDetailResponse> responses = permissions.getViewableManagedMembers()
                             .stream()
                             .map(access -> buildResponse(access, memberMap))
@@ -96,9 +78,6 @@ public class AccessController {
                 .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
-    /**
-     * Build response by combining ManagedMemberAccess (permissions) with ManagedMember (identity info).
-     */
     private ManagedMemberDetailResponse buildResponse(
             ManagedMemberAccess access,
             Map<String, ManagedMember> memberMap) {
@@ -115,7 +94,6 @@ public class AccessController {
             );
         }
 
-        // Fallback: use memberName from access if no detailed member info
         log.debug("No detailed member info found for {}, using access data", access.memberId());
         return ManagedMemberDetailResponse.from(
                 access.memberId(),
@@ -126,9 +104,6 @@ public class AccessController {
         );
     }
 
-    /**
-     * Parse managed members JSON to a map by enterprise ID for quick lookup.
-     */
     private Map<String, ManagedMember> parseManagedMembersToMap(String json) {
         if (json == null || json.isBlank()) {
             return Map.of();

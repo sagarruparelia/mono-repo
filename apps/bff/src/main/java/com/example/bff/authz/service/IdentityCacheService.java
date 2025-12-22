@@ -14,9 +14,6 @@ import java.time.Duration;
 import static com.example.bff.config.IdentityCacheConfig.IDENTITY_CACHE_TEMPLATE;
 import static com.example.bff.config.properties.IdentityCacheProperties.*;
 
-/**
- * Reactive cache service for identity API responses using Redis.
- */
 @Slf4j
 @Service
 public class IdentityCacheService {
@@ -56,20 +53,17 @@ public class IdentityCacheService {
             Class<T> type,
             Duration ttl) {
 
-        // Validate and sanitize cache key to prevent cache poisoning
         String sanitizedKey = sanitizeKey(key);
         String fullKey = cacheName + ":" + sanitizedKey;
 
         return redisTemplate.opsForValue().get(fullKey)
                 .flatMap(cached -> {
                     try {
-                        // Convert the cached Object back to the target type
                         T value = objectMapper.convertValue(cached, type);
                         log.debug("Cache hit for key: {}", fullKey);
                         return Mono.just(value);
                     } catch (Exception e) {
                         log.warn("Failed to deserialize cached value for key {}, evicting corrupted entry", fullKey);
-                        // Delete corrupted cache entry and return empty to trigger loader
                         return redisTemplate.delete(fullKey).then(Mono.empty());
                     }
                 })
@@ -80,14 +74,12 @@ public class IdentityCacheService {
                                     .set(fullKey, value, ttl)
                                     .thenReturn(value)
                                     .onErrorResume(cacheWriteError -> {
-                                        // If cache write fails, still return the loaded value
                                         log.warn("Failed to write to cache for key {}: {}", fullKey, cacheWriteError.getMessage());
                                         return Mono.just(value);
                                     });
                         })
                 )
                 .onErrorResume(cacheError -> {
-                    // Graceful degradation: fall back to loader if cache is unavailable
                     log.warn("Cache unavailable for key {}, falling back to loader: {}", fullKey, cacheError.getMessage());
                     return loader;
                 });
@@ -97,7 +89,6 @@ public class IdentityCacheService {
         if (key == null || key.isBlank()) {
             throw new IllegalArgumentException("Cache key cannot be null or blank");
         }
-        // Replace potentially dangerous characters that could cause key collisions
         return key.replaceAll("[:\\s\\n\\r\\t]", "_");
     }
 

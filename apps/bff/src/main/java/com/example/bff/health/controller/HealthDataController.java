@@ -18,12 +18,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-/**
- * REST controller for health data endpoints with dual authentication (HSID session + OAuth2 proxy).
- *
- * <p>Uses {@link RequirePersona} for declarative persona-based authorization.
- * Health data access requires specific delegate permissions for DELEGATE persona.</p>
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/1.0.0/health")
@@ -35,15 +29,6 @@ public class HealthDataController {
 
     private final HealthDataOrchestrator orchestrator;
 
-    /**
-     * Get immunization records for the authenticated member.
-     *
-     * <p>Authorization handled by {@link RequirePersona} + PersonaAuthorizationFilter:
-     * <ul>
-     *   <li>INDIVIDUAL_SELF/PROXY: Access own data (enterpriseId from principal)</li>
-     *   <li>DELEGATE: Access dependent data (enterpriseId validated from X-Enterprise-Id header)</li>
-     * </ul>
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping("/immunization")
@@ -60,9 +45,6 @@ public class HealthDataController {
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Get allergy records for the authenticated member.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping("/allergy")
@@ -79,9 +61,6 @@ public class HealthDataController {
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Get condition records for the authenticated member.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @GetMapping("/condition")
@@ -98,9 +77,6 @@ public class HealthDataController {
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Refresh all health data for the authenticated member.
-     */
     @RequirePersona(value = {Persona.INDIVIDUAL_SELF, Persona.DELEGATE, Persona.CASE_WORKER, Persona.AGENT},
             requiredDelegates = {DelegateType.DAA, DelegateType.RPR})
     @PostMapping("/refresh")
@@ -115,23 +91,11 @@ public class HealthDataController {
                 .thenReturn(ResponseEntity.ok().<Void>build());
     }
 
-    /**
-     * Get target enterprise ID from exchange attributes or principal.
-     *
-     * <p>For DELEGATE persona, PersonaAuthorizationFilter validates permissions
-     * and stores the validated enterprise ID in exchange attributes.</p>
-     *
-     * @param exchange  The server web exchange
-     * @param principal The authenticated principal
-     * @return The validated enterprise ID to use for data access
-     */
     private String getTargetEnterpriseId(ServerWebExchange exchange, AuthPrincipal principal) {
-        // Use validated ID from filter (set for DELEGATE persona)
         String validatedId = exchange.getAttribute(VALIDATED_ENTERPRISE_ID);
         if (validatedId != null && !validatedId.isBlank()) {
             return validatedId;
         }
-        // Fall back to principal's enterprise ID (INDIVIDUAL_SELF, PROXY)
         return principal.enterpriseId();
     }
 }

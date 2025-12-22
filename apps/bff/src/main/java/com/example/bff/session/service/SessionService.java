@@ -29,13 +29,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Redis-backed session management with Zero Trust features:
- * - Single-session enforcement
- * - Device fingerprint binding (IP, User-Agent, Accept headers)
- * - Session ID rotation (every 15 minutes by default)
- * - Sliding expiration
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -54,8 +47,6 @@ public class SessionService {
     private final ObjectMapper objectMapper;
     private final Optional<SessionAuditService> auditService;
     private final Optional<SessionEventPublisher> eventPublisher;
-
-    // ==================== Session Lifecycle ====================
 
     @NonNull
     public Mono<Void> invalidateExistingSessions(@NonNull String hsidUuid) {
@@ -190,7 +181,6 @@ public class SessionService {
         return redisOps.opsForValue().get(USER_SESSION_KEY + hsidUuid);
     }
 
-    // ==================== Session Binding Validation ====================
 
     @NonNull
     public Mono<Boolean> validateSessionBinding(@NonNull String sessionId, @NonNull ClientInfo clientInfo) {
@@ -237,11 +227,6 @@ public class SessionService {
         return valid;
     }
 
-    // ==================== Session Rotation (Zero Trust) ====================
-
-    /**
-     * Checks if session needs rotation based on configured interval.
-     */
     public boolean needsRotation(@NonNull SessionData session) {
         if (!sessionProperties.rotation().enabled()) {
             return false;
@@ -250,15 +235,6 @@ public class SessionService {
         return sinceRotation.compareTo(sessionProperties.rotation().interval()) > 0;
     }
 
-    /**
-     * Rotates session ID while preserving session data.
-     * Uses distributed locking to prevent race conditions from concurrent requests.
-     * Old session is kept alive for grace period to handle in-flight requests.
-     *
-     * @param oldSessionId Current session ID
-     * @param clientInfo Current client information for updated fingerprint
-     * @return New session ID, or existing session ID if rotation already in progress
-     */
     @NonNull
     public Mono<String> rotateSession(@NonNull String oldSessionId, @NonNull ClientInfo clientInfo) {
         if (!StringSanitizer.isValidSessionId(oldSessionId)) {
@@ -368,7 +344,6 @@ public class SessionService {
                 .defaultIfEmpty(false);
     }
 
-    // ==================== Permissions Management ====================
 
     @NonNull
     public Mono<Void> storePermissions(@NonNull String sessionId, @NonNull PermissionSet permissions) {
@@ -411,7 +386,6 @@ public class SessionService {
         return storePermissions(sessionId, permissions);
     }
 
-    // ==================== Session Creation with Enrichment ====================
 
     @NonNull
     public Mono<String> createSessionWithPermissions(
@@ -478,7 +452,6 @@ public class SessionService {
                 .thenReturn(sessionId);
     }
 
-    // ==================== Helper Methods ====================
 
     @NonNull
     private String buildManagedMembersString(@NonNull MemberAccess memberAccess) {

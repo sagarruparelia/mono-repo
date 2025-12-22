@@ -23,12 +23,6 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/**
- * Fetches user permissions from the delegate-graph API with fail-closed behavior.
- *
- * <p>The API returns a flat list of permissions with temporal validity (startDate, stopDate, active).
- * This service groups them by dependent (eid) and converts to the internal PermissionSet structure.
- */
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "app.authz.enabled", havingValue = "true")
@@ -50,12 +44,6 @@ public class PermissionsFetchService {
                 .build();
     }
 
-    /**
-     * Fetch permissions for a user from the delegate-graph API.
-     *
-     * @param hsidUuid The user's HSID UUID (OIDC subject claim)
-     * @return PermissionSet with all dependents and their permissions
-     */
     @NonNull
     public Mono<PermissionSet> fetchPermissions(@NonNull String hsidUuid) {
         if (!isValidHsidUuid(hsidUuid)) {
@@ -95,28 +83,20 @@ public class PermissionsFetchService {
                 });
     }
 
-    /**
-     * Convert the flat API response to a grouped PermissionSet.
-     *
-     * <p>Groups permissions by managed member enterpriseId and creates Map<DelegateType, DelegatePermission> for each.
-     */
     private PermissionSet toPermissionSet(String hsidUuid, PermissionsApiResponse response) {
         if (response == null || response.permissions() == null || response.permissions().isEmpty()) {
             return PermissionSet.empty(hsidUuid, "individual");
         }
 
-        // Group permissions by enterpriseId (managed member)
         Map<String, List<DelegatePermissionEntry>> groupedByMember = response.permissions().stream()
                 .filter(Objects::nonNull)
                 .filter(entry -> entry.enterpriseId() != null && !entry.enterpriseId().isBlank())
                 .collect(Collectors.groupingBy(DelegatePermissionEntry::enterpriseId));
 
-        // Convert each group to ManagedMemberAccess
         List<ManagedMemberAccess> managedMembers = groupedByMember.entrySet().stream()
                 .map(entry -> toManagedMemberAccess(entry.getKey(), entry.getValue()))
                 .collect(Collectors.toList());
 
-        // Determine persona based on managed members
         String persona = managedMembers.isEmpty() ? "individual" : "parent";
 
         Instant expiresAt = Instant.now().plusSeconds(DEFAULT_CACHE_TTL_SECONDS);
@@ -130,9 +110,6 @@ public class PermissionsFetchService {
         );
     }
 
-    /**
-     * Convert a list of permission entries for one managed member to ManagedMemberAccess.
-     */
     private ManagedMemberAccess toManagedMemberAccess(String enterpriseId, List<DelegatePermissionEntry> entries) {
         Map<DelegateType, DelegatePermission> permissions = new EnumMap<>(DelegateType.class);
 
@@ -150,15 +127,12 @@ public class PermissionsFetchService {
 
         return new ManagedMemberAccess(
                 enterpriseId,
-                null,  // memberName not provided by delegate-graph API
+                null,
                 permissions,
-                null   // relationship not provided by delegate-graph API
+                null
         );
     }
 
-    /**
-     * Convert string delegate type to enum.
-     */
     private Optional<DelegateType> toDelegateType(String delegateType) {
         if (delegateType == null || delegateType.isBlank()) {
             return Optional.empty();

@@ -33,9 +33,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Unified authentication filter supporting HSID (session cookie) and PROXY (header-based via mTLS) auth.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -61,22 +58,18 @@ public class DualAuthWebFilter implements WebFilter {
 
         log.debug("DualAuthWebFilter: path={}, category={}", path, category);
 
-        // Public paths - no auth required
         if (category == PathCategory.PUBLIC) {
             return chain.filter(exchange);
         }
 
         String correlationId = getCorrelationId(exchange);
 
-        // Try to resolve auth principal
         return resolveAuthPrincipal(exchange)
                 .flatMap(principal -> {
-                    // Validate auth type matches path requirements
                     if (!isAuthTypeAllowedForPath(principal, category)) {
                         return authTypeMismatchResponse(exchange, principal, category, correlationId);
                     }
 
-                    // Store AuthPrincipal in exchange for downstream use
                     exchange.getAttributes().put(AuthPrincipal.EXCHANGE_ATTRIBUTE, principal);
 
                     log.info("Auth resolved: persona={}, enterpriseId={}, loggedInMemberId={}, path={}",
@@ -88,7 +81,6 @@ public class DualAuthWebFilter implements WebFilter {
                     return chain.filter(exchange);
                 })
                 .switchIfEmpty(Mono.defer(() -> {
-                    // No auth principal resolved
                     if (category == PathCategory.DUAL_AUTH || category == PathCategory.SESSION_ONLY
                             || category == PathCategory.PROXY_ONLY) {
                         return unauthorizedResponse(exchange, correlationId,
@@ -101,7 +93,6 @@ public class DualAuthWebFilter implements WebFilter {
 
     @NonNull
     private Mono<AuthPrincipal> resolveAuthPrincipal(@NonNull ServerWebExchange exchange) {
-        // First try HSID (session cookie)
         return resolveHsidPrincipal(exchange)
                 .switchIfEmpty(Mono.defer(() -> resolveProxyPrincipal(exchange)));
     }
@@ -124,14 +115,10 @@ public class DualAuthWebFilter implements WebFilter {
                 .flatMap(session -> sessionService.getPermissions(sessionId)
                         .defaultIfEmpty(PermissionSet.empty(session.hsidUuid(), session.persona()))
                         .map(permissions -> {
-                            // Determine effective member ID (own EID or HSID UUID for Self)
                             String effectiveMemberId = session.enterpriseId() != null ? session.enterpriseId() : session.hsidUuid();
-
-                            // Determine persona from session
                             Persona personaEnum = Persona.fromLegacy(session.persona());
 
                             if (personaEnum == Persona.DELEGATE) {
-                                // For ResponsibleParty/DELEGATE, extract delegate types from permissions
                                 Set<DelegateType> delegateTypes = AuthPrincipal.extractDelegateTypes(
                                         permissions, effectiveMemberId);
                                 return AuthPrincipal.forDelegate(
@@ -141,15 +128,13 @@ public class DualAuthWebFilter implements WebFilter {
                                         delegateTypes,
                                         permissions
                                 );
-                            } else {
-                                // For Self/INDIVIDUAL_SELF
-                                return AuthPrincipal.forIndividualSelf(
-                                        effectiveMemberId,
-                                        session.hsidUuid(),
-                                        sessionId,
-                                        permissions
-                                );
                             }
+                            return AuthPrincipal.forIndividualSelf(
+                                    effectiveMemberId,
+                                    session.hsidUuid(),
+                                    sessionId,
+                                    permissions
+                            );
                         }));
     }
 
@@ -159,7 +144,6 @@ public class DualAuthWebFilter implements WebFilter {
 
     @NonNull
     private Mono<AuthPrincipal> resolveProxyPrincipal(@NonNull ServerWebExchange exchange) {
-        // Check if this is a proxy request (has X-Auth-Type: proxy or X-Client-Id)
         String authType = exchange.getRequest().getHeaders().getFirst(AUTH_TYPE_HEADER);
         String clientId = exchange.getRequest().getHeaders().getFirst(
                 externalProperties.headers().clientId());
@@ -168,7 +152,6 @@ public class DualAuthWebFilter implements WebFilter {
             return Mono.empty();
         }
 
-        // Extract required headers using new header names
         String enterpriseId = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().enterpriseId()));
         String loggedInMemberIdValue = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
@@ -178,7 +161,6 @@ public class DualAuthWebFilter implements WebFilter {
         String persona = StringSanitizer.headerValue(exchange.getRequest().getHeaders()
                 .getFirst(externalProperties.headers().loggedInMemberPersona()));
 
-        // Validate X-Enterprise-Id (required for all proxy requests)
         if (enterpriseId == null || enterpriseId.isBlank()) {
             log.warn("Proxy auth missing X-Enterprise-Id header");
             return Mono.error(new ProxyAuthException(
@@ -186,7 +168,6 @@ public class DualAuthWebFilter implements WebFilter {
                     "X-Enterprise-Id header is required"));
         }
 
-        // Validate X-Logged-In-Member-Id-Value (min 3 chars)
         if (loggedInMemberIdValue == null || loggedInMemberIdValue.length() < MIN_LOGGED_IN_MEMBER_ID_LENGTH) {
             log.warn("Proxy auth missing or invalid X-Logged-In-Member-Id-Value header");
             return Mono.error(new ProxyAuthException(
@@ -194,7 +175,6 @@ public class DualAuthWebFilter implements WebFilter {
                     "X-Logged-In-Member-Id-Value header is required (min " + MIN_LOGGED_IN_MEMBER_ID_LENGTH + " chars)"));
         }
 
-        // Validate X-Logged-In-Member-Id-Type (OHID or MSID)
         if (loggedInMemberIdTypeStr == null || !VALID_IDP_TYPES.contains(loggedInMemberIdTypeStr)) {
             log.warn("Proxy auth missing or invalid X-Logged-In-Member-Id-Type header: {}",
                     StringSanitizer.forLog(loggedInMemberIdTypeStr));
@@ -203,7 +183,6 @@ public class DualAuthWebFilter implements WebFilter {
                     "X-Logged-In-Member-Id-Type header must be one of: " + VALID_IDP_TYPES));
         }
 
-        // Validate X-Logged-In-Member-Persona (CaseWorker, Agent, ConfigSpecialist)
         if (persona == null || !VALID_PROXY_PERSONAS.contains(persona)) {
             log.warn("Proxy auth missing or invalid X-Logged-In-Member-Persona header: {}",
                     StringSanitizer.forLog(persona));
@@ -212,10 +191,8 @@ public class DualAuthWebFilter implements WebFilter {
                     "X-Logged-In-Member-Persona header must be one of: " + VALID_PROXY_PERSONAS));
         }
 
-        // Parse LoggedInMemberIdType enum
         LoggedInMemberIdType loggedInMemberIdType = LoggedInMemberIdType.valueOf(loggedInMemberIdTypeStr);
 
-        // Create AuthPrincipal based on persona
         AuthPrincipal principal = switch (persona) {
             case "CaseWorker" -> AuthPrincipal.forCaseWorker(
                     enterpriseId, loggedInMemberIdValue, loggedInMemberIdType);
@@ -231,44 +208,38 @@ public class DualAuthWebFilter implements WebFilter {
 
     @NonNull
     private PathCategory determinePathCategory(@NonNull String path) {
-        // Check public paths
         for (String pattern : securityPaths.getPublicPatterns()) {
             if (pathMatcher.match(pattern, path)) {
                 return PathCategory.PUBLIC;
             }
         }
 
-        // Check dual-auth paths
         for (String pattern : securityPaths.getDualAuthPatterns()) {
             if (pathMatcher.match(pattern, path)) {
                 return PathCategory.DUAL_AUTH;
             }
         }
 
-        // Check session-only paths
         for (String pattern : securityPaths.getSessionAuthPatterns()) {
             if (pathMatcher.match(pattern, path)) {
                 return PathCategory.SESSION_ONLY;
             }
         }
 
-        // Check proxy-only paths
         for (String pattern : securityPaths.getProxyAuthPatterns()) {
             if (pathMatcher.match(pattern, path)) {
                 return PathCategory.PROXY_ONLY;
             }
         }
 
-        // Default: require some form of auth
         return PathCategory.DUAL_AUTH;
     }
 
     private boolean isAuthTypeAllowedForPath(@NonNull AuthPrincipal principal, @NonNull PathCategory category) {
         return switch (category) {
-            case PUBLIC -> true;
+            case PUBLIC, DUAL_AUTH -> true;
             case SESSION_ONLY -> principal.isHsidAuth();
             case PROXY_ONLY -> principal.isProxyAuth();
-            case DUAL_AUTH -> true;  // Both allowed
         };
     }
 
@@ -345,9 +316,7 @@ public class DualAuthWebFilter implements WebFilter {
                             .bufferFactory()
                             .wrap(body.getBytes(StandardCharsets.UTF_8))));
         } catch (Exception e) {
-            // Log the serialization failure for debugging
             log.warn("Failed to serialize error response: {}", e.getMessage());
-            // Fallback to simple JSON
             String fallback = String.format(
                     "{\"error\":\"%s\",\"code\":\"%s\",\"message\":\"%s\"}",
                     error, code, StringSanitizer.escapeJson(message));

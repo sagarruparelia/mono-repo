@@ -22,13 +22,6 @@ import java.util.Map;
 
 import static com.example.bff.config.ExternalApiWebClientConfig.EXTERNAL_API_WEBCLIENT;
 
-/**
- * Service for fetching managed members (members the logged-in user has permission to act on behalf of)
- * via the Permissions Graph API.
- *
- * The logged-in user is the "delegate" (recipient of permission). This service returns
- * the list of managed members (grantors) that the user can act FOR.
- */
 @Slf4j
 @Service
 public class ManagedMembersService {
@@ -48,12 +41,6 @@ public class ManagedMembersService {
         this.cacheService = cacheService;
     }
 
-    /**
-     * Get list of managed members the logged-in user can act on behalf of.
-     *
-     * @param memberEid The enterprise ID of the logged-in member (the delegate)
-     * @return List of managed members with active permissions
-     */
     @NonNull
     public Mono<List<ManagedMember>> getManagedMembers(@NonNull String memberEid) {
         log.debug("Fetching managed members for memberEid: {}", StringSanitizer.forLog(memberEid));
@@ -68,7 +55,6 @@ public class ManagedMembersService {
         var retryConfig = apiProperties.retry();
         var timeout = apiProperties.permissions().timeout();
 
-        // GraphQL query with variables to prevent injection
         String query = """
                 query GetPermissions($memberEid: String!) {
                     permissions(memberEid: $memberEid) {
@@ -112,7 +98,6 @@ public class ManagedMembersService {
                 .doOnSuccess(response -> log.debug(
                         "Successfully fetched managed members for memberEid: {}", StringSanitizer.forLog(memberEid)))
                 .onErrorResume(e -> {
-                    // Fail closed: return empty response on errors
                     log.error("Failed to fetch managed members for memberEid {}: {}", StringSanitizer.forLog(memberEid), e.getMessage());
                     return Mono.just(new ManagedMembersResponse(null));
                 });
@@ -131,7 +116,7 @@ public class ManagedMembersService {
                 entry.firstName(),
                 entry.lastName(),
                 entry.birthDate(),
-                entry.endDate() // endDate is the permission end date
+                entry.endDate()
         );
     }
 
