@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: bff-test
+
+  # Disable security auto-config for tests (we configure manually)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
+
+  security:
+    oauth2:
+      client:
+        registration:
+          hsid:
+            provider: hsid
+            client-id: test-client-id
+            client-secret: test-client-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/"
+            scope: openid,profile,email
+          hcp:
+            provider: hcp
+            client-id: test-hcp-client
+            client-secret: test-hcp-secret
+            authorization-grant-type: client_credentials
+          ecdh:
+            provider: hcp
+            client-id: test-ecdh-client
+            client-secret: test-ecdh-secret
+            authorization-grant-type: client_credentials
+        provider:
+          hsid:
+            issuer-uri: http://localhost:8089/hsid
+            authorization-uri: http://localhost:8089/hsid/authorize
+            token-uri: http://localhost:8089/hsid/token
+            jwk-set-uri: http://localhost:8089/hsid/jwks
+            user-info-uri: http://localhost:8089/hsid/userinfo
+          hcp:
+            token-uri: http://localhost:8089/hcp/token
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+    mongodb:
+      uri: mongodb://localhost:27017/bff-test
+
+# BFF test configuration
+bff:
+  session:
+    store: in-memory
+    timeout-minutes: 30
+    cookie-name: BFF_SESSION
+    cookie-domain: localhost
+    cookie-secure: false
+    cookie-http-only: true
+    cookie-same-site: Lax
+    allowed-origins: http://localhost:3000,http://localhost:8080
+    csrf-cookie-name: XSRF-TOKEN
+    csrf-header-name: X-CSRF-TOKEN
+    session-binding-enabled: false
+    strict-session-binding: false
+
+  cache:
+    store: in-memory
+    ttl-minutes: 5
+
+  client:
+    user-service:
+      base-url: http://localhost:8089/user-service
+    delegate-graph:
+      base-url: http://localhost:8089/delegate/graphql
+    eligibility-graph:
+      base-url: http://localhost:8089/eligibility/graphql
+    ecdh-graph:
+      base-url: http://localhost:8089/ecdh/graphql
+
+  eligibility:
+    eligible-plan-codes: TEST001,TEST002
+
+  health-cache:
+    ttl-hours: 1
+    background-build-enabled: false
+
+# Actuator for tests
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Logging for tests
+logging:
+  level:
+    com.chanakya.bff: DEBUG
+    org.springframework.security: DEBUG
+    org.testcontainers: INFO
+    com.github.tomakehurst.wiremock: INFO

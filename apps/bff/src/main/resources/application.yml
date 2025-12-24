@@ -1,338 +1,111 @@
 spring:
   application:
     name: bff
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:local}
 
-  # Import external config files
-  config:
-    import:
-      - classpath:config/security-paths.yml
-      - classpath:config/rate-limiting.yml
-
-  # OAuth2 Client Configuration (HSID PKCE + External API Client Credentials)
   security:
     oauth2:
       client:
         registration:
           hsid:
+            provider: hsid
             client-id: ${HSID_CLIENT_ID}
+            client-secret: ${HSID_CLIENT_SECRET}
             authorization-grant-type: authorization_code
-            redirect-uri: "{baseUrl}/api/auth/callback"
+            redirect-uri: "{baseUrl}/"
             scope: openid,profile,email
-            client-authentication-method: none  # PKCE - no client secret
-          # External API client credentials for User Service, Eligibility, Permissions APIs
-          external-api:
-            client-id: ${EXTERNAL_API_CLIENT_ID}
-            client-secret: ${EXTERNAL_API_CLIENT_SECRET}
+          hcp:
+            provider: hcp
+            client-id: ${HCP_CLIENT_ID}
+            client-secret: ${HCP_CLIENT_SECRET}
             authorization-grant-type: client_credentials
-            scope: openid
-          # ECDH Health Data API client credentials (separate from external-api)
-          ecdh-api:
-            client-id: ${ECDH_API_CLIENT_ID}
-            client-secret: ${ECDH_API_CLIENT_SECRET}
+          ecdh:
+            provider: hcp
+            client-id: ${ECDH_CLIENT_ID}
+            client-secret: ${ECDH_CLIENT_SECRET}
             authorization-grant-type: client_credentials
-            scope: openid,health.read
         provider:
           hsid:
-            issuer-uri: ${HSID_BASE_URL}
-            authorization-uri: ${HSID_BASE_URL}/oidc/authorize
-            token-uri: ${HSID_BASE_URL}/oidc/token
-            jwk-set-uri: ${HSID_BASE_URL}/oidc/jwks
-            user-info-uri: ${HSID_BASE_URL}/oidc/userinfo
-            user-name-attribute: sub
-          external-api:
-            token-uri: ${EXTERNAL_API_BASE_URL}/oauth2/token
-          ecdh-api:
-            token-uri: ${ECDH_API_BASE_URL:https://api.abc.com}/oauth2/token
-      # Resource Server (for MFE proxy JWT validation)
-      resourceserver:
-        jwt:
-          issuer-uri: ${OAUTH2_CC_ISSUER_URI:${HSID_BASE_URL}}
-          audiences: bff-api
+            issuer-uri: https://nonprod.identity.healthsafe-id.com
+            authorization-uri: https://nonprod.identity.healthsafe-id.com/oidc/authorize
+            token-uri: https://nonprod.identity.healthsafe-id.com/oidc/token
+            jwk-set-uri: https://nonprod.identity.healthsafe-id.com/oidc/jwks
+            user-info-uri: https://nonprod.identity.healthsafe-id.com/oidc/userinfo
+          hcp:
+            token-uri: ${HCP_TOKEN_URI:https://hcp.com/oauth2/token}
 
-  # MongoDB (existing)
   data:
-    mongodb:
-      uri: ${MONGODB_URI}
-
-  # Redis/Valkey Session
-  session:
-    store-type: redis
-    timeout: 30m
     redis:
-      namespace: bff:session
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/bff}
 
-  # Redis/Valkey Connection
-  data.redis:
-    host: ${VALKEY_HOST:localhost}
-    port: ${VALKEY_PORT:6379}
-    password: ${VALKEY_PASSWORD:}
-    ssl:
-      enabled: ${VALKEY_SSL_ENABLED:false}
-
-server:
-  port: 8080
-
-# Actuator & Observability
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus,loggers,env
-      base-path: /actuator
-  endpoint:
-    health:
-      show-details: when_authorized
-      show-components: when_authorized
-      probes:
-        enabled: true
-    prometheus:
-      enabled: true
-    loggers:
-      enabled: true
-
-  # Health check groups
-  health:
-    livenessState:
-      enabled: true
-    readinessState:
-      enabled: true
-
-  # Metrics configuration
-  metrics:
-    tags:
-      application: ${spring.application.name}
-      environment: ${spring.profiles.active:local}
-    distribution:
-      percentiles-histogram:
-        "[http.server.requests]": true
-        "[http.client.requests]": true
-      percentiles:
-        "[http.server.requests]": 0.5, 0.75, 0.95, 0.99
-        "[http.client.requests]": 0.5, 0.75, 0.95, 0.99
-      slo:
-        "[http.server.requests]": 50ms, 100ms, 200ms, 500ms, 1s, 5s
-    enable:
-      jvm: true
-      process: true
-      system: true
-      logback: true
-
-  # Distributed Tracing (OpenTelemetry)
-  tracing:
-    enabled: ${TRACING_ENABLED:true}
-    sampling:
-      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
-
-  # OpenTelemetry OTLP exporter
-  otlp:
-    tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
-    metrics:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/metrics}
-
-  # Observation configuration
-  observations:
-    http:
-      server:
-        requests:
-          name: http.server.requests
-      client:
-        requests:
-          name: http.client.requests
-
-# Logging configuration
-logging:
-  level:
-    root: INFO
-    com.example.bff: ${LOG_LEVEL_APP:INFO}
-    com.example.bff.observability: DEBUG
-    org.springframework.security: INFO
-    org.springframework.web: INFO
-  pattern:
-    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{correlationId:-}]"
-
-# Custom application properties
-app:
-  # Cache type: "memory" (default, single-pod) or "redis" (multi-pod)
-  cache:
-    type: ${CACHE_TYPE:memory}
-    memory:
-      max-sessions: ${CACHE_MAX_SESSIONS:10000}
-      max-identity-entries: ${CACHE_MAX_IDENTITY_ENTRIES:1000}
-  auth:
-    hsid:
-      logout-uri: ${HSID_BASE_URL}/oidc/logout
-      revocation-uri: ${HSID_BASE_URL}/oidc/token/revoke
-      post-logout-redirect-uri: ${APP_POST_LOGOUT_REDIRECT_URI:}
-
+# BFF-specific configuration
+bff:
   session:
-    timeout: 30m
-    binding:
-      enabled: ${SESSION_BINDING_ENABLED:true}
-      ip-address: true
-      user-agent: true
-    rotation:
-      enabled: ${SESSION_ROTATION_ENABLED:true}
-      interval: 15m
-      grace-period: 5s
-    fingerprint:
-      enabled: ${SESSION_FINGERPRINT_ENABLED:true}
-      include-accept-language: true
-      include-accept-encoding: true
-    pubsub:
-      enabled: ${SESSION_PUBSUB_ENABLED:true}
-      channel: bff:session:events
-    audit:
-      enabled: ${SESSION_AUDIT_ENABLED:true}
-    cookie:
-      # Domain for session cookies (required in production to prevent subdomain attacks)
-      # Set to your application's domain, e.g., "app.example.com"
-      # Leave empty for localhost/development
-      domain: ${SESSION_COOKIE_DOMAIN:}
-      # SameSite attribute (Lax, Strict, or None)
-      same-site: ${SESSION_COOKIE_SAME_SITE:Lax}
+    store: ${BFF_SESSION_STORE:in-memory}
+    timeout-minutes: ${BFF_SESSION_TIMEOUT:30}
+    cookie-name: BFF_SESSION
+    cookie-domain: ${BFF_COOKIE_DOMAIN:abc.com}
+    cookie-secure: true
+    cookie-http-only: true
+    cookie-same-site: Strict
+    allowed-origins: ${BFF_ALLOWED_ORIGINS:https://abc.com,https://www.abc.com}
+    csrf-cookie-name: ${BFF_CSRF_COOKIE:XSRF-TOKEN}
+    csrf-header-name: ${BFF_CSRF_HEADER:X-CSRF-TOKEN}
+    session-binding-enabled: ${BFF_SESSION_BINDING:true}
+    strict-session-binding: ${BFF_STRICT_BINDING:true}
 
-  persona:
-    hsid:
-      claim-name: persona
-      allowed:
-        - individual
-        - parent
-      parent:
-        dependents-claim: dependents
-    proxy:
-      allowed:
-        - agent
-        - config
-        - case_worker
+  cache:
+    store: ${BFF_CACHE_STORE:in-memory}
+    ttl-minutes: ${BFF_CACHE_TTL:30}
 
-  mfe:
-    proxy:
-      enabled: true
-      headers:
-        auth-type: X-Auth-Type
-        partner-id: X-Partner-Id
-        enterprise-id: X-Enterprise-Id
-        logged-in-member-persona: X-Logged-In-Member-Persona
-        logged-in-member-id-value: X-Logged-In-Member-Id-Value
-        logged-in-member-id-type: X-Logged-In-Member-Id-Type
-        correlation-id: X-Correlation-Id
-
-  # Authorization (AuthZ) Configuration
-  authz:
-    enabled: ${AUTHZ_ENABLED:true}
-    permissions-api:
-      url: ${PERMISSIONS_API_URL:http://localhost:8081}
-      timeout: 5s
-    cache:
-      enabled: true
-      ttl: 5m
-    rules:
-      view-dependent:
-        required: [DAA, RPR]
-      view-sensitive:
-        required: [DAA, RPR, ROI]
-
-  # External Identity APIs (User Service, Eligibility, Permissions)
-  external-api:
-    base-url: ${EXTERNAL_API_BASE_URL:https://api.abc.com}
+  client:
     user-service:
-      path: /api/identity/user/individual/v1/read
-      timeout: 5s
-    eligibility:
-      path: /graph/1.0.0
-      timeout: 5s
-    permissions:
-      path: /api/consumer/prefs/del-gr/1.0.0
-      timeout: 5s
-    retry:
-      max-attempts: 3
-      initial-backoff: 100ms
-      max-backoff: 1s
+      base-url: ${USER_SERVICE_URL:https://api.hcp.com/user-service}
+    delegate-graph:
+      base-url: ${DELEGATE_GRAPH_URL:https://api.hcp.com/delegate/graphql}
+    eligibility-graph:
+      base-url: ${ELIGIBILITY_GRAPH_URL:https://api.hcp.com/eligibility/graphql}
+    ecdh-graph:
+      base-url: ${ECDH_GRAPH_URL:https://api.hcp.com/ecdh/graphql}
 
-  # Identity API Response Caching
-  identity-cache:
-    user-service:
-      ttl: 60m
-      enabled: true
-    eligibility:
-      ttl: 60m
-      enabled: true
-    permissions:
-      ttl: 60m
-      enabled: true
+  eligibility:
+    eligible-plan-codes: ${ELIGIBLE_PLAN_CODES:}
 
-  # ECDH Health Data API Configuration
-  ecdh-api:
-    base-url: ${ECDH_API_BASE_URL:https://api.abc.com}
-    graph-path: /graph/1.0.0
-    timeout: 10s
-    retry:
-      max-attempts: 3
-      initial-backoff: 100ms
-      max-backoff: 2s
+  health-cache:
+    ttl-hours: ${HEALTH_CACHE_TTL:2}
+    background-build-enabled: ${HEALTH_CACHE_BACKGROUND:true}
 
-  # Health Data Cache Configuration (MongoDB)
-  health-data-cache:
-    enabled: true
-    ttl: 24h
-    immunizations:
-      collection: immunizations
-    allergies:
-      collection: allergies
-    conditions:
-      collection: conditions
-    proactive-fetch:
-      enabled: true
-      delay-after-login: 500ms
-
-  # External Integration (mTLS ALB for partner access)
-  # Partners embed MFE components and proxy through mTLS ALB
-  external-integration:
-    enabled: ${EXTERNAL_INTEGRATION_ENABLED:false}
-    headers:
-      enterprise-id: X-Enterprise-Id
-      logged-in-member-id-value: X-Logged-In-Member-Id-Value
-      logged-in-member-id-type: X-Logged-In-Member-Id-Type
-      logged-in-member-persona: X-Logged-In-Member-Persona
-      client-id: X-Client-Id
-      partner-id: X-Partner-Id
-    allowed-personas:
-      - Agent
-      - ConfigSpecialist
-      - CaseWorker
-    trusted-idp-types:
-      - OHID
-      - MSID
-
-# Identity Provider Configuration
-# Maps IDP types to allowed personas for PROXY authentication
-idp:
-  persona-mapping:
-    # Ohio Health ID - case workers only
-    ohid:
-      - case_worker
-    # Member Services ID - agents and config specialists
-    msid:
-      - agent
-      - config_specialist
-
-# Document Management Configuration
-documents:
-  s3:
-    bucket-name: ${DOCUMENT_S3_BUCKET:documents-bucket}
-    region: ${DOCUMENT_S3_REGION:us-east-1}
-    endpoint: ${DOCUMENT_S3_ENDPOINT:}
-    access-key-id: ${DOCUMENT_S3_ACCESS_KEY:}
-    secret-access-key: ${DOCUMENT_S3_SECRET_KEY:}
-  limits:
-    max-file-size: 10485760  # 10MB
-    max-files-per-member: 50
+  document:
+    s3-bucket: ${DOCUMENT_S3_BUCKET}
+    s3-region: ${AWS_REGION:us-east-1}
+    presigned-upload-ttl-minutes: ${DOCUMENT_UPLOAD_TTL:15}
+    presigned-download-ttl-minutes: ${DOCUMENT_DOWNLOAD_TTL:5}
+    max-file-size-mb: ${DOCUMENT_MAX_SIZE_MB:25}
+    max-concurrent-uploads: ${DOCUMENT_MAX_CONCURRENT:4}
+    temp-expiry-hours: ${DOCUMENT_TEMP_EXPIRY_HOURS:4}
+    kms-key-id: ${DOCUMENT_KMS_KEY_ID:}
     allowed-content-types:
       - application/pdf
       - image/jpeg
       - image/png
-      - application/msword
+      - image/tiff
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# Logging
+logging:
+  level:
+    com.chanakya.bff: ${LOG_LEVEL:INFO}
+    org.springframework.security: ${SECURITY_LOG_LEVEL:INFO}

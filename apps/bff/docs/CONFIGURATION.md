@@ -1,338 +1,139 @@
-# BFF Configuration
+# Configuration Reference
 
 ## Overview
 
-This document describes all configuration properties available in the BFF application, organized by functional area.
+The BFF application uses Spring Boot's externalized configuration. Properties are organized under the `bff` prefix and can be overridden via environment variables.
 
----
+## Configuration Structure
 
-## Property Classes
+```yaml
+bff:
+  session:       # Session and cookie configuration
+  cache:         # API response caching
+  client:        # External service endpoints
+  eligibility:   # Eligibility filtering rules
 
-| Class | Prefix | Purpose |
-|-------|--------|---------|
-| `SessionProperties` | `app.session` | Session management |
-| `SecurityConfigProperties` | `app.security` | Security settings |
-| `ExternalApiProperties` | `app.external-api` | External API endpoints |
-| `EcdhApiProperties` | `app.ecdh-api` | Health data API |
-| `CacheProperties` | `app.cache` | Cache configuration |
-| `RateLimitProperties` | `app.rate-limit` | Rate limiting |
-| `HealthDataProperties` | `app.health-data` | Health data caching |
-| `HsidAuthProperties` | `app.auth.hsid` | HSID OAuth2 settings |
-
----
+spring:
+  security:
+    oauth2:      # OIDC/OAuth2 provider configuration
+  data:
+    redis:       # Redis connection settings
+```
 
 ## Session Configuration
 
-**Prefix:** `app.session`
+| Property | Default | Environment Variable | Description |
+|----------|---------|---------------------|-------------|
+| `bff.session.store` | `in-memory` | `BFF_SESSION_STORE` | Storage backend: `in-memory` or `redis` |
+| `bff.session.timeout-minutes` | `30` | `BFF_SESSION_TIMEOUT` | Session expiration time |
+| `bff.session.cookie-name` | `BFF_SESSION` | - | Session cookie name |
+| `bff.session.cookie-domain` | `abc.com` | `BFF_COOKIE_DOMAIN` | Cookie domain restriction |
+| `bff.session.cookie-secure` | `true` | - | HTTPS-only cookie |
+| `bff.session.cookie-http-only` | `true` | - | Prevent JavaScript access |
+| `bff.session.cookie-same-site` | `Strict` | - | SameSite attribute |
+| `bff.session.allowed-origins` | `https://abc.com,https://www.abc.com` | `BFF_ALLOWED_ORIGINS` | Allowed request origins (comma-separated) |
+| `bff.session.csrf-cookie-name` | `XSRF-TOKEN` | `BFF_CSRF_COOKIE` | CSRF token cookie name |
+| `bff.session.csrf-header-name` | `X-CSRF-TOKEN` | `BFF_CSRF_HEADER` | CSRF token header name |
+| `bff.session.session-binding-enabled` | `true` | `BFF_SESSION_BINDING` | Enable session binding validation |
+| `bff.session.strict-session-binding` | `true` | `BFF_STRICT_BINDING` | Strict mode rejects on mismatch |
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `timeout` | Duration | `30m` | Session inactivity timeout |
-| `cookie.name` | String | `BFF_SESSION` | Session cookie name |
-| `cookie.domain` | String | - | Cookie domain (optional) |
-| `cookie.secure` | Boolean | `true` | Require HTTPS |
-| `cookie.http-only` | Boolean | `true` | Prevent JS access |
-| `cookie.same-site` | String | `Strict` | SameSite policy |
-| `max-concurrent` | Integer | `5` | Max sessions per user |
+### Session Storage Options
 
-Example:
+**In-Memory (Development)**
 ```yaml
-app:
+bff:
   session:
-    timeout: 30m
-    cookie:
-      name: BFF_SESSION
-      domain: .example.com
-      secure: true
-      http-only: true
-      same-site: Strict
-    max-concurrent: 5
+    store: in-memory
 ```
+- Sessions stored in ConcurrentHashMap
+- Lost on application restart
+- Suitable for single-instance development
 
----
-
-## Security Configuration
-
-**Prefix:** `app.security`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ip-binding-mode` | Enum | `SUBNET` | IP validation strictness |
-| `csrf.enabled` | Boolean | `true` | Enable CSRF protection |
-| `csrf.cookie-name` | String | `XSRF-TOKEN` | CSRF cookie name |
-| `csrf.header-name` | String | `X-CSRF-TOKEN` | CSRF header name |
-| `csp.enabled` | Boolean | `true` | Enable CSP headers |
-| `csp.policy` | String | - | CSP policy string |
-| `trusted-proxies` | List | `[]` | Trusted proxy CIDRs |
-
-IP Binding Modes:
-- `STRICT` - Exact IP match required
-- `SUBNET` - Same /24 subnet required
-- `DISABLED` - No IP validation
-
-Example:
+**Redis (Production)**
 ```yaml
-app:
-  security:
-    ip-binding-mode: SUBNET
-    csrf:
-      enabled: true
-      cookie-name: XSRF-TOKEN
-      header-name: X-CSRF-TOKEN
-    csp:
-      enabled: true
-      policy: "default-src 'self'; script-src 'self'"
-    trusted-proxies:
-      - "10.0.0.0/8"
-      - "172.16.0.0/12"
+bff:
+  session:
+    store: redis
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
 ```
-
----
-
-## External API Configuration
-
-**Prefix:** `app.external-api`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `base-url` | String | - | Base URL (HTTPS required) |
-| `user-service.path` | String | `/api/identity/user/individual/v1/read` | User service endpoint |
-| `user-service.timeout` | Duration | `5s` | Request timeout |
-| `eligibility.path` | String | `/graph/1.0.0` | Eligibility endpoint |
-| `eligibility.timeout` | Duration | `5s` | Request timeout |
-| `permissions.path` | String | `/api/consumer/prefs/del-gr/1.0.0` | Permissions endpoint |
-| `permissions.timeout` | Duration | `5s` | Request timeout |
-| `retry.max-attempts` | Integer | `3` | Max retry attempts |
-| `retry.initial-backoff` | Duration | `100ms` | Initial backoff |
-| `retry.max-backoff` | Duration | `1s` | Maximum backoff |
-
-Example:
-```yaml
-app:
-  external-api:
-    base-url: https://api.example.com
-    user-service:
-      path: /api/identity/user/individual/v1/read
-      timeout: 5s
-    eligibility:
-      path: /graph/1.0.0
-      timeout: 5s
-    permissions:
-      path: /api/consumer/prefs/del-gr/1.0.0
-      timeout: 5s
-    retry:
-      max-attempts: 3
-      initial-backoff: 100ms
-      max-backoff: 1s
-```
-
----
-
-## ECDH API Configuration
-
-**Prefix:** `app.ecdh-api`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `base-url` | String | - | ECDH API base URL |
-| `graph-path` | String | `/graph/1.0.0` | GraphQL endpoint path |
-| `timeout` | Duration | `10s` | Request timeout |
-| `retry.max-attempts` | Integer | `3` | Max retry attempts |
-| `retry.initial-backoff` | Duration | `100ms` | Initial backoff |
-| `retry.max-backoff` | Duration | `2s` | Maximum backoff |
-
-Example:
-```yaml
-app:
-  ecdh-api:
-    base-url: https://api.abc.com
-    graph-path: /graph/1.0.0
-    timeout: 10s
-    retry:
-      max-attempts: 3
-      initial-backoff: 100ms
-      max-backoff: 2s
-```
-
----
+- Sessions stored in Redis
+- Supports horizontal scaling
+- Sessions persist across restarts
 
 ## Cache Configuration
 
-**Prefix:** `app.cache`
+| Property | Default | Environment Variable | Description |
+|----------|---------|---------------------|-------------|
+| `bff.cache.store` | `in-memory` | `BFF_CACHE_STORE` | Cache backend: `in-memory` or `redis` |
+| `bff.cache.ttl-minutes` | `30` | `BFF_CACHE_TTL` | Cache entry TTL |
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `type` | Enum | `memory` | Cache implementation |
-| `user-info-ttl` | Duration | `15m` | User info cache TTL |
-| `eligibility-ttl` | Duration | `15m` | Eligibility cache TTL |
-| `permissions-ttl` | Duration | `15m` | Permissions cache TTL |
+### Cache Storage Options
 
-Cache Types:
-- `redis` - Distributed Redis cache (production)
-- `memory` - Local Caffeine cache (development)
-
-Example:
+**In-Memory**
 ```yaml
-app:
+bff:
   cache:
-    type: redis
-    user-info-ttl: 15m
-    eligibility-ttl: 15m
-    permissions-ttl: 15m
+    store: in-memory
+    ttl-minutes: 30
 ```
 
----
-
-## Rate Limiting Configuration
-
-**Prefix:** `app.rate-limit`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `enabled` | Boolean | `true` | Enable rate limiting |
-| `requests-per-second` | Integer | `100` | Max requests per second |
-| `burst-capacity` | Integer | `200` | Burst capacity |
-| `key-resolver` | String | `ip` | Rate limit key (ip, user) |
-
-Example:
+**Redis**
 ```yaml
-app:
-  rate-limit:
-    enabled: true
-    requests-per-second: 100
-    burst-capacity: 200
-    key-resolver: ip
-```
-
----
-
-## Health Data Configuration
-
-**Prefix:** `app.health-data`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `cache-ttl` | Duration | `1h` | MongoDB cache TTL |
-| `max-page-size` | Integer | `100` | Max items per page |
-
-Example:
-```yaml
-app:
-  health-data:
-    cache-ttl: 1h
-    max-page-size: 100
-```
-
----
-
-## HSID Authentication Configuration
-
-**Prefix:** `app.auth.hsid`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `logout-uri` | String | - | HSID logout endpoint |
-| `post-logout-redirect-uri` | String | - | Redirect after logout |
-
-Example:
-```yaml
-app:
-  auth:
-    hsid:
-      logout-uri: https://hsid.example.com/logout
-      post-logout-redirect-uri: https://app.example.com/
-```
-
----
-
-## Conditional Bean Loading
-
-The BFF uses `@ConditionalOnProperty` for flexible deployment configurations:
-
-### Redis Mode (Production)
-```yaml
-app:
+bff:
   cache:
-    type: redis
-
-spring:
-  data:
-    redis:
-      host: redis.example.com
-      port: 6379
+    store: redis
+    ttl-minutes: 30
 ```
 
-Beans activated:
-- `RedisSessionService`
-- `RedisIdentityCacheService`
-- `IdentityCacheEventPublisher`
-- `IdentityCacheEventListener`
+## External Client Configuration
 
-### Memory Mode (Development)
+| Property | Default | Environment Variable | Description |
+|----------|---------|---------------------|-------------|
+| `bff.client.user-service.base-url` | - | `USER_SERVICE_URL` | User service REST API base URL |
+| `bff.client.delegate-graph.base-url` | - | `DELEGATE_GRAPH_URL` | Delegate GraphQL API base URL |
+| `bff.client.eligibility-graph.base-url` | - | `ELIGIBILITY_GRAPH_URL` | Eligibility GraphQL API base URL |
+
+### Example Configuration
+
 ```yaml
-app:
-  cache:
-    type: memory
+bff:
+  client:
+    user-service:
+      base-url: ${USER_SERVICE_URL:https://api.hcp.com/user-service}
+    delegate-graph:
+      base-url: ${DELEGATE_GRAPH_URL:https://api.hcp.com/delegate/graphql}
+    eligibility-graph:
+      base-url: ${ELIGIBILITY_GRAPH_URL:https://api.hcp.com/eligibility/graphql}
 ```
 
-Beans activated:
-- `InMemorySessionService`
-- `InMemoryIdentityCacheService`
+## Eligibility Configuration
 
----
+| Property | Default | Environment Variable | Description |
+|----------|---------|---------------------|-------------|
+| `bff.eligibility.eligible-plan-codes` | `[]` | `ELIGIBLE_PLAN_CODES` | Plan codes for eligibility filtering |
 
-## Environment Profiles
+### Example
 
-### Base Configuration
-`application.yml` - Shared settings for all environments
-
-### Local Development
-`application-local.yml`
 ```yaml
-app:
-  cache:
-    type: memory
-  security:
-    ip-binding-mode: DISABLED
-  rate-limit:
-    enabled: false
-
-logging:
-  level:
-    com.example.bff: DEBUG
+bff:
+  eligibility:
+    eligible-plan-codes: ${ELIGIBLE_PLAN_CODES:PLAN001,PLAN002,PLAN003}
 ```
 
-### Docker Compose
-`application-docker.yml`
-```yaml
-app:
-  cache:
-    type: redis
+## OAuth2 Configuration
 
-spring:
-  data:
-    redis:
-      host: redis
-      port: 6379
-    mongodb:
-      uri: mongodb://mongodb:27017/bff
-```
+### HSID (Browser Authentication)
 
-### Test Configuration
-`application-test.yml`
-```yaml
-app:
-  cache:
-    type: memory
-  external-api:
-    base-url: http://wiremock:8080
-```
+| Property | Environment Variable | Description |
+|----------|---------------------|-------------|
+| `spring.security.oauth2.client.registration.hsid.client-id` | `HSID_CLIENT_ID` | OIDC client ID |
+| `spring.security.oauth2.client.registration.hsid.client-secret` | `HSID_CLIENT_SECRET` | OIDC client secret |
 
----
-
-## Spring Configuration Reference
-
-### Spring Security OAuth2
 ```yaml
 spring:
   security:
@@ -340,53 +141,146 @@ spring:
       client:
         registration:
           hsid:
+            provider: hsid
             client-id: ${HSID_CLIENT_ID}
             client-secret: ${HSID_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/"
             scope: openid,profile,email
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           hsid:
-            authorization-uri: https://hsid.example.com/authorize
-            token-uri: https://hsid.example.com/token
-            user-info-uri: https://hsid.example.com/userinfo
-            jwk-set-uri: https://hsid.example.com/.well-known/jwks.json
+            issuer-uri: https://nonprod.identity.healthsafe-id.com
+            authorization-uri: https://nonprod.identity.healthsafe-id.com/oidc/authorize
+            token-uri: https://nonprod.identity.healthsafe-id.com/oidc/token
+            jwk-set-uri: https://nonprod.identity.healthsafe-id.com/oidc/jwks
+            user-info-uri: https://nonprod.identity.healthsafe-id.com/oidc/userinfo
 ```
 
-### Redis Configuration
+### HCP (Service-to-Service Authentication)
+
+| Property | Environment Variable | Description |
+|----------|---------------------|-------------|
+| `spring.security.oauth2.client.registration.hcp.client-id` | `HCP_CLIENT_ID` | Client credentials ID |
+| `spring.security.oauth2.client.registration.hcp.client-secret` | `HCP_CLIENT_SECRET` | Client credentials secret |
+
 ```yaml
 spring:
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      password: ${REDIS_PASSWORD:}
-      timeout: 2s
-      lettuce:
-        pool:
-          max-active: 10
-          max-idle: 5
+  security:
+    oauth2:
+      client:
+        registration:
+          hcp:
+            provider: hcp
+            client-id: ${HCP_CLIENT_ID}
+            client-secret: ${HCP_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          hcp:
+            token-uri: ${HCP_TOKEN_URI:https://hcp.com/oauth2/token}
 ```
 
-### MongoDB Configuration
+## Actuator Configuration
+
 ```yaml
-spring:
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/bff
-      auto-index-creation: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
 ```
 
----
+| Endpoint | Path | Description |
+|----------|------|-------------|
+| Health | `/actuator/health` | Application health status |
+| Info | `/actuator/info` | Application information |
 
-## Environment Variables
+## Logging Configuration
 
-Sensitive configuration should use environment variables:
+| Property | Default | Environment Variable | Description |
+|----------|---------|---------------------|-------------|
+| `logging.level.com.example.bff` | `INFO` | `LOG_LEVEL` | Application log level |
+| `logging.level.org.springframework.security` | `INFO` | `SECURITY_LOG_LEVEL` | Security framework log level |
 
-| Variable | Property | Description |
-|----------|----------|-------------|
-| `HSID_CLIENT_ID` | OAuth2 client ID | HSID client identifier |
-| `HSID_CLIENT_SECRET` | OAuth2 client secret | HSID client secret |
-| `REDIS_PASSWORD` | Redis password | Redis authentication |
-| `MONGODB_URI` | MongoDB connection | Full connection string |
-| `EXTERNAL_API_BASE_URL` | External API URL | Identity services URL |
-| `ECDH_API_BASE_URL` | ECDH API URL | Health data API URL |
+```yaml
+logging:
+  level:
+    com.example.bff: ${LOG_LEVEL:INFO}
+    org.springframework.security: ${SECURITY_LOG_LEVEL:INFO}
+```
+
+## Environment Variable Summary
+
+### Required Variables
+
+| Variable | Description |
+|----------|-------------|
+| `HSID_CLIENT_ID` | HSID OIDC client ID |
+| `HSID_CLIENT_SECRET` | HSID OIDC client secret |
+| `HCP_CLIENT_ID` | HCP service client ID |
+| `HCP_CLIENT_SECRET` | HCP service client secret |
+| `USER_SERVICE_URL` | User service API URL |
+| `DELEGATE_GRAPH_URL` | Delegate GraphQL URL |
+| `ELIGIBILITY_GRAPH_URL` | Eligibility GraphQL URL |
+
+### Optional Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BFF_SESSION_STORE` | `in-memory` | Session storage type |
+| `BFF_SESSION_TIMEOUT` | `30` | Session timeout (minutes) |
+| `BFF_COOKIE_DOMAIN` | `abc.com` | Cookie domain |
+| `BFF_ALLOWED_ORIGINS` | `https://abc.com,https://www.abc.com` | Allowed origins |
+| `BFF_CACHE_STORE` | `in-memory` | Cache storage type |
+| `BFF_CACHE_TTL` | `30` | Cache TTL (minutes) |
+| `REDIS_HOST` | `localhost` | Redis host |
+| `REDIS_PORT` | `6379` | Redis port |
+| `LOG_LEVEL` | `INFO` | Application log level |
+| `SECURITY_LOG_LEVEL` | `INFO` | Security log level |
+| `BFF_SESSION_BINDING` | `true` | Enable session binding |
+| `BFF_STRICT_BINDING` | `true` | Strict binding mode |
+
+## Profile-Specific Configuration
+
+### Development Profile
+
+```yaml
+# application-dev.yml
+bff:
+  session:
+    store: in-memory
+    cookie-domain: localhost
+    cookie-secure: false  # Allow HTTP for local dev
+    allowed-origins: http://localhost:3000,http://localhost:8080
+    strict-session-binding: false  # Permissive in dev
+  cache:
+    store: in-memory
+
+logging:
+  level:
+    com.example.bff: DEBUG
+    org.springframework.security: DEBUG
+```
+
+### Production Profile
+
+```yaml
+# application-prod.yml
+bff:
+  session:
+    store: redis
+    cookie-domain: ${BFF_COOKIE_DOMAIN}
+    cookie-secure: true
+    allowed-origins: ${BFF_ALLOWED_ORIGINS}
+    session-binding-enabled: true
+    strict-session-binding: true  # Strict in prod
+  cache:
+    store: redis
+
+logging:
+  level:
+    com.example.bff: INFO
+    org.springframework.security: WARN
+```

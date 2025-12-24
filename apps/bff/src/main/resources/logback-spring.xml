@@ -1,127 +1,97 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration scan="true" scanPeriod="30 seconds">
 
-    <!-- Properties -->
-    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="bff"/>
-    <springProperty scope="context" name="ENVIRONMENT" source="spring.profiles.active" defaultValue="local"/>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- ============================================== -->
-    <!-- Console Appender (Human-readable for local)   -->
-    <!-- ============================================== -->
+    <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/bff.log}"/>
+    <property name="APP_NAME" value="bff"/>
+
+    <!-- Console appender for local development -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg %mdc%n</pattern>
+            <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}</pattern>
         </encoder>
     </appender>
 
-    <!-- ============================================== -->
-    <!-- JSON Appender (Structured for production)     -->
-    <!-- ============================================== -->
-    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- JSON appender for production (structured logging) -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <!-- Include standard fields -->
-            <includeMdcKeyName>correlationId</includeMdcKeyName>
-            <includeMdcKeyName>requestPath</includeMdcKeyName>
-            <includeMdcKeyName>requestMethod</includeMdcKeyName>
-            <includeMdcKeyName>responseStatus</includeMdcKeyName>
-            <includeMdcKeyName>durationMs</includeMdcKeyName>
-            <includeMdcKeyName>clientIp</includeMdcKeyName>
-            <includeMdcKeyName>userId</includeMdcKeyName>
-            <includeMdcKeyName>persona</includeMdcKeyName>
-            <includeMdcKeyName>memberId</includeMdcKeyName>
             <includeMdcKeyName>traceId</includeMdcKeyName>
             <includeMdcKeyName>spanId</includeMdcKeyName>
-            <!-- Session audit fields -->
-            <includeMdcKeyName>sessionIdHash</includeMdcKeyName>
-            <includeMdcKeyName>sessionEvent</includeMdcKeyName>
-            <includeMdcKeyName>deviceFingerprint</includeMdcKeyName>
-
-            <!-- Custom fields -->
-            <customFields>{"service":"${APP_NAME}","environment":"${ENVIRONMENT}"}</customFields>
-
-            <!-- Timestamp format -->
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
-
-            <!-- Include caller info for errors -->
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>enterpriseId</includeMdcKeyName>
+            <includeMdcKeyName>persona</includeMdcKeyName>
+            <customFields>{"application":"${APP_NAME}"}</customFields>
             <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
                 <maxDepthPerThrowable>30</maxDepthPerThrowable>
                 <maxLength>2048</maxLength>
                 <shortenedClassNameLength>20</shortenedClassNameLength>
+                <exclude>sun\.reflect\..*\.invoke.*</exclude>
+                <exclude>net\.sf\.cglib\.proxy\.MethodProxy\.invoke</exclude>
                 <rootCauseFirst>true</rootCauseFirst>
             </throwableConverter>
         </encoder>
     </appender>
 
-    <!-- ============================================== -->
-    <!-- Async Appenders (for production performance)  -->
-    <!-- ============================================== -->
+    <!-- Async wrapper for performance -->
     <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="JSON_CONSOLE"/>
         <queueSize>512</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <includeCallerData>false</includeCallerData>
         <neverBlock>true</neverBlock>
-        <appender-ref ref="JSON"/>
     </appender>
 
-    <!-- ============================================== -->
-    <!-- Logger Configuration                          -->
-    <!-- ============================================== -->
+    <!-- File appender with rotation -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>enterpriseId</includeMdcKeyName>
+            <includeMdcKeyName>persona</includeMdcKeyName>
+            <customFields>{"application":"${APP_NAME}"}</customFields>
+        </encoder>
+    </appender>
 
     <!-- Application loggers -->
-    <logger name="com.example.bff" level="INFO"/>
-    <logger name="com.example.bff.observability" level="DEBUG"/>
+    <logger name="com.example.bff" level="DEBUG"/>
+    <logger name="com.example.bff.security" level="DEBUG"/>
 
-    <!-- Security logging (audit trail) -->
-    <logger name="com.example.bff.authz" level="INFO"/>
-    <logger name="com.example.bff.session" level="INFO"/>
-
-    <!-- SIEM Audit Logger (used by both AuthZ and Session auditing) -->
-    <logger name="AUTHZ_AUDIT" level="INFO" additivity="false">
-        <appender-ref ref="${AUDIT_APPENDER:-CONSOLE}"/>
-    </logger>
-
-    <!-- Spring Framework -->
+    <!-- Framework loggers (reduce noise) -->
     <logger name="org.springframework" level="INFO"/>
-    <logger name="org.springframework.security" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>
-
-    <!-- Reduce noise from libraries -->
-    <logger name="org.mongodb.driver" level="WARN"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="reactor.netty" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+    <logger name="org.mongodb" level="WARN"/>
     <logger name="io.lettuce" level="WARN"/>
-    <logger name="io.netty" level="WARN"/>
-    <logger name="reactor.netty" level="WARN"/>
-    <logger name="software.amazon.awssdk" level="WARN"/>
-    <logger name="org.apache.http" level="WARN"/>
 
-    <!-- ============================================== -->
-    <!-- Profile-specific Configuration                -->
-    <!-- ============================================== -->
-
-    <!-- Local Development: Console output -->
-    <springProfile name="local,default">
+    <!-- Profile-specific configuration -->
+    <springProfile name="local,dev">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>
-        <!-- Enable debug for local development -->
-        <logger name="com.example.bff" level="DEBUG"/>
     </springProfile>
 
-    <!-- Test: Console output with reduced verbosity -->
-    <springProfile name="test,e2e">
-        <root level="WARN">
-            <appender-ref ref="CONSOLE"/>
-        </root>
-        <logger name="com.example.bff" level="INFO"/>
-    </springProfile>
-
-    <!-- Production/Staging: JSON output -->
-    <springProfile name="prod,staging,production">
+    <springProfile name="prod,staging">
         <root level="INFO">
             <appender-ref ref="ASYNC_JSON"/>
         </root>
-        <!-- Slightly more verbose for troubleshooting -->
-        <logger name="com.example.bff" level="INFO"/>
-        <logger name="com.example.bff.authz" level="INFO"/>
+    </springProfile>
+
+    <!-- Default (no profile) - use console -->
+    <springProfile name="default">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
     </springProfile>
 
 </configuration>

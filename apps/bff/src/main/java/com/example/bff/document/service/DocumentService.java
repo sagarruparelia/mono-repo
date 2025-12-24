@@ -1,155 +1,447 @@
 package com.example.bff.document.service;
 
-import com.example.bff.common.util.StringSanitizer;
-import com.example.bff.config.properties.DocumentProperties;
-import com.example.bff.document.dto.DocumentDto;
-import com.example.bff.document.dto.DocumentUploadRequest;
-import com.example.bff.document.model.DocumentEntity;
-import com.example.bff.document.repository.DocumentRepository;
-import lombok.RequiredArgsConstructor;
+import com.example.bff.config.BffProperties;
+import com.example.bff.document.client.S3StorageClient;
+import com.example.bff.document.document.DocumentMetadataDoc;
+import com.example.bff.document.document.TempUploadDoc;
+import com.example.bff.document.model.DocumentStatus;
+import com.example.bff.document.model.ScanStatus;
+import com.example.bff.document.model.UploadStatus;
+import com.example.bff.document.model.request.*;
+import com.example.bff.document.model.response.*;
+import com.example.bff.document.repository.DocumentMetadataRepository;
+import com.example.bff.document.repository.TempUploadRepository;
+import com.example.bff.security.context.AuthContext;
+import com.example.bff.security.context.Persona;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
-import org.springframework.core.io.buffer.DataBufferUtils;
-
-import java.util.regex.Pattern;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DocumentService {
 
-    private static final Pattern SAFE_FILENAME_PATTERN = Pattern.compile("[^a-zA-Z0-9._-]");
+    private final S3StorageClient s3Client;
+    private final DocumentMetadataRepository documentRepository;
+    private final TempUploadRepository tempUploadRepository;
+    private final DocumentCategoryService categoryService;
+    private final DocumentAccessValidator accessValidator;
+    private final BffProperties.Document documentConfig;
 
-    private final DocumentRepository repository;
-    private final S3StorageService storageService;
-    private final DocumentProperties properties;
-
-    public Flux<DocumentDto> listDocuments(String memberId) {
-        log.debug("Listing documents for member: {}", StringSanitizer.forLog(memberId));
-        return repository.findByMemberIdOrderByCreatedAtDesc(memberId)
-                .map(DocumentDto::fromEntity);
+    public DocumentService(S3StorageClient s3Client,
+                           DocumentMetadataRepository documentRepository,
+                           TempUploadRepository tempUploadRepository,
+                           DocumentCategoryService categoryService,
+                           DocumentAccessValidator accessValidator,
+                           BffProperties properties) {
+        this.s3Client = s3Client;
+        this.documentRepository = documentRepository;
+        this.tempUploadRepository = tempUploadRepository;
+        this.categoryService = categoryService;
+        this.accessValidator = accessValidator;
+        this.documentConfig = properties.getDocument();
     }
 
-    public Mono<DocumentDto> getDocument(String memberId, String documentId) {
-        log.debug("Getting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
-        return repository.findByIdAndMemberId(documentId, memberId)
-                .map(DocumentDto::fromEntity);
+    public Mono<InitiateUploadResponse> initiateUpload(AuthContext auth, InitiateUploadRequest request) {
+        String targetOwnerEid = resolveEnterpriseId(auth, request.enterpriseId());
+
+        return accessValidator.validateUpload(auth, targetOwnerEid)
+                .then(validateContentType(request.contentType()))
+                .then(validateFileSize(request.fileSizeBytes()))
+                .then(checkConcurrentUploadLimit(auth.loggedInMemberIdValue()))
+                .then(Mono.defer(() -> {
+                    String uploadId = UUID.randomUUID().toString();
+                    String s3Key = buildTempS3Key(auth.loggedInMemberIdValue(), uploadId, request.filename());
+                    Instant now = Instant.now();
+                    Instant presignedExpiry = now.plusSeconds(documentConfig.getPresignedUploadTtlMinutes() * 60L);
+                    Instant uploadExpiry = now.plus(documentConfig.getTempExpiryHours(), ChronoUnit.HOURS);
+
+                    return s3Client.generatePresignedUploadUrl(s3Key, request.contentType(), request.fileSizeBytes())
+                            .flatMap(presignedResult -> {
+                                TempUploadDoc tempUpload = TempUploadDoc.builder()
+                                        .id(uploadId)
+                                        .s3Key(s3Key)
+                                        .uploaderId(auth.loggedInMemberIdValue())
+                                        .uploaderIdType(auth.loggedInMemberIdType())
+                                        .uploaderPersona(auth.persona())
+                                        .targetOwnerEid(targetOwnerEid)
+                                        .originalFilename(request.filename())
+                                        .contentType(request.contentType())
+                                        .expectedFileSizeBytes(request.fileSizeBytes())
+                                        .uploadStatus(UploadStatus.PENDING)
+                                        .presignedUrlExpiresAt(presignedExpiry)
+                                        .expiresAt(uploadExpiry)
+                                        .build();
+
+                                return tempUploadRepository.save(tempUpload)
+                                        .map(saved -> new InitiateUploadResponse(
+                                                saved.getId(),
+                                                presignedResult.getUrl(),
+                                                presignedResult.getExpiresAt(),
+                                                uploadExpiry,
+                                                (long) documentConfig.getMaxFileSizeMb() * 1024 * 1024,
+                                                request.contentType()));
+                            });
+                }))
+                .doOnSuccess(resp -> log.info("Initiated upload: uploadId={}, user={}, targetOwner={}",
+                        resp.uploadId(), auth.loggedInMemberIdValue(), targetOwnerEid))
+                .doOnError(e -> log.error("Failed to initiate upload for user={}: {}",
+                        auth.loggedInMemberIdValue(), e.getMessage()));
     }
 
-    public Mono<DocumentDto> uploadDocument(
-            String memberId,
-            FilePart file,
-            DocumentUploadRequest request,
-            String uploadedBy,
-            String uploadedByPersona) {
+    public Mono<FinalizeUploadResponse> finalizeUpload(AuthContext auth, FinalizeUploadRequest request) {
+        String targetOwnerEid = resolveEnterpriseId(auth, request.enterpriseId());
 
-        String originalFileName = file.filename();
-        String contentType = file.headers().getContentType() != null
-                ? file.headers().getContentType().toString()
-                : "application/octet-stream";
-
-        log.info("Uploading document for member {}: filename={}, contentType={}, uploadedBy={}",
-                StringSanitizer.forLog(memberId),
-                StringSanitizer.forLog(originalFileName),
-                StringSanitizer.forLog(contentType),
-                StringSanitizer.forLog(uploadedBy));
-
-        if (!properties.limits().allowedContentTypes().contains(contentType)) {
-            return Mono.error(new IllegalArgumentException(
-                    String.format("Content type '%s' is not allowed. Allowed types: %s",
-                            contentType, properties.limits().allowedContentTypes())));
-        }
-
-        return repository.countByMemberId(memberId)
-                .flatMap(count -> {
-                    if (count >= properties.limits().maxFilesPerMember()) {
-                        return Mono.error(new IllegalArgumentException(
-                                String.format("Maximum file limit (%d) reached for member",
-                                        properties.limits().maxFilesPerMember())));
+        return accessValidator.validateUpload(auth, targetOwnerEid)
+                .then(validateCategory(request.category()))
+                .then(tempUploadRepository.findById(request.uploadId()))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Upload not found or expired")))
+                .flatMap(tempUpload -> {
+                    // Verify the temp upload belongs to this user and target owner
+                    if (!tempUpload.getUploaderId().equals(auth.loggedInMemberIdValue())) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "Upload does not belong to current user"));
                     }
-                    return processUpload(memberId, file, originalFileName, contentType,
-                            request, uploadedBy, uploadedByPersona);
-                });
-    }
+                    if (!tempUpload.getTargetOwnerEid().equals(targetOwnerEid)) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Enterprise ID mismatch"));
+                    }
+                    if (tempUpload.getUploadStatus() == UploadStatus.FINALIZED) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Upload already finalized"));
+                    }
 
-    private Mono<DocumentDto> processUpload(
-            String memberId,
-            FilePart file,
-            String originalFileName,
-            String contentType,
-            DocumentUploadRequest request,
-            String uploadedBy,
-            String uploadedByPersona) {
+                    // Check if temp upload has expired
+                    if (Instant.now().isAfter(tempUpload.getExpiresAt())) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.GONE,
+                                "Upload has expired"));
+                    }
 
-        String sanitizedFileName = sanitizeFileName(originalFileName);
+                    // Verify the file exists in S3
+                    return s3Client.checkObjectExists(tempUpload.getS3Key())
+                            .flatMap(exists -> {
+                                if (!exists) {
+                                    return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                            "File not uploaded to S3"));
+                                }
 
-        return DataBufferUtils.join(file.content())
-                .map(dataBuffer -> {
-                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                    dataBuffer.read(bytes);
-                    DataBufferUtils.release(dataBuffer);
-                    return bytes;
+                                String documentId = UUID.randomUUID().toString();
+                                String permanentKey = buildPermanentS3Key(targetOwnerEid, documentId,
+                                        tempUpload.getOriginalFilename());
+                                Instant now = Instant.now();
+
+                                // Move the file from temp to permanent location
+                                return s3Client.moveObject(tempUpload.getS3Key(), permanentKey)
+                                        .then(Mono.defer(() -> {
+                                            // Create the permanent document record
+                                            DocumentMetadataDoc doc = DocumentMetadataDoc.builder()
+                                                    .id(documentId)
+                                                    .ownerEnterpriseId(targetOwnerEid)
+                                                    .uploaderId(auth.loggedInMemberIdValue())
+                                                    .uploaderIdType(auth.loggedInMemberIdType())
+                                                    .uploaderPersona(auth.persona())
+                                                    .s3Bucket(s3Client.getBucket())
+                                                    .s3Key(permanentKey)
+                                                    .originalFilename(tempUpload.getOriginalFilename())
+                                                    .contentType(tempUpload.getContentType())
+                                                    .fileSizeBytes(tempUpload.getExpectedFileSizeBytes())
+                                                    .category(request.category())
+                                                    .title(request.title())
+                                                    .description(request.description())
+                                                    .status(DocumentStatus.PENDING_SCAN)
+                                                    .scanStatus(ScanStatus.NOT_SCANNED)
+                                                    .build();
+
+                                            return documentRepository.save(doc);
+                                        }))
+                                        .flatMap(savedDoc -> {
+                                            // Update temp upload status
+                                            tempUpload.setUploadStatus(UploadStatus.FINALIZED);
+                                            return tempUploadRepository.save(tempUpload)
+                                                    .thenReturn(savedDoc);
+                                        });
+                            });
                 })
-                .flatMap(content -> {
-                    long fileSize = content.length;
+                .map(doc -> new FinalizeUploadResponse(
+                        doc.getId(),
+                        doc.getOriginalFilename(),
+                        doc.getCategory(),
+                        doc.getStatus().name(),
+                        doc.getCreatedAt()))
+                .doOnSuccess(resp -> log.info("Finalized upload: documentId={}, user={}, owner={}",
+                        resp.documentId(), auth.loggedInMemberIdValue(), targetOwnerEid))
+                .doOnError(e -> log.error("Failed to finalize upload={} for user={}: {}",
+                        request.uploadId(), auth.loggedInMemberIdValue(), e.getMessage()));
+    }
 
-                    if (fileSize > properties.limits().maxFileSize()) {
-                        return Mono.error(new IllegalArgumentException(
-                                String.format("File size (%d bytes) exceeds maximum allowed (%d bytes)",
-                                        fileSize, properties.limits().maxFileSize())));
+    public Mono<DocumentListResponse> listDocuments(AuthContext auth, DocumentListRequest request) {
+        String ownerEid = resolveEnterpriseId(auth, request.enterpriseId());
+
+        return accessValidator.validateAccess(auth, ownerEid)
+                .then(Mono.defer(() -> {
+                    PageRequest pageable = PageRequest.of(
+                            request.page(),
+                            request.size(),
+                            Sort.by(Sort.Direction.DESC, "createdAt"));
+
+                    // Get categories for display name lookup
+                    return categoryService.getActiveCategories()
+                            .flatMap(categories -> {
+                                // Build category lookup map
+                                var categoryMap = categories.stream()
+                                        .collect(java.util.stream.Collectors.toMap(
+                                                c -> c.getId(),
+                                                c -> c.getDisplayName(),
+                                                (a, b) -> a));
+
+                                // Query documents with or without category filter
+                                Mono<List<DocumentMetadataDoc>> docsMono;
+                                Mono<Long> countMono;
+
+                                if (request.category() != null && !request.category().isBlank()) {
+                                    docsMono = documentRepository.findByOwnerEnterpriseIdAndStatusAndCategory(
+                                                    ownerEid, DocumentStatus.ACTIVE, request.category(), pageable)
+                                            .collectList();
+                                    countMono = documentRepository.countByOwnerEnterpriseIdAndStatusAndCategory(
+                                            ownerEid, DocumentStatus.ACTIVE, request.category());
+                                } else {
+                                    docsMono = documentRepository.findByOwnerEnterpriseIdAndStatus(
+                                                    ownerEid, DocumentStatus.ACTIVE, pageable)
+                                            .collectList();
+                                    countMono = documentRepository.countByOwnerEnterpriseIdAndStatus(
+                                            ownerEid, DocumentStatus.ACTIVE);
+                                }
+
+                                return Mono.zip(docsMono, countMono)
+                                        .map(tuple -> {
+                                            List<DocumentMetadataDoc> docs = tuple.getT1();
+                                            long totalRecords = tuple.getT2();
+                                            int totalPages = (int) Math.ceil((double) totalRecords / request.size());
+
+                                            List<DocumentListResponse.DocumentSummary> summaries = docs.stream()
+                                                    .map(doc -> new DocumentListResponse.DocumentSummary(
+                                                            doc.getId(),
+                                                            doc.getOriginalFilename(),
+                                                            doc.getCategory(),
+                                                            categoryMap.getOrDefault(doc.getCategory(), doc.getCategory()),
+                                                            doc.getTitle(),
+                                                            doc.getFileSizeBytes(),
+                                                            doc.getContentType(),
+                                                            doc.getStatus().name(),
+                                                            doc.getScanStatus().name(),
+                                                            doc.getCreatedAt()))
+                                                    .toList();
+
+                                            return new DocumentListResponse(
+                                                    summaries,
+                                                    request.page(),
+                                                    request.size(),
+                                                    (int) totalRecords,
+                                                    totalPages,
+                                                    request.page() < totalPages - 1,
+                                                    request.page() > 0);
+                                        });
+                            });
+                }))
+                .doOnSuccess(resp -> log.debug("Listed {} documents for owner={}",
+                        resp.documents().size(), ownerEid));
+    }
+
+    public Mono<DocumentDownloadResponse> getDownloadUrl(AuthContext auth, DocumentDownloadRequest request) {
+        String ownerEid = resolveEnterpriseId(auth, request.enterpriseId());
+
+        return accessValidator.validateAccess(auth, ownerEid)
+                .then(documentRepository.findById(request.documentId()))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found")))
+                .flatMap(doc -> {
+                    // Verify document belongs to the requested owner
+                    if (!doc.getOwnerEnterpriseId().equals(ownerEid)) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
                     }
 
-                    if (fileSize == 0) {
-                        return Mono.error(new IllegalArgumentException("File is empty"));
+                    // Check document status
+                    if (doc.getStatus() == DocumentStatus.DELETED) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.GONE, "Document has been deleted"));
+                    }
+                    if (doc.getStatus() == DocumentStatus.QUARANTINED) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "Document is quarantined due to security concerns"));
                     }
 
-                    return storageService.uploadFile(memberId, sanitizedFileName, contentType, content)
-                            .flatMap(s3Key -> {
-                                DocumentEntity entity = DocumentEntity.create(
-                                        memberId,
-                                        sanitizedFileName,
-                                        originalFileName,
-                                        contentType,
-                                        fileSize,
-                                        s3Key,
-                                        request.description(),
-                                        request.documentType(),
-                                        uploadedBy,
-                                        uploadedByPersona
-                                );
-                                return repository.save(entity);
-                            })
-                            .map(DocumentDto::fromEntity);
+                    // Block download until scan is CLEAN
+                    if (doc.getScanStatus() != ScanStatus.CLEAN) {
+                        if (doc.getScanStatus() == ScanStatus.INFECTED) {
+                            return Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                    "Document failed security scan"));
+                        }
+                        return Mono.error(new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Document is being processed. Please try again later."));
+                    }
+
+                    return s3Client.generatePresignedDownloadUrl(doc.getS3Key(), doc.getOriginalFilename())
+                            .map(presignedResult -> new DocumentDownloadResponse(
+                                    presignedResult.getUrl(),
+                                    presignedResult.getExpiresAt(),
+                                    doc.getOriginalFilename(),
+                                    doc.getContentType(),
+                                    doc.getFileSizeBytes()));
+                })
+                .doOnSuccess(resp -> log.info("Generated download URL for document in owner={}", ownerEid))
+                .doOnError(e -> log.error("Failed to generate download URL for documentId={}: {}",
+                        request.documentId(), e.getMessage()));
+    }
+
+    public Mono<DocumentDeleteResponse> deleteDocument(AuthContext auth, DocumentDeleteRequest request) {
+        String ownerEid = resolveEnterpriseId(auth, request.enterpriseId());
+
+        return accessValidator.validateAccess(auth, ownerEid)
+                .then(documentRepository.findById(request.documentId()))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found")))
+                .flatMap(doc -> {
+                    // Verify document belongs to the requested owner
+                    if (!doc.getOwnerEnterpriseId().equals(ownerEid)) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+                    }
+
+                    // Check if already deleted
+                    if (doc.getStatus() == DocumentStatus.DELETED) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.GONE,
+                                "Document has already been deleted"));
+                    }
+
+                    // Soft delete by updating status
+                    doc.setStatus(DocumentStatus.DELETED);
+                    Instant now = Instant.now();
+
+                    return documentRepository.save(doc)
+                            .map(saved -> new DocumentDeleteResponse(
+                                    true,
+                                    saved.getId(),
+                                    now));
+                })
+                .doOnSuccess(resp -> log.info("Deleted document: documentId={}, user={}, owner={}",
+                        resp.documentId(), auth.loggedInMemberIdValue(), ownerEid))
+                .doOnError(e -> log.error("Failed to delete documentId={} for user={}: {}",
+                        request.documentId(), auth.loggedInMemberIdValue(), e.getMessage()));
+    }
+
+    public Mono<DocumentDetailResponse> getDocumentDetail(AuthContext auth, DocumentDetailRequest request) {
+        String ownerEid = resolveEnterpriseId(auth, request.enterpriseId());
+
+        return accessValidator.validateAccess(auth, ownerEid)
+                .then(documentRepository.findById(request.documentId()))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found")))
+                .flatMap(doc -> {
+                    // Verify document belongs to the requested owner
+                    if (!doc.getOwnerEnterpriseId().equals(ownerEid)) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+                    }
+
+                    // Get category display name
+                    return categoryService.getCategoryById(doc.getCategory())
+                            .map(category -> category.getDisplayName())
+                            .defaultIfEmpty(doc.getCategory())
+                            .map(categoryDisplayName -> new DocumentDetailResponse(
+                                    doc.getId(),
+                                    doc.getOwnerEnterpriseId(),
+                                    doc.getOriginalFilename(),
+                                    doc.getContentType(),
+                                    doc.getFileSizeBytes(),
+                                    doc.getCategory(),
+                                    categoryDisplayName,
+                                    doc.getTitle(),
+                                    doc.getDescription(),
+                                    doc.getTags(),
+                                    doc.getStatus().name(),
+                                    doc.getScanStatus().name(),
+                                    new DocumentDetailResponse.UploaderInfo(
+                                            doc.getUploaderId(),
+                                            doc.getUploaderIdType() != null
+                                                    ? doc.getUploaderIdType().name() : null,
+                                            doc.getUploaderPersona() != null
+                                                    ? doc.getUploaderPersona().name() : null),
+                                    doc.getCreatedAt(),
+                                    doc.getUpdatedAt()));
+                })
+                .doOnSuccess(resp -> log.debug("Retrieved document detail: documentId={}", resp.documentId()));
+    }
+
+    // SELF uses their own enterpriseId; others use the provided enterpriseId
+    private String resolveEnterpriseId(AuthContext auth, String requestedEid) {
+        if (auth.persona() == Persona.SELF) {
+            return auth.enterpriseId();
+        }
+        if (requestedEid == null || requestedEid.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Enterprise ID is required for " + auth.persona() + " persona");
+        }
+        return requestedEid;
+    }
+
+    private Mono<Void> validateContentType(String contentType) {
+        if (!documentConfig.getAllowedContentTypes().contains(contentType)) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Content type not allowed: " + contentType));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> validateFileSize(Long fileSizeBytes) {
+        long maxBytes = (long) documentConfig.getMaxFileSizeMb() * 1024 * 1024;
+        if (fileSizeBytes > maxBytes) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "File size exceeds maximum of " + documentConfig.getMaxFileSizeMb() + "MB"));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> checkConcurrentUploadLimit(String uploaderId) {
+        return tempUploadRepository.countByUploaderIdAndUploadStatus(uploaderId, UploadStatus.PENDING)
+                .flatMap(count -> {
+                    if (count >= documentConfig.getMaxConcurrentUploads()) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                                "Maximum concurrent uploads reached. Please finalize or wait for pending uploads."));
+                    }
+                    return Mono.empty();
                 });
     }
 
-    public Mono<byte[]> downloadDocument(String memberId, String documentId) {
-        log.debug("Downloading document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
-        return repository.findByIdAndMemberId(documentId, memberId)
-                .switchIfEmpty(Mono.error(new IllegalArgumentException(
-                        String.format("Document %s not found for member %s", documentId, memberId))))
-                .flatMap(doc -> storageService.downloadFile(doc.s3Key()));
+    private Mono<Void> validateCategory(String categoryId) {
+        return categoryService.isValidCategory(categoryId)
+                .flatMap(valid -> {
+                    if (!valid) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Invalid category: " + categoryId));
+                    }
+                    return Mono.empty();
+                });
     }
 
-    public Mono<Void> deleteDocument(String memberId, String documentId) {
-        log.info("Deleting document {} for member {}", StringSanitizer.forLog(documentId), StringSanitizer.forLog(memberId));
-        return repository.findByIdAndMemberId(documentId, memberId)
-                .switchIfEmpty(Mono.error(new IllegalArgumentException(
-                        String.format("Document %s not found for member %s", documentId, memberId))))
-                .flatMap(doc ->
-                        storageService.deleteFile(doc.s3Key())
-                                .then(repository.delete(doc))
-                );
+    // Format: temp/{uploaderId}/{uploadId}/{filename}
+    private String buildTempS3Key(String uploaderId, String uploadId, String filename) {
+        return String.format("temp/%s/%s/%s", uploaderId, uploadId, sanitizeFilename(filename));
     }
 
-    private String sanitizeFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
+    // Format: docs/{ownerEnterpriseId}/{documentId}/{filename}
+    private String buildPermanentS3Key(String ownerEnterpriseId, String documentId, String filename) {
+        return String.format("docs/%s/%s/%s", ownerEnterpriseId, documentId, sanitizeFilename(filename));
+    }
+
+    private String sanitizeFilename(String filename) {
+        if (filename == null) {
             return "unnamed";
         }
-        return SAFE_FILENAME_PATTERN.matcher(fileName).replaceAll("_");
+        // Replace problematic characters with underscores
+        return filename.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 }

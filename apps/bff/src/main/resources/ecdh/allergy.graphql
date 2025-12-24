@@ -1,0 +1,21 @@
+query GetAllergyByEid($eid: String!, $pageNum: Int, $pageSize: Int, $continuationToken: String) {
+  getAllergyByEid(eid: $eid, pageInfo: { pageNum: $pageNum, pageSize: $pageSize, continuationToken: $continuationToken }) {
+    pageInfo {
+      pageNum
+      pageSize
+      totalPages
+      totalRecords
+      continuationToken
+    }
+    allergies {
+      id
+      allergenCode
+      allergenName
+      allergenType
+      severity
+      reaction
+      onsetDate
+      status
+    }
+  }
+}

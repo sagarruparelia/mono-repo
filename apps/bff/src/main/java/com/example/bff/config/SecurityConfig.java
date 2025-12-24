@@ -1,117 +1,110 @@
 package com.example.bff.config;
 
-import com.example.bff.auth.handler.HsidAuthenticationSuccessHandler;
-import com.example.bff.auth.handler.HsidLogoutSuccessHandler;
-import com.example.bff.config.properties.SecurityPathsProperties;
+import com.example.bff.security.filter.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
-import org.springframework.security.oauth2.client.web.server.DefaultServerOAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.core.endpoint.PkceParameterNames;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
-import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
-import org.springframework.security.web.server.csrf.ServerCsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
-import lombok.RequiredArgsConstructor;
+import org.springframework.security.web.server.csrf.ServerCsrfTokenRepository;
+import org.springframework.security.web.server.util.matcher.PathPatternParserServerWebExchangeMatcher;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 
 @Configuration
 @EnableWebFluxSecurity
-@org.springframework.context.annotation.Profile("!e2e")
-@RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final SecurityPathsProperties pathsConfig;
+    private final MfePathRewriteFilter mfePathRewriteFilter;
+    private final PartnerAuthenticationFilter partnerAuthenticationFilter;
+    private final BrowserSessionFilter browserSessionFilter;
+    private final DelegateEnterpriseIdFilter delegateEnterpriseIdFilter;
+    private final PersonaAuthorizationFilter personaAuthorizationFilter;
+    private final MfeRouteValidator mfeRouteValidator;
+    private final ServerCsrfTokenRepository csrfTokenRepository;
+    private final CsrfTokenSubscriptionFilter csrfTokenSubscriptionFilter;
 
+    public SecurityConfig(
+            MfePathRewriteFilter mfePathRewriteFilter,
+            PartnerAuthenticationFilter partnerAuthenticationFilter,
+            BrowserSessionFilter browserSessionFilter,
+            DelegateEnterpriseIdFilter delegateEnterpriseIdFilter,
+            PersonaAuthorizationFilter personaAuthorizationFilter,
+            MfeRouteValidator mfeRouteValidator,
+            ServerCsrfTokenRepository csrfTokenRepository,
+            CsrfTokenSubscriptionFilter csrfTokenSubscriptionFilter) {
+        this.mfePathRewriteFilter = mfePathRewriteFilter;
+        this.partnerAuthenticationFilter = partnerAuthenticationFilter;
+        this.browserSessionFilter = browserSessionFilter;
+        this.delegateEnterpriseIdFilter = delegateEnterpriseIdFilter;
+        this.personaAuthorizationFilter = personaAuthorizationFilter;
+        this.mfeRouteValidator = mfeRouteValidator;
+        this.csrfTokenRepository = csrfTokenRepository;
+        this.csrfTokenSubscriptionFilter = csrfTokenSubscriptionFilter;
+    }
+
+    // Partner/MFE: /mfe/api/v1/** - header-based auth, mTLS validated upstream
     @Bean
-    public SecurityWebFilterChain securityFilterChain(
-            ServerHttpSecurity http,
-            HsidAuthenticationSuccessHandler authSuccessHandler,
-            HsidLogoutSuccessHandler logoutSuccessHandler,
-            ReactiveClientRegistrationRepository clientRegistrationRepository) {
-
-        // PKCE authorization request resolver
-        ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver =
-                pkceAuthorizationRequestResolver(clientRegistrationRepository);
-
+    @Order(1)
+    public SecurityWebFilterChain mfeSecurityFilterChain(ServerHttpSecurity http) {
         return http
-                .authorizeExchange(auth -> {
-                    // Public paths from config
-                    if (pathsConfig != null && pathsConfig.getPublicPatterns() != null) {
-                        pathsConfig.getPublicPatterns().forEach(pattern ->
-                                auth.pathMatchers(pattern).permitAll());
-                    }
-
-                    // MFE proxy paths (will be handled by ProxyAuthFilter in Phase 3)
-                    if (pathsConfig != null && pathsConfig.getProxyAuthPatterns() != null) {
-                        pathsConfig.getProxyAuthPatterns().forEach(pattern ->
-                                auth.pathMatchers(pattern).permitAll());
-                    }
-
-                    // All other require authentication
-                    auth.anyExchange().authenticated();
-                })
-                .oauth2Login(oauth2 -> oauth2
-                        .authorizationRequestResolver(authorizationRequestResolver)
-                        .authenticationSuccessHandler(authSuccessHandler)
-                )
-                .logout(logout -> logout
-                        .logoutUrl("/api/auth/logout")
-                        .logoutSuccessHandler(logoutSuccessHandler)
-                )
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(secureCsrfTokenRepository())
-                        .csrfTokenRequestHandler(new ServerCsrfTokenRequestAttributeHandler())
-                        // Enable CSRF for all state-changing operations (POST, PUT, DELETE, PATCH)
-                        // Exclude OAuth2 login/callback paths which are handled by Spring Security
-                        .requireCsrfProtectionMatcher(exchange -> {
-                            String method = exchange.getRequest().getMethod().name();
-                            String path = exchange.getRequest().getPath().value();
-                            // Skip non-state-changing methods
-                            if ("GET".equals(method) || "HEAD".equals(method) || "OPTIONS".equals(method) || "TRACE".equals(method)) {
-                                return ServerWebExchangeMatcher.MatchResult.notMatch();
-                            }
-                            // Skip OAuth2 login/callback paths (handled by Spring Security CSRF protection)
-                            if (path.startsWith("/oauth2/") || path.startsWith("/login/oauth2/")) {
-                                return ServerWebExchangeMatcher.MatchResult.notMatch();
-                            }
-                            // Require CSRF for all other state-changing requests
-                            return ServerWebExchangeMatcher.MatchResult.match();
-                        })
-                )
+                .securityMatcher(new PathPatternParserServerWebExchangeMatcher("/mfe/api/v1/**"))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable) // API endpoint, mTLS validated upstream
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
+                // Custom filters
+                .addFilterAt(mfePathRewriteFilter, SecurityWebFiltersOrder.FIRST)
+                .addFilterAt(partnerAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAfter(delegateEnterpriseIdFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAfter(personaAuthorizationFilter, SecurityWebFiltersOrder.AUTHORIZATION)
+                .addFilterAfter(mfeRouteValidator, SecurityWebFiltersOrder.AUTHORIZATION)
                 .build();
     }
 
-    /**
-     * Creates a secure CSRF token repository with proper cookie attributes.
-     * Uses httpOnly=false (required for SPA to read token) but with SameSite=Strict
-     * and Secure flag for defense-in-depth.
-     */
-    private CookieServerCsrfTokenRepository secureCsrfTokenRepository() {
-        CookieServerCsrfTokenRepository repository = CookieServerCsrfTokenRepository.withHttpOnlyFalse();
-        repository.setCookiePath("/");
-        repository.setSecure(true);  // Only send over HTTPS
-        return repository;
+    // Browser: /api/v1/** - session cookie auth + CSRF
+    @Bean
+    @Order(2)
+    public SecurityWebFilterChain browserSecurityFilterChain(ServerHttpSecurity http) {
+        return http
+                .securityMatcher(new PathPatternParserServerWebExchangeMatcher("/api/v1/**"))
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
+                // Custom filters
+                .addFilterAfter(csrfTokenSubscriptionFilter, SecurityWebFiltersOrder.CSRF)
+                .addFilterAt(browserSessionFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAfter(delegateEnterpriseIdFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAfter(personaAuthorizationFilter, SecurityWebFiltersOrder.AUTHORIZATION)
+                .build();
     }
 
-    /**
-     * Creates a PKCE-enabled authorization request resolver
-     */
-    private ServerOAuth2AuthorizationRequestResolver pkceAuthorizationRequestResolver(
-            ReactiveClientRegistrationRepository clientRegistrationRepository) {
-
-        DefaultServerOAuth2AuthorizationRequestResolver resolver =
-                new DefaultServerOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
-
-        // Enable PKCE for all authorization requests
-        resolver.setAuthorizationRequestCustomizer(customizer -> customizer
-                .attributes(attrs -> attrs.put(PkceParameterNames.CODE_CHALLENGE_METHOD, "S256"))
-        );
-
-        return resolver;
+    // Public: /, /login, /actuator/** - no auth
+    @Bean
+    @Order(3)
+    public SecurityWebFilterChain publicSecurityFilterChain(ServerHttpSecurity http) {
+        return http
+                .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
+                        "/", "/login", "/actuator/health", "/actuator/info"))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
+                .build();
     }
 
+    // Catch-all: deny unmatched paths (security safeguard)
+    @Bean
+    @Order(Integer.MAX_VALUE)
+    public SecurityWebFilterChain catchAllSecurityFilterChain(ServerHttpSecurity http) {
+        return http
+                .securityMatcher(ServerWebExchangeMatchers.anyExchange())
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().denyAll())
+                .build();
+    }
 }
