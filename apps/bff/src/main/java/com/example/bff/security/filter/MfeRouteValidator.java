@@ -1,8 +1,8 @@
 package com.example.bff.security.filter;
 
 import com.example.bff.security.annotation.MfeEnabled;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.HttpStatus;
@@ -17,10 +17,14 @@ import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class MfeRouteValidator implements WebFilter, Ordered {
 
     private final RequestMappingHandlerMapping handlerMapping;
+
+    public MfeRouteValidator(
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
+        this.handlerMapping = handlerMapping;
+    }
 
     @Override
     public int getOrder() {

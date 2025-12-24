@@ -30,7 +30,6 @@ spring:
             authorization-grant-type: client_credentials
         provider:
           hsid:
-            issuer-uri: http://localhost:8089/hsid
             authorization-uri: http://localhost:8089/hsid/authorize
             token-uri: http://localhost:8089/hsid/token
             jwk-set-uri: http://localhost:8089/hsid/jwks

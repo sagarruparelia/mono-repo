@@ -7,8 +7,8 @@ import com.example.bff.security.context.DelegateType;
 import com.example.bff.security.context.Persona;
 import com.example.bff.security.exception.AuthorizationException;
 import com.example.bff.security.validator.EnterpriseIdValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.HttpMethod;
@@ -26,13 +26,19 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PersonaAuthorizationFilter implements WebFilter, Ordered {
 
     private static final String ENTERPRISE_ID_PARAM = "enterpriseId";
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final EnterpriseIdValidator enterpriseIdValidator;
+
+    public PersonaAuthorizationFilter(
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping,
+            EnterpriseIdValidator enterpriseIdValidator) {
+        this.handlerMapping = handlerMapping;
+        this.enterpriseIdValidator = enterpriseIdValidator;
+    }
 
     @Override
     public int getOrder() {

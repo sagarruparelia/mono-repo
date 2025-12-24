@@ -16,7 +16,7 @@
 	<description>Backend for Frontend</description>
 
 	<properties>
-		<java.version>21</java.version>
+		<java.version>25</java.version>
 		<aws.sdk.version>2.40.14</aws.sdk.version>
 	</properties>
 
