@@ -1,0 +1,32 @@
+# =============================================================================
+# Dev Environment Profile
+# Connects to real external services with debug logging enabled
+# =============================================================================
+
+spring:
+  security:
+    oauth2:
+      client:
+        provider:
+          hsid:
+            issuer-uri: ${HSID_ISSUER_URI}
+            authorization-uri: ${HSID_AUTH_URI}
+            token-uri: ${HSID_TOKEN_URI}
+            jwk-set-uri: ${HSID_JWKS_URI}
+            user-info-uri: ${HSID_USERINFO_URI}
+
+# BFF-specific configuration for dev environment
+bff:
+  session:
+    store: ${BFF_SESSION_STORE:redis}
+    timeout-minutes: ${BFF_SESSION_TIMEOUT:30}
+  cache:
+    store: ${BFF_CACHE_STORE:redis}
+    ttl-minutes: ${BFF_CACHE_TTL:30}
+
+# Logging - more verbose for dev debugging
+logging:
+  level:
+    com.example.bff: ${LOG_LEVEL:INFO}
+    com.example.bff.security: DEBUG
+    org.springframework.security: ${SECURITY_LOG_LEVEL:DEBUG}

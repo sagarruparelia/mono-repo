@@ -1,0 +1,100 @@
+# =============================================================================
+# Dev Environment Values
+# Single-pod deployment for development/testing with real external services
+# =============================================================================
+
+global:
+  environment: dev
+  domain: dev.app.example.com  # UPDATE with actual domain
+  imageRegistry: ""  # UPDATE: e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com
+
+  externalServices:
+    redis:
+      host: ""  # UPDATE: e.g., dev-redis.xxxxxx.use1.cache.amazonaws.com
+      port: 6379
+      ssl: true
+    hsid:
+      issuerUri: ""  # UPDATE with real HSID issuer
+      authUri: ""    # UPDATE with real HSID auth endpoint
+      tokenUri: ""   # UPDATE with real HSID token endpoint
+      jwksUri: ""    # UPDATE with real HSID JWKS endpoint
+      userinfoUri: "" # UPDATE with real HSID userinfo endpoint
+
+# =============================================================================
+# BFF Configuration - Single Pod
+# =============================================================================
+bff:
+  replicaCount: 1  # Single pod for dev env
+
+  autoscaling:
+    enabled: false  # Disable HPA for single pod
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  config:
+    SPRING_PROFILES_ACTIVE: "dev"
+    BFF_SESSION_STORE: "redis"
+    BFF_CACHE_STORE: "redis"
+    BFF_COOKIE_DOMAIN: ""  # UPDATE with actual domain
+    BFF_ALLOWED_ORIGINS: "" # UPDATE: e.g., https://dev.app.example.com
+    DOCUMENT_S3_BUCKET: ""  # UPDATE with S3 bucket name
+    AWS_REGION: "us-east-1"
+
+  # S3 access via IRSA
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: ""  # UPDATE with IRSA role ARN
+
+  ingress:
+    hosts:
+      - host: api.dev.app.example.com  # UPDATE with actual domain
+        paths:
+          - path: /
+            pathType: Prefix
+
+  podDisruptionBudget:
+    enabled: false  # Not needed for single pod
+
+# =============================================================================
+# Web-CL Frontend - Single Pod
+# =============================================================================
+web-cl:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  ingress:
+    hosts:
+      - host: dev.app.example.com  # UPDATE with actual domain
+        paths:
+          - path: /
+            pathType: Prefix
+  env:
+    MFE_ALLOWED_ORIGINS: ""  # UPDATE with actual domain
+
+# =============================================================================
+# Web-HS Frontend - Disabled for Dev
+# =============================================================================
+web-hs:
+  enabled: false
+
+# =============================================================================
+# MFE Components - Single Pod Each
+# =============================================================================
+mfe-summary:
+  replicaCount: 1
+
+mfe-profile:
+  replicaCount: 1
+
+# =============================================================================
+# Security
+# =============================================================================
+networkPolicies:
+  enabled: true

@@ -1,12 +1,12 @@
 # =============================================================================
-# BFF Dockerfile - Spring Boot 3.5.0 + Java 21
+# BFF Dockerfile - Spring Boot 3.5.9 + Java 25
 # Multi-stage build with security best practices
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Stage 1: Build
 # -----------------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:25-jdk-alpine AS builder
 
 WORKDIR /app
 
@@ -30,11 +30,11 @@ RUN ./mvnw package -DskipTests -B -q && \
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
 # -----------------------------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 
 # Labels for container metadata
 LABEL org.opencontainers.image.title="BFF Service" \
-      org.opencontainers.image.description="Backend for Frontend - Spring Boot WebFlux" \
+      org.opencontainers.image.description="Backend for Frontend - Spring Boot WebFlux (Java 25)" \
       org.opencontainers.image.vendor="mono-repo" \
       org.opencontainers.image.source="https://github.com/org/mono-repo"
 
